@@ -17,6 +17,19 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
 
+find_package(FLEX REQUIRED)
+
+include_directories(${CMAKE_SOURCE_DIR}/include/utils)
+
+
+FLEX_TARGET(CielLexer src/lexer/lex.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cc)
+
+add_executable(ciel
+    src/main.cpp
+    src/utils/token_type.cpp
+    ${FLEX_CielLexer_OUTPUTS}
+)
+
 if(UNIT_TESTING)
   enable_testing()
   message(STATUS "Build unit tests for the project. Tests should be found in the tests folder\n")
