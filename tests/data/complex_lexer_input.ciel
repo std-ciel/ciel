@@ -1,0 +1,98 @@
+// Complex lexing stress test for the ciel lexer.
+// Covers: all operators, keywords, identifiers, number formats, strings w/ escapes,
+// chars, single-line and multi-line comments, nested delimiters, dense chains,
+// prefix/postfix inc/dec, and edgey spacing.
+
+// --- Comments (single + multi-line) ---
+/*
+Block comment across lines with operators inside that must be ignored:
+== != < <= > >= && || ! += -= *= /= %= &= |= ^= ++ -- -> . = + - * / % & | ^ ~ << >>
+[ ] ( ) { } , ; : 0xDEAD 0b1010 0777 identifier->field.name
+*/
+// This is a single line comment with operators: a+++b, c----d, x&&y||!z
+
+// --- Declarations and literals ---
+typedef int myint;
+static int s = 0;
+enum E { A, B, C };
+struct S { int a; };
+union U { int i; char ch; };
+
+int x = 0;
+bool b = true;
+char c = 'a';
+
+// Integer literals in various bases
+x = 0;
+x = 01234567;   // octal
+x = 0xDEADBEEF; // hex
+x = 0b10101010; // binary
+x = 1234567890; // decimal
+
+// Char and string literals (with supported escapes)
+char d = 'Z';
+s = "line1\nline2\tTabbed \"quote\" \\\\ backslash";
+
+// --- Weird operator chains and edgey spacing ---
+a+++b;      // maximal munch: 'a' '++' '+' 'b'
+c----d;     // '--' '--'
+y=0;++y;y++;--y;y--;
+~x;         // bitwise not
+
+// Bitwise ops + assignments
+x &= 0xFF;
+x |= 0b1010;
+x ^= 0xF0;
+x = ~x & y | z ^ w;
+x = x << 2 >> 1;
+
+// Shift-assign forms (lexer will tokenize as '<<' '=' and '>>' '=' which is fine)
+x <<= 3;
+x >>= 2;
+
+// Logical combos, equality, and relational
+b = (true && false) || !false && !!true;
+if (x == 0 || x != 1 && x > 2 && x >= 3 && x < 4 && x <= 5) { /* no-op */ }
+
+// Arithmetic and compound assignments
+x += 1; x -= 2; x *= 3; x /= 4; x %= 5;
+
+// Simple assign and unary +/- with ints
+x = +1 - -2 + ++x - --x + y++ - z--;
+
+// Arrow and dot
+p->field.x = a.b->c;
+
+// Arrays, indexing, nested parens/brackets/braces, comma operator
+arr[i++] = j-- + ++k - --l, m, n;
+arr[0] = (arr[1] + (arr[2] * (arr[3] / (arr[4] % arr[5]))));
+{ { [ [ ( ( x ) ) ] ] } } // nested delimiters
+
+// Delimiters and punctuation in functions and control flow
+fn main() {
+    // comments inside function
+    /* inner block comment with && || -> . and delimiters () [] {} */
+
+    int local = 0;
+    call(a,b,c,d,e,f);
+    while (local < 10) { local++; }
+    do { local--; } while (local > 0);
+    for (i=0; i<3; i++) { ; }
+
+    switch (x) {
+        case 0: break;
+        case 1: continue;
+        default: goto label;
+    }
+
+label: { }
+}
+
+// More logical-assign-like sequences (tokenized as '&&' '=' and '||' '=')
+x&&=y;
+x||=y;
+
+// Final sanity lines with every remaining single token sprinkled
+( ) [ ] { } , ; : = + - * / % & | ^ ~ << >> == != < <= > >= && || !
+0 0777 0xC0FFEE 0b1101
+id_123 anotherId _under_score
