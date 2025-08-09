@@ -8,6 +8,7 @@ enum class token_type {
     INT,
     CHAR,
     BOOL,
+    VOID,
     INT_LITERAL,
     CHAR_LITERAL,
     STRING_LITERAL,

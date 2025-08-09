@@ -2,18 +2,31 @@
 #include <unordered_map>
 
 static const std::unordered_map<std::string, token_type> keyword_map = {
-    {"int", token_type::INT},         {"char", token_type::CHAR},
-    {"bool", token_type::BOOL},       {"fn", token_type::FN},
-    {"return", token_type::RETURN},   {"if", token_type::IF},
-    {"break", token_type::BREAK},     {"continue", token_type::CONTINUE},
-    {"goto", token_type::GOTO},       {"else", token_type::ELSE},
-    {"switch", token_type::SWITCH},   {"case", token_type::CASE},
-    {"default", token_type::DEFAULT}, {"for", token_type::FOR},
-    {"do", token_type::DO},           {"while", token_type::WHILE},
-    {"until", token_type::UNTIL},     {"static", token_type::STATIC},
-    {"enum", token_type::ENUM},       {"struct", token_type::STRUCT},
-    {"union", token_type::UNION},     {"typedef", token_type::TYPEDEF},
-    {"true", token_type::BOOL_TRUE},  {"false", token_type::BOOL_FALSE}};
+    {"int", token_type::INT},
+    {"char", token_type::CHAR},
+    {"bool", token_type::BOOL},
+    {"void", token_type::VOID},
+    {"fn", token_type::FN},
+    {"return", token_type::RETURN},
+    {"if", token_type::IF},
+    {"break", token_type::BREAK},
+    {"continue", token_type::CONTINUE},
+    {"goto", token_type::GOTO},
+    {"else", token_type::ELSE},
+    {"switch", token_type::SWITCH},
+    {"case", token_type::CASE},
+    {"default", token_type::DEFAULT},
+    {"for", token_type::FOR},
+    {"do", token_type::DO},
+    {"while", token_type::WHILE},
+    {"until", token_type::UNTIL},
+    {"static", token_type::STATIC},
+    {"enum", token_type::ENUM},
+    {"struct", token_type::STRUCT},
+    {"union", token_type::UNION},
+    {"typedef", token_type::TYPEDEF},
+    {"true", token_type::BOOL_TRUE},
+    {"false", token_type::BOOL_FALSE}};
 
 static const std::unordered_map<std::string, token_type> operator_map = {
 
@@ -79,6 +92,7 @@ static const std::unordered_map<token_type, std::string> token_to_string_map = {
     {token_type::INT, "int"},
     {token_type::CHAR, "char"},
     {token_type::BOOL, "bool"},
+    {token_type::VOID, "void"},
     {token_type::BOOL_TRUE, "true"},
     {token_type::BOOL_FALSE, "false"},
     {token_type::INT_LITERAL, "int_literal"},
