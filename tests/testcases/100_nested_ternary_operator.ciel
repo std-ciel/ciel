@@ -1,0 +1,6 @@
+fn main() -> int {
+    int a = 15;
+    int b = 4;
+    int result = (a > b) ? (a - b) : (b - a);
+    return 0;
+}

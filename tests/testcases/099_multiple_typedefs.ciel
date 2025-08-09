@@ -1,0 +1,10 @@
+typedef char* String;
+typedef int Counter;
+typedef bool Flag;
+
+fn main() -> int {
+    String message;
+    Counter count = 0;
+    Flag is_ready = false;
+    return 0;
+}

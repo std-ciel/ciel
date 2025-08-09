@@ -1,0 +1,10 @@
+enum Status {
+    PENDING = 1,
+    ACTIVE = 5,
+    INACTIVE = 10
+};
+
+fn main() -> int {
+    enum Status current = ACTIVE;
+    return 0;
+}

@@ -1,0 +1,11 @@
+struct Point {
+    int x;
+    int y;
+};
+
+fn main() -> int {
+    struct Point p;
+    struct Point* ptr = &p;
+    ptr->x = 10;
+    return 0;
+}

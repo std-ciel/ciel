@@ -1,0 +1,7 @@
+fn main() -> int {
+    int x = 10;
+    int y = 20;
+    int z = 30;
+    bool complex = (x < y) && (y < z) || (x == 0);
+    return 0;
+}

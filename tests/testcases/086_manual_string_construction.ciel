@@ -1,0 +1,7 @@
+fn main() -> int {
+    char buffer[20];
+    buffer[0] = 'H';
+    buffer[1] = 'i';
+    buffer[2] = '\0';
+    return 0;
+}

@@ -1,0 +1,6 @@
+fn main() -> int {
+    bool flag1 = true;
+    bool flag2 = false;
+    bool result = flag1 && flag2;
+    return 0;
+}

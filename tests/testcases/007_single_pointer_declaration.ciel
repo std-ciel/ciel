@@ -1,0 +1,5 @@
+fn main() -> int {
+    int value = 100;
+    int* ptr = &value;
+    return 0;
+}

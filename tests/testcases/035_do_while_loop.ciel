@@ -1,0 +1,7 @@
+fn main() -> int {
+    int input = 0;
+    do {
+        input++;
+    } while (input <= 0);
+    return 0;
+}

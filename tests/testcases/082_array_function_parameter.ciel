@@ -1,0 +1,11 @@
+fn process_array(int arr[], int size) -> void {
+    for (int i = 0; i < size; i++) {
+        arr[i] *= 2;
+    }
+}
+
+fn main() -> int {
+    int numbers[3] = {1, 2, 3};
+    process_array(numbers, 3);
+    return 0;
+}

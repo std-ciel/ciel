@@ -1,0 +1,8 @@
+fn max_of_three(int a, int b, int c) -> int {
+    int max = (a > b) ? a : b;
+    return (max > c) ? max : c;
+}
+
+fn main() -> int {
+    return 0;
+}

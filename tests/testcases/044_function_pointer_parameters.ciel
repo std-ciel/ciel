@@ -1,0 +1,9 @@
+fn swap(int* a, int* b) -> void {
+    int temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+fn main() -> int {
+    return 0;
+}

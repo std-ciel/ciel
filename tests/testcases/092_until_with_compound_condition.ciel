@@ -1,0 +1,8 @@
+fn main() -> int {
+    int count = 0;
+    int limit = 10;
+    until (count >= limit) {
+        count += 2;
+    }
+    return 0;
+}

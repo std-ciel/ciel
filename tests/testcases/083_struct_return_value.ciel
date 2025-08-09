@@ -1,0 +1,16 @@
+struct Point {
+    int x;
+    int y;
+};
+
+fn create_point(int x, int y) -> struct Point {
+    struct Point p;
+    p.x = x;
+    p.y = y;
+    return p;
+}
+
+fn main() -> int {
+    struct Point pt = create_point(5, 10);
+    return 0;
+}

@@ -1,0 +1,7 @@
+fn main() -> int {
+    int temperature = 35;
+    if (temperature > 30) {
+        int hot = 1;
+    }
+    return 0;
+}

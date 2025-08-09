@@ -1,0 +1,12 @@
+fn main() -> int {
+    int day_of_week = 3;
+    switch (day_of_week) {
+        case 1:
+            break;
+        case 2:
+            break;
+        default:
+            break;
+    }
+    return 0;
+}

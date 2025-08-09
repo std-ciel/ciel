@@ -1,0 +1,4 @@
+fn main() -> int {
+    char strings[3][10] = {"hello", "world", "test"};
+    return 0;
+}

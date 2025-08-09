@@ -1,0 +1,15 @@
+struct Point {
+    int x;
+    int y;
+};
+
+fn modify_point(struct Point* p) -> void {
+    p->x = 100;
+    p->y = 200;
+}
+
+fn main() -> int {
+    struct Point pt;
+    modify_point(&pt);
+    return 0;
+}

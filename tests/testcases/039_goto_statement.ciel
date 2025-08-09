@@ -1,0 +1,8 @@
+fn main() -> int {
+    int error_code = 1;
+    if (error_code != 0) goto cleanup;
+
+    cleanup:
+        int cleaned = 1;
+    return error_code;
+}

@@ -1,0 +1,4 @@
+fn main() -> int {
+    char letter = 'A';
+    return 0;
+}

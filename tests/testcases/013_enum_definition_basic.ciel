@@ -1,0 +1,10 @@
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+fn main() -> int {
+    enum Color favorite = RED;
+    return 0;
+}

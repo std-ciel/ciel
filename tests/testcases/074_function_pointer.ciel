@@ -1,0 +1,9 @@
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn main() -> int {
+    int (*func_ptr)(int, int) = add;
+    int result = func_ptr(5, 3);
+    return 0;
+}

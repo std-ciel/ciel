@@ -1,0 +1,6 @@
+fn main() -> int {
+    int arr[3][4];
+    arr[0][0] = 1;
+    arr[2][3] = 12;
+    return 0;
+}

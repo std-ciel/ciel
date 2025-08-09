@@ -1,0 +1,4 @@
+fn main() -> int {
+    bool is_active = true;
+    return 0;
+}

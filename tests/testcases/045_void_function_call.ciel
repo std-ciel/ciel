@@ -1,0 +1,8 @@
+fn simple_function() -> void {
+    int local = 42;
+}
+
+fn main() -> int {
+    simple_function();
+    return 0;
+}

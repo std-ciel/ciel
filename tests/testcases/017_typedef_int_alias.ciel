@@ -1,0 +1,6 @@
+typedef int Distance;
+
+fn main() -> int {
+    Distance d = 100;
+    return 0;
+}

@@ -1,0 +1,12 @@
+fn main() -> int {
+    int outer = 0;
+    while (outer < 3) {
+        int inner = 0;
+        while (inner < 2) {
+            int product = outer * inner;
+            inner++;
+        }
+        outer++;
+    }
+    return 0;
+}

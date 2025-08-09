@@ -1,0 +1,15 @@
+fn main() -> int {
+    int day_of_week = 1;
+    switch (day_of_week) {
+        case 1:
+        case 2:
+        case 3:
+            int weekday = 1;
+            break;
+        case 6:
+        case 7:
+            int weekend = 1;
+            break;
+    }
+    return 0;
+}

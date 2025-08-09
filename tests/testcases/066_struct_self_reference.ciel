@@ -1,0 +1,11 @@
+struct Node {
+    int data;
+    struct Node* next;
+};
+
+fn main() -> int {
+    struct Node node1;
+    struct Node node2;
+    node1.next = &node2;
+    return 0;
+}

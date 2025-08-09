@@ -1,0 +1,12 @@
+enum Priority {
+    LOW = 1,
+    MEDIUM = 5,
+    HIGH = 10,
+    CRITICAL = 20
+};
+
+fn main() -> int {
+    enum Priority task_priority = HIGH;
+    int urgency_level = task_priority;
+    return 0;
+}

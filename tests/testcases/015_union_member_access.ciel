@@ -1,0 +1,11 @@
+union Data {
+    int integer;
+    char character;
+};
+
+fn main() -> int {
+    union Data data;
+    data.integer = 65;
+    char c = data.character;
+    return 0;
+}

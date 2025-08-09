@@ -1,0 +1,5 @@
+fn main() -> int {
+    char str[10] = "hello";
+    char first_char = str[0];
+    return 0;
+}

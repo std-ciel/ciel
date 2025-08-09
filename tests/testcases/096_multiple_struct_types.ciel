@@ -1,0 +1,18 @@
+struct Circle {
+    int radius;
+    int center_x;
+    int center_y;
+};
+
+struct Rectangle {
+    int width;
+    int height;
+    int top_left_x;
+    int top_left_y;
+};
+
+fn main() -> int {
+    struct Circle c;
+    struct Rectangle r;
+    return 0;
+}

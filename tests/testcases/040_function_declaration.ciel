@@ -1,0 +1,5 @@
+fn calculate_factorial(int n) -> int;
+
+fn main() -> int {
+    return 0;
+}

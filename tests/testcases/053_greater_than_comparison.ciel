@@ -1,0 +1,6 @@
+fn main() -> int {
+    int a = 15;
+    int b = 10;
+    bool greater = (a > b);
+    return 0;
+}

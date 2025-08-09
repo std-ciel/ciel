@@ -1,0 +1,4 @@
+fn main() -> int {
+    int count = 42;
+    return 0;
+}

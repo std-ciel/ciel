@@ -1,0 +1,7 @@
+fn main() -> int {
+    int value = 100;
+    until (value == 0) {
+        value--;
+    }
+    return 0;
+}

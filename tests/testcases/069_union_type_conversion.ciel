@@ -1,0 +1,12 @@
+union Value {
+    int as_int;
+    char as_char;
+    bool as_bool;
+};
+
+fn main() -> int {
+    union Value val;
+    val.as_int = 65;
+    char c = val.as_char;
+    return 0;
+}

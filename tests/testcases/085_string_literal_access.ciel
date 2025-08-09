@@ -1,0 +1,6 @@
+fn main() -> int {
+    char message[] = "Hello World";
+    char first = message[0];
+    char space = message[5];
+    return 0;
+}

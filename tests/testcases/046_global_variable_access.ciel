@@ -1,0 +1,6 @@
+int global_counter = 0;
+
+fn main() -> int {
+    global_counter = 5;
+    return 0;
+}

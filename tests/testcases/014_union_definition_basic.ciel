@@ -1,0 +1,9 @@
+union Data {
+    int integer;
+    char character;
+};
+
+fn main() -> int {
+    union Data data;
+    return 0;
+}

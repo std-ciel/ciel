@@ -1,0 +1,4 @@
+fn main() -> int {
+    char message[20] = "Hello, CIEL!";
+    return 0;
+}

@@ -1,0 +1,11 @@
+union Storage {
+    int integer_value;
+    char char_array[4];
+};
+
+fn main() -> int {
+    union Storage store;
+    store.integer_value = 0x41424344;
+    char first_byte = store.char_array[0];
+    return 0;
+}

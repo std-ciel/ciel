@@ -1,0 +1,5 @@
+fn main() -> int {
+    int i = 5;
+    i++;
+    return 0;
+}
