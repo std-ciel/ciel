@@ -36,6 +36,7 @@ enum class token_type {
 
     ARROW_OP,
     DOT_OP,
+    QUESTION_OP,
 
     ASSIGN_OP,
     PLUS_ASSIGN_OP,

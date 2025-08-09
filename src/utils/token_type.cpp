@@ -19,6 +19,7 @@ static const std::unordered_map<std::string, token_type> operator_map = {
 
     {"->", token_type::ARROW_OP},
     {".", token_type::DOT_OP},
+    {"?", token_type::QUESTION_OP},
 
     {"=", token_type::ASSIGN_OP},
     {"+=", token_type::PLUS_ASSIGN_OP},
@@ -106,6 +107,7 @@ static const std::unordered_map<token_type, std::string> token_to_string_map = {
 
     {token_type::ARROW_OP, "arrow_op"},
     {token_type::DOT_OP, "dot_op"},
+    {token_type::QUESTION_OP, "question_op"},
 
     {token_type::ASSIGN_OP, "assign_op"},
     {token_type::PLUS_ASSIGN_OP, "plus_assign_op"},

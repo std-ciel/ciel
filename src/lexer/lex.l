@@ -117,7 +117,7 @@ newline    \n
                }
 
 
-[!<>=&|+*/%~^.,;:(){}\[\]-] {
+[-!<>=&|+*/%~^.,;:(){}\[\]\?] {
     std::string op;
     op.push_back(yytext[0]);
     int extra = 0;
