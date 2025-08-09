@@ -45,9 +45,9 @@ enum class token_type {
     MOD_ASSIGN_OP,
     LAND_ASSIGN_OP,
     LOR_ASSIGN_OP,
-    BITWISE_AND_ASSIGN_OP,
-    BITWISE_OR_ASSIGN_OP,
-    BITWISE_XOR_ASSIGN_OP,
+    AMPERSAND_ASSIGN_OP,
+    PIPE_ASSIGN_OP,
+    CARET_ASSIGN_OP,
     LSHIFT_ASSIGN_OP,
     RSHIFT_ASSIGN_OP,
 
@@ -66,10 +66,10 @@ enum class token_type {
     DIVIDE_OP,
     MOD_OP,
 
-    BITWISE_AND_OP,
-    BITWISE_OR_OP,
-    BITWISE_XOR_OP,
-    BITWISE_NOT_OP,
+    AMPERSAND_OP,
+    PIPE_OP,
+    CARET_OP,
+    TILDE_OP,
     LSHIFT_OP,
     RSHIFT_OP,
 

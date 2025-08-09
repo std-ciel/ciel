@@ -28,9 +28,9 @@ static const std::unordered_map<std::string, token_type> operator_map = {
     {"%=", token_type::MOD_ASSIGN_OP},
     {"&&=", token_type::LAND_ASSIGN_OP},
     {"||=", token_type::LOR_ASSIGN_OP},
-    {"&=", token_type::BITWISE_AND_ASSIGN_OP},
-    {"|=", token_type::BITWISE_OR_ASSIGN_OP},
-    {"^=", token_type::BITWISE_XOR_ASSIGN_OP},
+    {"&=", token_type::AMPERSAND_ASSIGN_OP},
+    {"|=", token_type::PIPE_ASSIGN_OP},
+    {"^=", token_type::CARET_ASSIGN_OP},
     {"<<=", token_type::LSHIFT_ASSIGN_OP},
     {">>=", token_type::RSHIFT_ASSIGN_OP},
 
@@ -54,10 +54,10 @@ static const std::unordered_map<std::string, token_type> operator_map = {
     {"/", token_type::DIVIDE_OP},
     {"%", token_type::MOD_OP},
 
-    {"&", token_type::BITWISE_AND_OP},
-    {"|", token_type::BITWISE_OR_OP},
-    {"^", token_type::BITWISE_XOR_OP},
-    {"~", token_type::BITWISE_NOT_OP},
+    {"&", token_type::AMPERSAND_OP},
+    {"|", token_type::PIPE_OP},
+    {"^", token_type::CARET_OP},
+    {"~", token_type::TILDE_OP},
     {"<<", token_type::LSHIFT_OP},
     {">>", token_type::RSHIFT_OP},
 
@@ -103,8 +103,10 @@ static const std::unordered_map<token_type, std::string> token_to_string_map = {
     {token_type::STRUCT, "struct"},
     {token_type::UNION, "union"},
     {token_type::TYPEDEF, "typedef"},
+
     {token_type::ARROW_OP, "arrow_op"},
     {token_type::DOT_OP, "dot_op"},
+
     {token_type::ASSIGN_OP, "assign_op"},
     {token_type::PLUS_ASSIGN_OP, "plus_assign_op"},
     {token_type::MINUS_ASSIGN_OP, "minus_assign_op"},
@@ -113,17 +115,19 @@ static const std::unordered_map<token_type, std::string> token_to_string_map = {
     {token_type::MOD_ASSIGN_OP, "mod_assign_op"},
     {token_type::LAND_ASSIGN_OP, "land_assign_op"},
     {token_type::LOR_ASSIGN_OP, "lor_assign_op"},
-    {token_type::BITWISE_AND_ASSIGN_OP, "bitwise_and_assign_op"},
-    {token_type::BITWISE_OR_ASSIGN_OP, "bitwise_or_assign_op"},
-    {token_type::BITWISE_XOR_ASSIGN_OP, "bitwise_xor_assign_op"},
+    {token_type::AMPERSAND_ASSIGN_OP, "ampersand_assign_op"},
+    {token_type::PIPE_ASSIGN_OP, "pipe_assign_op"},
+    {token_type::CARET_ASSIGN_OP, "caret_assign_op"},
     {token_type::LSHIFT_ASSIGN_OP, "lshift_assign_op"},
     {token_type::RSHIFT_ASSIGN_OP, "rshift_assign_op"},
+
     {token_type::LAND_OP, "land_op"},
     {token_type::LOR_OP, "lor_op"},
     {token_type::LNOT_OP, "lnot_op"},
     {token_type::REL_OP, "rel_op"},
     {token_type::EQ_OP, "eq_op"},
     {token_type::NE_OP, "ne_op"},
+
     {token_type::INCREMENT_OP, "increment_op"},
     {token_type::DECREMENT_OP, "decrement_op"},
     {token_type::PLUS_OP, "plus_op"},
@@ -131,19 +135,24 @@ static const std::unordered_map<token_type, std::string> token_to_string_map = {
     {token_type::STAR_OP, "star_op"},
     {token_type::DIVIDE_OP, "divide_op"},
     {token_type::MOD_OP, "mod_op"},
-    {token_type::BITWISE_AND_OP, "bitwise_and_op"},
-    {token_type::BITWISE_OR_OP, "bitwise_or_op"},
-    {token_type::BITWISE_XOR_OP, "bitwise_xor_op"},
-    {token_type::BITWISE_NOT_OP, "bitwise_not_op"},
+
+    {token_type::AMPERSAND_OP, "ampersand_op"},
+    {token_type::PIPE_OP, "pipe_op"},
+    {token_type::CARET_OP, "caret_op"},
+    {token_type::TILDE_OP, "tilde_op"},
     {token_type::LSHIFT_OP, "lshift_op"},
     {token_type::RSHIFT_OP, "rshift_op"},
+
     {token_type::COMMA_OP, "comma_op"},
     {token_type::SEMICOLON_OP, "semicolon_op"},
     {token_type::COLON_OP, "colon_op"},
+
     {token_type::OPEN_PAREN_OP, "open_paren_op"},
     {token_type::CLOSE_PAREN_OP, "close_paren_op"},
+
     {token_type::OPEN_BRACE_OP, "open_brace_op"},
     {token_type::CLOSE_BRACE_OP, "close_brace_op"},
+
     {token_type::OPEN_BRACKET_OP, "open_bracket_op"},
     {token_type::CLOSE_BRACKET_OP, "close_bracket_op"}};
 
