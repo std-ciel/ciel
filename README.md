@@ -10,6 +10,7 @@
 - [Getting Started](#getting-started)
 - [Language Features](#language-features)
 - [Examples](#examples)
+- [Detailed Documentation](#detailed-documentation)
 
 ## Overview
 
@@ -467,3 +468,7 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 # Enable unit testing
 cmake -DUNIT_TESTING=ON ..
 ```
+
+
+## Detailed Documentation
+- [Lexer](docs/lexer.md)
