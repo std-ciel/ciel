@@ -1,0 +1,4 @@
+fn main() -> int {
+    char c = 'AB'; // too many characters in char literal
+    return 0;
+}

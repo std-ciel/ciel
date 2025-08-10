@@ -1,0 +1,27 @@
+struct CPoint {
+    int x;
+    int y;
+};
+
+typedef struct CPoint CCoordinate;
+
+typedef int IntAlias;
+typedef char* CString;
+typedef int CCounter;
+typedef bool CFlag;
+
+fn main() -> int {
+    int count = 42;
+    char letter = 'A';
+    bool is_valid = true;
+    bool is_complete = false;
+    CCoordinate coord;
+    coord.x = 1;
+    coord.y = 2;
+    IntAlias ia = 10;
+    CString message;
+    CCounter c = 0;
+    CFlag ready = false;
+
+    return 0;
+}

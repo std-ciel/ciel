@@ -1,0 +1,4 @@
+fn main() -> int {
+    int x = 1 $$$ 2; // invalid operator sequence
+    return 0;
+}

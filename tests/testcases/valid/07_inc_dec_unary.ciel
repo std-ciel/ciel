@@ -1,0 +1,10 @@
+fn main() -> int {
+    int n = 5;
+    int a = n++;
+    int b = ++n;
+    int c = n--;
+    int d = --n;
+    int e = -n;
+    int f = +n;
+    return 0;
+}

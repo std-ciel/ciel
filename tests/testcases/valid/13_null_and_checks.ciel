@@ -1,0 +1,5 @@
+fn main() -> int {
+    int* ptr = 0;
+    bool is_null = ptr == 0;
+    return 0;
+}

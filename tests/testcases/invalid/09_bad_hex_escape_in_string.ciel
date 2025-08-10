@@ -1,0 +1,4 @@
+fn main() -> int {
+    char* s = "\xz"; // bad hex escape
+    return 0;
+}

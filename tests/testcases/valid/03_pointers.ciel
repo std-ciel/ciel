@@ -1,0 +1,15 @@
+fn main() -> int {
+    int x = 10;
+    int* px = &x;
+    *px = 20;
+
+    char ch = 'A';
+    char* pch = &ch;
+    *pch = 'B';
+
+    int arr[3] = {1,2,3};
+    int* p = &arr[0];
+    int y = *(p + 1);
+
+    return 0;
+}

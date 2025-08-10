@@ -1,0 +1,21 @@
+fn main() -> int {
+    int a = 5;
+    int b = 10;
+    int x = 10;
+    int y = 20;
+    int z = 30;
+    bool eq = (a == b);
+    bool ne = (a != b);
+    bool gt = (b > a);
+    bool lt = (a < b);
+    bool ge = (b >= a);
+    bool le = (a <= b);
+    bool land = (x > 0) && (y < 20);
+    bool lor = (x < 0) || (y > 10);
+    bool lnot = !(x == 0);
+    int ten = (x > y) ? 10 : 20;
+    int nested = (x < y) ? ((y < z) ? 1 : 2) : 3;
+    bool bvar = true;
+    bool complex = (x < y) && (y < z) || (x == 0);
+    return 0;
+}

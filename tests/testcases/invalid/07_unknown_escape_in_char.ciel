@@ -1,0 +1,4 @@
+fn main() -> int {
+    char c = '\q'; // unknown escape in char
+    return 0;
+}
