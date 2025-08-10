@@ -17,6 +17,26 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 endif()
 
+find_package(FLEX REQUIRED)
+
+# Public headers live under include/token and include/lexer
+include_directories(${CMAKE_SOURCE_DIR}/include/token)
+include_directories(${CMAKE_SOURCE_DIR}/include/lexer)
+
+FLEX_TARGET(CielLexer src/lexer/lex.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cc)
+
+add_library(ciel_lexer STATIC
+    ${FLEX_CielLexer_OUTPUTS}
+    src/token/token_type.cpp
+    src/lexer/print_tokens.cpp
+)
+target_include_directories(ciel_lexer PUBLIC
+    ${CMAKE_SOURCE_DIR}/include/token
+    ${CMAKE_SOURCE_DIR}/include/lexer)
+
+add_executable(cielc src/main.cpp)
+target_link_libraries(cielc PRIVATE ciel_lexer)
+
 if(UNIT_TESTING)
   enable_testing()
   message(STATUS "Build unit tests for the project. Tests should be found in the tests folder\n")
