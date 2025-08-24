@@ -2,24 +2,52 @@
 #include <fstream>
 #include <iostream>
 
+#include <argparse/argparse.hpp>
 #include "lexer_errors.hpp"
 #include "print_tokens.hpp"
 #include "tokens.hpp"
 
 int main(int argc, char *argv[])
 {
+    argparse::ArgumentParser program("cielc", "1.0.0");
+
+    program.add_description("Ciel language compiler");
+
+    program.add_argument("input_file")
+        .help("Input file to compile (if not provided, enters interactive mode)")
+        .default_value(std::string(""))
+        .nargs(argparse::nargs_pattern::optional);
+
+    program.add_argument("-d", "--debug")
+        .help("Enable debug mode to print lexer tokens")
+        .default_value(false)
+        .implicit_value(true);
+
+    try {
+        program.parse_args(argc, argv);
+    } catch (const std::runtime_error& err) {
+        std::cerr << err.what() << std::endl;
+        std::cerr << program;
+        return 1;
+    }
+
+    bool debug_mode = program.get<bool>("--debug");
+
     yyFlexLexer lexer;
     std::ifstream file;
 
-    if (argc > 1) {
-        file.open(argv[1]);
+    std::string filename = program.get<std::string>("input_file");
+
+    if (filename.empty()) {
+        std::cout << "Ciel interactive mode. Enter your code and press Ctrl+D (EOF) when finished.\n";
+        lexer.switch_streams(&std::cin, &std::cout);
+    } else {
+        file.open(filename);
         if (!file.is_open()) {
-            std::cerr << "Error: Could not open file " << argv[1] << std::endl;
+            std::cerr << "Error: Could not open file " << filename << std::endl;
             return 1;
         }
         lexer.switch_streams(&file, &std::cout);
-    } else {
-        lexer.switch_streams(&std::cin, &std::cout);
     }
 
     while (lexer.yylex() != 0) {
@@ -42,7 +70,11 @@ int main(int argc, char *argv[])
     }
 
     const auto &tokens = lexer_get_tokens();
-    print_tokens_table(tokens, std::cout);
+
+    if (debug_mode) {
+        print_tokens_table(tokens, std::cout);
+    }
+
     lexer_clear_tokens();
     return 0;
 }
