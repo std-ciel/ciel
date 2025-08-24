@@ -19,6 +19,8 @@ endif()
 
 find_package(FLEX REQUIRED)
 
+add_subdirectory(vendor)
+
 # Public headers live under include/token and include/lexer
 include_directories(${CMAKE_SOURCE_DIR}/include/token)
 include_directories(${CMAKE_SOURCE_DIR}/include/lexer)
@@ -35,7 +37,7 @@ target_include_directories(ciel_lexer PUBLIC
     ${CMAKE_SOURCE_DIR}/include/lexer)
 
 add_executable(cielc src/main.cpp)
-target_link_libraries(cielc PRIVATE ciel_lexer)
+target_link_libraries(cielc PRIVATE ciel_lexer argparse)
 
 if(UNIT_TESTING)
   enable_testing()
