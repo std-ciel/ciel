@@ -33,6 +33,10 @@ enum class TokenType {
     STRUCT,
     UNION,
     TYPEDEF,
+    CLASS,
+    PUBLIC,
+    PRIVATE,
+    PROTECTED,
 
     ARROW_OP,
     DOT_OP,
