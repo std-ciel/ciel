@@ -57,6 +57,7 @@ escaped_hexbyte     \\[xX]{hex_digit}{1,2}
 escaped_octalbyte   \\{octal_digit}{1,3}
 whitespace          [ \t\r]+
 newline             \n
+exponent            [Ee][+-]?
 
 %%
 
@@ -148,6 +149,19 @@ newline             \n
 \'[^\n\\\']\' {
     add_token(std::string(1, yytext[1]), TokenType::CHAR_LITERAL);
 }
+
+{digit}+"."{digit}+  {
+    add_token(yytext, TokenType::FLOAT_LITERAL);
+}
+
+{digit}+{exponent}{digit}+ {
+    add_token(yytext, TokenType::FLOAT_LITERAL);
+}
+
+{digit}+"."{digit}+{exponent}{digit}+ {
+    add_token(yytext, TokenType::FLOAT_LITERAL);
+}
+
 
 {letter}({letter}|{digit})* {
     auto t = reserved_word(yytext);
