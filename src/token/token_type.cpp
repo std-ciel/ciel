@@ -26,7 +26,11 @@ static const std::unordered_map<std::string, TokenType> keyword_map = {
     {"union", TokenType::UNION},
     {"typedef", TokenType::TYPEDEF},
     {"true", TokenType::BOOL_LITERAL},
-    {"false", TokenType::BOOL_LITERAL}};
+    {"false", TokenType::BOOL_LITERAL},
+    {"class", TokenType::CLASS},
+    {"public", TokenType::PUBLIC},
+    {"private", TokenType::PRIVATE},
+    {"protected", TokenType::PROTECTED}};
 
 static const std::unordered_map<std::string, TokenType> operator_map = {
 
@@ -115,6 +119,10 @@ static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::STRUCT, "struct"},
     {TokenType::UNION, "union"},
     {TokenType::TYPEDEF, "typedef"},
+    {TokenType::CLASS, "class"},
+    {TokenType::PUBLIC, "public"},
+    {TokenType::PRIVATE, "private"},
+    {TokenType::PROTECTED, "protected"},
     {TokenType::ARROW_OP, "arrow_op"},
     {TokenType::DOT_OP, "dot_op"},
     {TokenType::QUESTION_OP, "question_op"},
