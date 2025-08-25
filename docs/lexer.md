@@ -29,6 +29,15 @@
   - Binary: `0b1101`
 - Char literals are enclosed in single quotes `'` and can contain escaped characters like `\'`, `\\`, and `\n`.
 
+## Float Literals
+- Float literals support several formats:
+  - Standard decimal notation: `123.456`
+  - Scientific notation:
+     - `1.23e4` or `1.23E4` (equals 12300.0)
+     - `1.23e-4` or `1.23E-4` (equals 0.000123)
+> [!NOTE]
+> The float literals do not support patterns like `.123` or `123.`.
+
 ## Reserved Keywords and Identifiers
 - The type of tokens are stored in `token_type.hpp` and the patterns for reserved keywords are defined in `reserved_words` in `token_type.cpp`.
 - First, pattern containing only alphanumerals and underscores is matched and then checked against the reserved keywords.

@@ -42,17 +42,21 @@ CIEL provides a robust type system with both fundamental and user-defined types:
 
 #### Fundamental Types
 - **Integers**: `int` - 32-bit signed integers
+- **Floating Point**: `float` - 32-bit IEEE 754 floating point numbers
 - **Characters**: `char` - 8-bit character values
 - **Booleans**: `bool` - Boolean values (`true` or `false`)
 - **Arrays**: Homogeneous collections with compile-time bounds checking
 
 ```ciel
 int count = 42;
+float pi = 3.14159;
+float avogadro = 6.022e23;  // Scientific notation
 char letter = 'A';
 bool is_active = true;
 bool is_complete = false;
 int numbers[10] = {1, 2, 3, 4, 5};
 char message[20] = "Hello, CIEL!";
+float temperatures[3] = {98.6, 37.0, 36.5};
 ```
 
 #### Pointer Types
@@ -102,15 +106,22 @@ Full support for mathematical expressions with standard precedence:
 
 ```ciel
 int a = 10, b = 3;
+float x = 10.5, y = 3.5;
 int sum = a + b;        // Addition: 13
 int diff = a - b;       // Subtraction: 7
 int product = a * b;    // Multiplication: 30
 int quotient = a / b;   // Division: 3
 int remainder = a % b;  // Modulo: 1
 
+float fsum = x + y;     // Addition: 14.0
+float fdiff = x - y;    // Subtraction: 7.0
+float fprod = x * y;    // Multiplication: 36.75
+float fquot = x / y;    // Division: 3.0
+
 // Compound assignments
 a += 5;  // a is now 15
 b *= 2;  // b is now 6
+x += 1.5; // x is now 12.0
 ```
 
 #### Logical Operations
