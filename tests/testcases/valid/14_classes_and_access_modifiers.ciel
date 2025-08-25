@@ -1,0 +1,42 @@
+class Shape {
+    private:
+        int width;
+        int height;
+
+    public:
+        fn getWidth() -> int { return width; }
+        fn getHeight() -> int { return height; }
+        fn setWidth(int w) -> void { width = w; }
+        fn setHeight(int h) -> void { height = h; }
+};
+
+class Rectangle {
+    public:
+        fn getArea() -> int { return getWidth() * getHeight(); }
+};
+
+class Circle {
+    private:
+        int radius;
+        const double PI = 3.14159;
+
+    protected:
+        fn calculateArea() -> double { return PI * radius * radius; }
+
+    public:
+        fn getRadius() -> int { return radius; }
+        fn setRadius(int r) -> void { radius = r; }
+        fn displayArea() -> void;
+};
+
+fn main() -> int {
+    Rectangle rect;
+    rect.setWidth(5);
+    rect.setHeight(3);
+    int area = rect.getArea();
+
+    Circle circ;
+    circ.setRadius(7);
+
+    return 0;
+}
