@@ -3,7 +3,7 @@ struct CPoint {
     int y;
 };
 
-typedef struct CPoint CCoordinate;
+typedef CPoint CCoordinate;
 
 typedef int IntAlias;
 typedef char* CString;
