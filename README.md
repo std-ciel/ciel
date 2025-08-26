@@ -400,20 +400,20 @@ fn main(int argc, char* argv[]) -> int {
 // Structure for a simple linked list node
 struct Node {
     int data;
-    struct Node* next;
+    Node* next;
 };
 
 // Function to create a new node
-fn create_node(int value) -> struct Node* {
-    struct Node* new_node = (struct Node*)malloc(sizeof(struct Node));
+fn create_node(int value) -> Node* {
+    Node* new_node = new Node;
     new_node->data = value;
     new_node->next = NULL;
     return new_node;
 }
 
 // Function to print the linked list
-fn print_list(struct Node* head) -> void {
-    struct Node* current = head;
+fn print_list(Node* head) -> void {
+    Node* current = head;
     printf("List: ");
     while (current != NULL) {
         printf("%d ", current->data);
@@ -423,18 +423,18 @@ fn print_list(struct Node* head) -> void {
 }
 
 // Function to free the linked list
-fn free_list(struct Node* head) -> void {
-    struct Node* current = head;
+fn free_list(Node* head) -> void {
+    Node* current = head;
     while (current != NULL) {
-        struct Node* next = current->next;
-        free(current);
+        Node* next = current->next;
+        delete current;
         current = next;
     }
 }
 
 fn main() -> int {
     // Create a simple linked list: 1 -> 2 -> 3
-    struct Node* head = create_node(1);
+    Node* head = create_node(1);
     head->next = create_node(2);
     head->next->next = create_node(3);
 
