@@ -1,25 +1,26 @@
-fn add(int a, int b) -> int { return a + b; }
+int add(int a, int b) { return a + b; }
 
-fn factorial(int n) -> int {
+int factorial(int n) {
     if (n <= 1) return 1;
     return n * factorial(n - 1);
 }
 
-fn gcd(int a, int b) -> int {
+int gcd(int a, int b) {
     if (b == 0) return a;
     return gcd(b, a % b);
 }
 
-fn void_callee() -> void { int local = 42; }
+void void_callee() { int local = 42; }
 
-fn takes_array(int arr[3]) -> int { return arr[0] + arr[1] + arr[2]; }
+int takes_array(int arr[3])  { return arr[0] + arr[1] + arr[2]; }
 
 struct RetPoint { int x; int y; };
-fn make_point(int x, int y) -> struct RetPoint { struct RetPoint p; p.x = x; p.y = y; return p; }
 
-fn inc_ptr(RetPoint* p) -> void { p->x = p->x + 1; }
+RetPoint make_point(int x, int y) { struct RetPoint p; p.x = x; p.y = y; return p; }
 
-fn get_grade(int score) -> char {
+void inc_ptr(RetPoint* p) { p->x = p->x + 1; }
+
+char get_grade(int score) {
     if (score >= 90) return 'A';
     if (score >= 80) return 'B';
     if (score >= 70) return 'C';
@@ -27,12 +28,12 @@ fn get_grade(int score) -> char {
     return 'F';
 }
 
-fn main() -> int {
+int main() {
     int s = add(2, 3);
     int f = factorial(5);
     int g = gcd(54, 24);
     int m = add(10, 20);
-    fn(int,int)->int fp = add;
+    int(int,int)->int fp = add;
     int fp_res = fp(7, 8);
     void_callee();
 

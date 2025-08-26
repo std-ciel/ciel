@@ -1,4 +1,4 @@
-fn main() -> int {
+int main() {
     char c = '\q'; // unknown escape in char
     return 0;
 }

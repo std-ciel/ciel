@@ -1,4 +1,4 @@
-fn main() -> int {
+int main() {
     char* s = "\89"; // bad octal escape (8 and 9 not allowed)
     return 0;
 }
