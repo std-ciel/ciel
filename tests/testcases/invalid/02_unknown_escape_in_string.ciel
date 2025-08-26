@@ -1,4 +1,4 @@
-fn main() -> int {
+int main() {
     char s[] = "Bad\qEscape";
     return 0;
 }

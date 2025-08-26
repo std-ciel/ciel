@@ -10,7 +10,7 @@ typedef char* CString;
 typedef int CCounter;
 typedef bool CFlag;
 
-fn main() -> int {
+int main() {
     int count = 42;
     char letter = 'A';
     bool is_valid = true;

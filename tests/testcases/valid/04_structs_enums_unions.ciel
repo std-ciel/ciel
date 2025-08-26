@@ -8,7 +8,7 @@ enum Week { MON=1, TUE=2, WED=3 };
 union Data { int integer; char character; };
 union NumberOrChar { int integer; char character; };
 
-fn main() -> int {
+int main() {
     SPoint p; p.x = 10; p.y = 20;
     Rectangle rect; rect.width = 10; rect.height = 20;
     SPoint* sp = &p; sp->x = 15;

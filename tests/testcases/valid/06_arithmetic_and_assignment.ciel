@@ -1,4 +1,4 @@
-fn main() -> int {
+int main() {
     int a = 10;
     int b = 3;
     int addv = a + b;

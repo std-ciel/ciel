@@ -225,14 +225,14 @@ cleanup:
 ### Functions
 
 #### Function Definition and Calls
-Modular programming with parameter passing and return values using CIEL's `fn` syntax:
+Modular programming with parameter passing and return values:
 
 ```ciel
 // Function declaration
-fn calculate_factorial(int n) -> int;
+int calculate_factorial(int n);
 
 // Function definition
-fn calculate_factorial(int n) -> int {
+int calculate_factorial(int n) {
     if (n <= 1) {
         return 1;
     }
@@ -240,7 +240,7 @@ fn calculate_factorial(int n) -> int {
 }
 
 // Function call
-fn main() -> int {
+int main() {
     int result = calculate_factorial(5);
     printf("5! = %d\n", result);  // Output: 5! = 120
     return 0;
@@ -250,22 +250,22 @@ fn main() -> int {
 #### Advanced Function Features
 ```ciel
 // Function with multiple parameters
-fn max_of_three(int a, int b, int c) -> int {
+int max_of_three(int a, int b, int c) {
     int max = (a > b) ? a : b;
     return (max > c) ? max : c;
 }
 
 // Function with pointer parameters (pass by reference)
-fn swap(int* a, int* b) -> void {
+void swap(int* a, int* b) {
     int temp = *a;
     *a = *b;
     *b = temp;
 }
 
 // Function overloading (planned feature)
-fn calculate_area(int radius) -> int;                      // Circle (using integer radius)
-fn calculate_area(int length, int width) -> int;           // Rectangle
-fn calculate_area(int base, int height, bool) -> int;      // Triangle
+int calculate_area(int radius);                      // Circle (using integer radius)
+int calculate_area(int length, int width);           // Rectangle
+int calculate_area(int base, int height, bool);      // Triangle
 ```
 
 ### Memory Management
@@ -319,7 +319,7 @@ fn increment_counter() -> void {
 Formatted input and output operations:
 
 ```ciel
-fn main() -> int {
+int main() {
     char name[50];
     int age;
     int weight;
@@ -351,7 +351,7 @@ fn main() -> int {
 File handling for persistent data storage:
 
 ```ciel
-fn main() -> int {
+int main() {
     FILE* file;
     char buffer[100];
 
@@ -380,7 +380,7 @@ fn main() -> int {
 Program parameterization through command-line interface:
 
 ```ciel
-fn main(int argc, char* argv[]) -> int {
+int main(int argc, char* argv[]) {
     printf("Program name: %s\n", argv[0]);
     printf("Number of arguments: %d\n", argc - 1);
 
@@ -404,15 +404,15 @@ struct Node {
 };
 
 // Function to create a new node
-fn create_node(int value) -> Node* {
-    Node* new_node = new Node;
+Node* create_node(int value) {
+    Node* new_node = (Node*)malloc(sizeof(Node));
     new_node->data = value;
     new_node->next = NULL;
     return new_node;
 }
 
 // Function to print the linked list
-fn print_list(Node* head) -> void {
+void print_list(Node* head) {
     Node* current = head;
     printf("List: ");
     while (current != NULL) {
@@ -423,7 +423,7 @@ fn print_list(Node* head) -> void {
 }
 
 // Function to free the linked list
-fn free_list(Node* head) -> void {
+void free_list(Node* head) {
     Node* current = head;
     while (current != NULL) {
         Node* next = current->next;
@@ -432,7 +432,7 @@ fn free_list(Node* head) -> void {
     }
 }
 
-fn main() -> int {
+int main() {
     // Create a simple linked list: 1 -> 2 -> 3
     Node* head = create_node(1);
     head->next = create_node(2);
