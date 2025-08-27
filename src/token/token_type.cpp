@@ -30,13 +30,16 @@ static const std::unordered_map<std::string, TokenType> keyword_map = {
     {"class", TokenType::CLASS},
     {"public", TokenType::PUBLIC},
     {"private", TokenType::PRIVATE},
-    {"protected", TokenType::PROTECTED}};
+    {"protected", TokenType::PROTECTED},
+    {"new", TokenType::NEW},
+    {"delete", TokenType::DELETE}};
 
 static const std::unordered_map<std::string, TokenType> operator_map = {
 
     {"->", TokenType::ARROW_OP},
     {".", TokenType::DOT_OP},
     {"?", TokenType::QUESTION_OP},
+    {"...", TokenType::ELLIPSIS_OP},
 
     {"=", TokenType::ASSIGN_OP},
     {"+=", TokenType::PLUS_ASSIGN_OP},
@@ -124,9 +127,12 @@ static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::PUBLIC, "public"},
     {TokenType::PRIVATE, "private"},
     {TokenType::PROTECTED, "protected"},
+    {TokenType::NEW, "new"},
+    {TokenType::DELETE, "delete"},
     {TokenType::ARROW_OP, "arrow_op"},
     {TokenType::DOT_OP, "dot_op"},
     {TokenType::QUESTION_OP, "question_op"},
+    {TokenType::ELLIPSIS_OP, "ellipsis_op"},
     {TokenType::ASSIGN_OP, "assign_op"},
     {TokenType::PLUS_ASSIGN_OP, "plus_assign_op"},
     {TokenType::MINUS_ASSIGN_OP, "minus_assign_op"},

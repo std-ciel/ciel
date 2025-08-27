@@ -38,10 +38,13 @@ enum class TokenType {
     PUBLIC,
     PRIVATE,
     PROTECTED,
+    NEW,
+    DELETE,
 
     ARROW_OP,
     DOT_OP,
     QUESTION_OP,
+    ELLIPSIS_OP,
 
     ASSIGN_OP,
     PLUS_ASSIGN_OP,
