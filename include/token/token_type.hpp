@@ -38,6 +38,8 @@ enum class TokenType {
     PUBLIC,
     PRIVATE,
     PROTECTED,
+    NEW,
+    DELETE,
 
     ARROW_OP,
     DOT_OP,
