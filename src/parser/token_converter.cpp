@@ -1,0 +1,173 @@
+#include "parser/token_converter.hpp"
+#include "parser.hpp"
+
+int to_bison_token(TokenType t)
+{
+    using Token = yy::Parser::token;
+    switch (t) {
+    case TokenType::INT:
+        return Token::INT;
+    case TokenType::CHAR:
+        return Token::CHAR;
+    case TokenType::BOOL:
+        return Token::BOOL;
+    case TokenType::FLOAT:
+        return Token::FLOAT;
+    case TokenType::VOID:
+        return Token::VOID;
+    case TokenType::INT_LITERAL:
+        return Token::INT_LITERAL;
+    case TokenType::CHAR_LITERAL:
+        return Token::CHAR_LITERAL;
+    case TokenType::STRING_LITERAL:
+        return Token::STRING_LITERAL;
+    case TokenType::BOOL_LITERAL:
+        return Token::BOOL_LITERAL;
+    case TokenType::FLOAT_LITERAL:
+        return Token::FLOAT_LITERAL;
+    case TokenType::IDENTIFIER:
+        return Token::IDENTIFIER;
+    case TokenType::RETURN:
+        return Token::RETURN;
+    case TokenType::IF:
+        return Token::IF;
+    case TokenType::BREAK:
+        return Token::BREAK;
+    case TokenType::CONTINUE:
+        return Token::CONTINUE;
+    case TokenType::GOTO:
+        return Token::GOTO;
+    case TokenType::ELSE:
+        return Token::ELSE;
+    case TokenType::SWITCH:
+        return Token::SWITCH;
+    case TokenType::CASE:
+        return Token::CASE;
+    case TokenType::DEFAULT:
+        return Token::DEFAULT;
+    case TokenType::FOR:
+        return Token::FOR;
+    case TokenType::DO:
+        return Token::DO;
+    case TokenType::WHILE:
+        return Token::WHILE;
+    case TokenType::UNTIL:
+        return Token::UNTIL;
+    case TokenType::STATIC:
+        return Token::STATIC;
+    case TokenType::ENUM:
+        return Token::ENUM;
+    case TokenType::STRUCT:
+        return Token::STRUCT;
+    case TokenType::UNION:
+        return Token::UNION;
+    case TokenType::TYPEDEF:
+        return Token::TYPEDEF;
+    case TokenType::CLASS:
+        return Token::CLASS;
+    case TokenType::PUBLIC:
+        return Token::PUBLIC;
+    case TokenType::PRIVATE:
+        return Token::PRIVATE;
+    case TokenType::PROTECTED:
+        return Token::PROTECTED;
+    case TokenType::NEW:
+        return Token::NEW;
+    case TokenType::DELETE:
+        return Token::DELETE;
+
+    case TokenType::ARROW_OP:
+        return Token::ARROW_OP;
+    case TokenType::DOT_OP:
+        return Token::DOT_OP;
+    case TokenType::QUESTION_OP:
+        return Token::QUESTION_OP;
+    case TokenType::ELLIPSIS_OP:
+        return Token::ELLIPSIS_OP;
+
+    case TokenType::ASSIGN_OP:
+        return Token::ASSIGN_OP;
+    case TokenType::PLUS_ASSIGN_OP:
+        return Token::PLUS_ASSIGN_OP;
+    case TokenType::MINUS_ASSIGN_OP:
+        return Token::MINUS_ASSIGN_OP;
+    case TokenType::STAR_ASSIGN_OP:
+        return Token::STAR_ASSIGN_OP;
+    case TokenType::DIVIDE_ASSIGN_OP:
+        return Token::DIVIDE_ASSIGN_OP;
+    case TokenType::MOD_ASSIGN_OP:
+        return Token::MOD_ASSIGN_OP;
+    case TokenType::AMPERSAND_ASSIGN_OP:
+        return Token::AMPERSAND_ASSIGN_OP;
+    case TokenType::PIPE_ASSIGN_OP:
+        return Token::PIPE_ASSIGN_OP;
+    case TokenType::CARET_ASSIGN_OP:
+        return Token::CARET_ASSIGN_OP;
+    case TokenType::LSHIFT_ASSIGN_OP:
+        return Token::LSHIFT_ASSIGN_OP;
+    case TokenType::RSHIFT_ASSIGN_OP:
+        return Token::RSHIFT_ASSIGN_OP;
+
+    case TokenType::LOGICAL_AND_OP:
+        return Token::LOGICAL_AND_OP;
+    case TokenType::LOGICAL_OR_OP:
+        return Token::LOGICAL_OR_OP;
+    case TokenType::LOGICAL_NOT_OP:
+        return Token::LOGICAL_NOT_OP;
+    case TokenType::REL_OP:
+        return Token::REL_OP;
+    case TokenType::EQ_OP:
+        return Token::EQ_OP;
+    case TokenType::NE_OP:
+        return Token::NE_OP;
+
+    case TokenType::INCREMENT_OP:
+        return Token::INCREMENT_OP;
+    case TokenType::DECREMENT_OP:
+        return Token::DECREMENT_OP;
+    case TokenType::PLUS_OP:
+        return Token::PLUS_OP;
+    case TokenType::MINUS_OP:
+        return Token::MINUS_OP;
+    case TokenType::STAR_OP:
+        return Token::STAR_OP;
+    case TokenType::DIVIDE_OP:
+        return Token::DIVIDE_OP;
+    case TokenType::MOD_OP:
+        return Token::MOD_OP;
+
+    case TokenType::AMPERSAND_OP:
+        return Token::AMPERSAND_OP;
+    case TokenType::PIPE_OP:
+        return Token::PIPE_OP;
+    case TokenType::CARET_OP:
+        return Token::CARET_OP;
+    case TokenType::TILDE_OP:
+        return Token::TILDE_OP;
+    case TokenType::LSHIFT_OP:
+        return Token::LSHIFT_OP;
+    case TokenType::RSHIFT_OP:
+        return Token::RSHIFT_OP;
+
+    case TokenType::COMMA_OP:
+        return Token::COMMA_OP;
+    case TokenType::SEMICOLON_OP:
+        return Token::SEMICOLON_OP;
+    case TokenType::COLON_OP:
+        return Token::COLON_OP;
+
+    case TokenType::OPEN_PAREN_OP:
+        return Token::OPEN_PAREN_OP;
+    case TokenType::CLOSE_PAREN_OP:
+        return Token::CLOSE_PAREN_OP;
+    case TokenType::OPEN_BRACE_OP:
+        return Token::OPEN_BRACE_OP;
+    case TokenType::CLOSE_BRACE_OP:
+        return Token::CLOSE_BRACE_OP;
+    case TokenType::OPEN_BRACKET_OP:
+        return Token::OPEN_BRACKET_OP;
+    case TokenType::CLOSE_BRACKET_OP:
+        return Token::CLOSE_BRACKET_OP;
+    }
+    throw std::runtime_error("Unknown TokenType in to_bison_token");
+}
