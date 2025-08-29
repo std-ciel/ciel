@@ -13,7 +13,7 @@ foreach(sample_rel ${VALID_SAMPLE_FILES})
 
     add_test(
         NAME lexer_valid_${sample_name}
-        COMMAND $<TARGET_FILE:cielc> ${sample_abs}
+        COMMAND $<TARGET_FILE:cielc> -l ${sample_abs}
     )
 endforeach()
 
@@ -29,7 +29,7 @@ foreach(sample_rel ${INVALID_SAMPLE_FILES})
 
     add_test(
         NAME lexer_invalid_${sample_name}
-        COMMAND $<TARGET_FILE:cielc> ${sample_abs}
+        COMMAND $<TARGET_FILE:cielc> -l ${sample_abs}
     )
 
     set_tests_properties(lexer_invalid_${sample_name} PROPERTIES WILL_FAIL TRUE)
