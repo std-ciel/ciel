@@ -18,23 +18,32 @@ if (CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 find_package(FLEX REQUIRED)
+find_package(BISON REQUIRED)
 
 add_subdirectory(vendor)
 
-# Public headers live under include/token and include/lexer
-include_directories(${CMAKE_SOURCE_DIR}/include/token)
-include_directories(${CMAKE_SOURCE_DIR}/include/lexer)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
+BISON_TARGET(CielParser src/parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.cpp
+    DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/parser.hpp
+)
 FLEX_TARGET(CielLexer src/lexer/lex.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cc)
+ADD_FLEX_BISON_DEPENDENCY(CielLexer CielParser)
 
 add_library(ciel_lexer STATIC
     ${FLEX_CielLexer_OUTPUTS}
+    ${BISON_CielParser_OUTPUTS}
     src/token/token_type.cpp
     src/lexer/print_tokens.cpp
+    src/parser/token_converter.cpp
 )
 target_include_directories(ciel_lexer PUBLIC
     ${CMAKE_SOURCE_DIR}/include/token
-    ${CMAKE_SOURCE_DIR}/include/lexer)
+    ${CMAKE_SOURCE_DIR}/include/lexer
+    ${CMAKE_SOURCE_DIR}/include/parser
+    ${CMAKE_CURRENT_BINARY_DIR})
+target_compile_definitions(ciel_lexer PUBLIC )
 
 add_executable(cielc src/main.cpp)
 target_link_libraries(cielc PRIVATE ciel_lexer argparse)
