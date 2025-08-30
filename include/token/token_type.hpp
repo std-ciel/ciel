@@ -6,6 +6,8 @@
 
 enum class TokenType {
     INT,
+    SIGNED,
+    UNSIGNED,
     CHAR,
     BOOL,
     FLOAT,
@@ -30,6 +32,8 @@ enum class TokenType {
     WHILE,
     UNTIL,
     STATIC,
+    CONST,
+    VOLATILE,
     ENUM,
     STRUCT,
     UNION,

@@ -3,6 +3,8 @@
 
 static const std::unordered_map<std::string, TokenType> keyword_map = {
     {"int", TokenType::INT},
+    {"signed", TokenType::SIGNED},
+    {"unsigned", TokenType::UNSIGNED},
     {"char", TokenType::CHAR},
     {"bool", TokenType::BOOL},
     {"float", TokenType::FLOAT},
@@ -21,6 +23,8 @@ static const std::unordered_map<std::string, TokenType> keyword_map = {
     {"while", TokenType::WHILE},
     {"until", TokenType::UNTIL},
     {"static", TokenType::STATIC},
+    {"const", TokenType::CONST},
+    {"volatile", TokenType::VOLATILE},
     {"enum", TokenType::ENUM},
     {"struct", TokenType::STRUCT},
     {"union", TokenType::UNION},
@@ -95,6 +99,8 @@ static const std::unordered_map<std::string, TokenType> operator_map = {
 
 static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::INT, "int"},
+    {TokenType::SIGNED, "signed"},
+    {TokenType::UNSIGNED, "unsigned"},
     {TokenType::CHAR, "char"},
     {TokenType::BOOL, "bool"},
     {TokenType::FLOAT, "float"},
@@ -119,6 +125,8 @@ static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::WHILE, "while"},
     {TokenType::UNTIL, "until"},
     {TokenType::STATIC, "static"},
+    {TokenType::CONST, "const"},
+    {TokenType::VOLATILE, "volatile"},
     {TokenType::ENUM, "enum"},
     {TokenType::STRUCT, "struct"},
     {TokenType::UNION, "union"},
