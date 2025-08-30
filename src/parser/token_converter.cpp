@@ -7,6 +7,10 @@ int to_bison_token(TokenType t)
     switch (t) {
     case TokenType::INT:
         return Token::INT;
+    case TokenType::SIGNED:
+        return Token::SIGNED;
+    case TokenType::UNSIGNED:
+        return Token::UNSIGNED;
     case TokenType::CHAR:
         return Token::CHAR;
     case TokenType::BOOL:
@@ -55,6 +59,10 @@ int to_bison_token(TokenType t)
         return Token::UNTIL;
     case TokenType::STATIC:
         return Token::STATIC;
+    case TokenType::CONST:
+        return Token::CONST;
+    case TokenType::VOLATILE:
+        return Token::VOLATILE;
     case TokenType::ENUM:
         return Token::ENUM;
     case TokenType::STRUCT:
