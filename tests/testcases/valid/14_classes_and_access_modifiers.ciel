@@ -4,38 +4,40 @@ class Shape {
         int height;
 
     public:
-        fn getWidth() -> int { return width; }
-        fn getHeight() -> int { return height; }
-        fn setWidth(int w) -> void { width = w; }
-        fn setHeight(int h) -> void { height = h; }
+        int getWidth() { return width; }
+        int getHeight() { return height; }
+        void setWidth(int w) { width = w; }
+        void setHeight(int h) { height = h; }
 };
 
 class Rectangle {
     public:
-        fn getArea() -> int { return getWidth() * getHeight(); }
+        int getArea() { return getWidth() * getHeight(); }
 };
 
 class Circle {
     private:
         int radius;
-        const double PI = 3.14159;
+        const float PI = 3.14159;
 
     protected:
-        fn calculateArea() -> double { return PI * radius * radius; }
+        float calculateArea() { return PI * radius * radius; }
 
     public:
-        fn getRadius() -> int { return radius; }
-        fn setRadius(int r) -> void { radius = r; }
-        fn displayArea() -> void;
+        Circle(){ radius=1;}
+        ~Circle(){}
+        int getRadius() { return radius; }
+        void setRadius(int r) { radius = r; }
+        void displayArea();
 };
 
-fn main() -> int {
-    Rectangle rect;
+int main() {
+    class Rectangle rect;
     rect.setWidth(5);
     rect.setHeight(3);
     int area = rect.getArea();
 
-    Circle circ;
+    class Circle circ;
     circ.setRadius(7);
 
     return 0;

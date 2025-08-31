@@ -16,9 +16,9 @@ int takes_array(int arr[3])  { return arr[0] + arr[1] + arr[2]; }
 
 struct RetPoint { int x; int y; };
 
-RetPoint make_point(int x, int y) { RetPoint p; p.x = x; p.y = y; return p; }
+struct RetPoint make_point(int x, int y) { struct RetPoint p; p.x = x; p.y = y; return p; }
 
-void inc_ptr(RetPoint* p) { p->x = p->x + 1; }
+void inc_ptr(struct RetPoint* p) { p->x = p->x + 1; }
 
 char get_grade(int score) {
     if (score >= 90) return 'A';
@@ -33,13 +33,13 @@ int main() {
     int f = factorial(5);
     int g = gcd(54, 24);
     int m = add(10, 20);
-    int(int,int)->int fp = add;
+    //int(int,int)->int fp = add;
     int fp_res = fp(7, 8);
     void_callee();
 
     int a[3] = {1, 2, 3};
     int sum = takes_array(a);
-    RetPoint rp = make_point(1, 2);
+    struct RetPoint rp = make_point(1, 2);
     inc_ptr(&rp);
     char grade = get_grade(85);
 

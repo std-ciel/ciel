@@ -1,6 +1,6 @@
 struct SPoint { int x; int y; };
 struct Rectangle { int width; int height; char name[10]; };
-struct Node { int v; Node* next; };
+struct Node { int v;struct Node* next; };
 struct Circle { int radius; int cx; int cy; };
 struct SRect { int w; int h; int x; int y; };
 enum Color { RED, GREEN, BLUE };
@@ -9,16 +9,16 @@ union Data { int integer; char character; };
 union NumberOrChar { int integer; char character; };
 
 int main() {
-    SPoint p; p.x = 10; p.y = 20;
-    Rectangle rect; rect.width = 10; rect.height = 20;
-    SPoint* sp = &p; sp->x = 15;
-    Node n; n.v = 1; n.next = 0;
-    Circle c; SRect r;
-    Color col = GREEN;
-    Week day = TUE;
+    struct SPoint p; p.x = 10; p.y = 20;
+    struct Rectangle rect; rect.width = 10; rect.height = 20;
+    struct SPoint* sp = &p; sp->x = 15;
+    struct Node n; n.v = 1; n.next = 0;
+    struct Circle c;struct SRect r;
+    enum Color col = GREEN;
+    enum Week day = TUE;
     bool cmp = (day == TUE);
-    Data d; d.integer = 65; char ch = d.character;
-    NumberOrChar u; u.integer = 7; char ch2 = u.character;
+    union Data d; d.integer = 65; char ch = d.character;
+    union NumberOrChar u; u.integer = 7; char ch2 = u.character;
 
     return 0;
 }
