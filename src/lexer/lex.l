@@ -111,6 +111,7 @@ exponent            [Ee][+-]?
 <STRING>\"                      {
                                     BEGIN(INITIAL);
                                     add_token(string_buf, TokenType::STRING_LITERAL);
+                                    yylval->emplace<std::string>(string_buf);
                                     return to_bison_token(TokenType::STRING_LITERAL);
                                 }
 
@@ -129,60 +130,71 @@ exponent            [Ee][+-]?
 
 0[xX]{hex_digit}+               {
                                     add_token(yytext, TokenType::INT_LITERAL);
+                                    yylval->emplace<uint64_t>(std::stol(yytext,nullptr, 16));
                                     return to_bison_token(TokenType::INT_LITERAL);
                                 }
 
 0[bB]{binary_digit}+            {
                                     add_token(yytext, TokenType::INT_LITERAL);
+                                    yylval->emplace<uint64_t>(std::stol(yytext,nullptr, 2));
                                     return to_bison_token(TokenType::INT_LITERAL);
                                 }
 
 0{octal_digit}+                 {
                                     add_token(yytext, TokenType::INT_LITERAL);
+                                    yylval->emplace<uint64_t>(std::stol(yytext, nullptr, 8));
                                     return to_bison_token(TokenType::INT_LITERAL);
                                 }
 
 [1-9]{digit}*|0                 {
                                     add_token(yytext, TokenType::INT_LITERAL);
+                                    yylval->emplace<uint64_t>(std::stol(yytext, nullptr, 10));
                                     return to_bison_token(TokenType::INT_LITERAL);
                                 }
 
 \'{escaped_hexbyte}\'           {
                                     char out = escape_hexbyte(yytext + 1, yyleng - 2);
                                     add_token(std::string(1, out), TokenType::CHAR_LITERAL);
+                                    yylval->emplace<char>(out);
                                     return to_bison_token(TokenType::CHAR_LITERAL);
                                 }
 
 \'{escaped_octalbyte}\'         {
                                     char out = escape_octalbyte(yytext + 1, yyleng - 2);
                                     add_token(std::string(1, out), TokenType::CHAR_LITERAL);
+                                    yylval->emplace<char>(out);
                                     return to_bison_token(TokenType::CHAR_LITERAL);
                                 }
 
 \'\\{escapable_char}\'          {
                                     char out = escape_char(yytext + 1, yyleng - 2);
                                     add_token(std::string(1, out), TokenType::CHAR_LITERAL);
+                                    yylval->emplace<char>(out);
                                     return to_bison_token(TokenType::CHAR_LITERAL);
                                 }
 
 \'[^\n\\\']\'                   {
                                     add_token(std::string(1, yytext[1]), TokenType::CHAR_LITERAL);
+                                    yylval->emplace<char>(yytext[1]);
                                     return to_bison_token(TokenType::CHAR_LITERAL);
                                 }
 
 
 {digit}+"."{digit}+             {
                                     add_token(yytext, TokenType::FLOAT_LITERAL);
+                                    yylval->emplace<float>(std::stof(yytext));
                                     return to_bison_token(TokenType::FLOAT_LITERAL);
                                 }
 
 {digit}+{exponent}{digit}+      {
                                     add_token(yytext, TokenType::FLOAT_LITERAL);
+                                    yylval->emplace<float>(std::stof(yytext));
                                     return to_bison_token(TokenType::FLOAT_LITERAL);
                                 }
 
 {digit}+"."{digit}+{exponent}{digit}+   {
                                             add_token(yytext, TokenType::FLOAT_LITERAL);
+                                            yylval->emplace<float>(std::stof(yytext));
                                             return to_bison_token(TokenType::FLOAT_LITERAL);
                                         }
 
@@ -194,20 +206,26 @@ exponent            [Ee][+-]?
                                             type_def_depth = 2;
                                         else if (t.value() != TokenType::STRUCT && t.value() != TokenType::UNION && t.value() != TokenType::ENUM && t.value() != TokenType::CLASS)
                                             --type_def_depth;
+                                        if (t.value() == TokenType::BOOL_LITERAL) {
+                                            yylval->emplace<bool>(std::string(yytext) == std::string("true"));
+                                        }
                                         return to_bison_token(t.value());
                                     } else {
                                         if(type_def_depth == 1) {
                                             add_token(yytext, TokenType::TYPENAME);
                                             type_def_depth=0;
                                             g_type_names.insert(yytext);
+                                            yylval->emplace<std::string>(yytext);
                                             return to_bison_token(TokenType::TYPENAME);
                                         }else{
                                             --type_def_depth;
                                             if(g_type_names.find(yytext) != g_type_names.end()) {
                                                 add_token(yytext, TokenType::TYPENAME);
+                                                yylval->emplace<std::string>(yytext);
                                                 return to_bison_token(TokenType::TYPENAME);
                                             }
                                             add_token(yytext, TokenType::IDENTIFIER);
+                                            yylval->emplace<std::string>(yytext);
                                             return to_bison_token(TokenType::IDENTIFIER);
                                         }
                                     }
