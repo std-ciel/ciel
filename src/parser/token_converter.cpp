@@ -81,6 +81,8 @@ int to_bison_token(TokenType t)
         return Token::PRIVATE;
     case TokenType::PROTECTED:
         return Token::PROTECTED;
+    case TokenType::OPERATOR:
+        return Token::OPERATOR;
     case TokenType::NEW:
         return Token::NEW;
     case TokenType::DELETE:

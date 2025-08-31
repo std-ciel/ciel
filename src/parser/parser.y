@@ -579,7 +579,7 @@ function_declaration_or_definition
     | /* constructor */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
     | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
     | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
-    | /* operator overload */ OPERATOR operator_token sequence_function_decl
+    | /* operator overload */ type_specifier OPERATOR operator_token sequence_function_decl // TODO: ensure return type matches class
     ;
 
 operator_token

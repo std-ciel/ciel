@@ -43,6 +43,7 @@ enum class TokenType {
     PUBLIC,
     PRIVATE,
     PROTECTED,
+    OPERATOR,
     NEW,
     DELETE,
 
