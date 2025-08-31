@@ -15,6 +15,11 @@ foreach(sample_rel ${VALID_SAMPLE_FILES})
         NAME lexer_valid_${sample_name}
         COMMAND $<TARGET_FILE:cielc> -l ${sample_abs}
     )
+
+    add_test(
+        NAME parser_valid_${sample_name}
+        COMMAND $<TARGET_FILE:cielc> -p ${sample_abs}
+    )
 endforeach()
 
 
@@ -33,4 +38,10 @@ foreach(sample_rel ${INVALID_SAMPLE_FILES})
     )
 
     set_tests_properties(lexer_invalid_${sample_name} PROPERTIES WILL_FAIL TRUE)
+
+    add_test(
+        NAME parser_invalid_${sample_name}
+        COMMAND $<TARGET_FILE:cielc> -p ${sample_abs}
+    )
+    set_tests_properties(parser_invalid_${sample_name} PROPERTIES WILL_FAIL TRUE)
 endforeach()
