@@ -10,7 +10,7 @@ class Shape {
         void setHeight(int h) { height = h; }
 };
 
-class Rectangle {
+class Rectangle : public Shape {
     public:
         int getArea() { return getWidth() * getHeight(); }
 };
