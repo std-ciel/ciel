@@ -126,8 +126,14 @@ int to_bison_token(TokenType t)
         return Token::LOGICAL_OR_OP;
     case TokenType::LOGICAL_NOT_OP:
         return Token::LOGICAL_NOT_OP;
-    case TokenType::REL_OP:
-        return Token::REL_OP;
+    case TokenType::LT_OP:
+        return Token::LT_OP;
+    case TokenType::LE_OP:
+        return Token::LE_OP;
+    case TokenType::GT_OP:
+        return Token::GT_OP;
+    case TokenType::GE_OP:
+        return Token::GE_OP;
     case TokenType::EQ_OP:
         return Token::EQ_OP;
     case TokenType::NE_OP:
