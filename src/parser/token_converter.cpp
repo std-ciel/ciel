@@ -31,6 +31,8 @@ int to_bison_token(TokenType t)
         return Token::FLOAT_LITERAL;
     case TokenType::IDENTIFIER:
         return Token::IDENTIFIER;
+    case TokenType::TYPENAME:
+        return Token::TYPE_NAME;
     case TokenType::RETURN:
         return Token::RETURN;
     case TokenType::IF:
