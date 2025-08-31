@@ -67,7 +67,10 @@ enum class TokenType {
     LOGICAL_AND_OP,
     LOGICAL_OR_OP,
     LOGICAL_NOT_OP,
-    REL_OP,
+    LT_OP,
+    LE_OP,
+    GT_OP,
+    GE_OP,
     EQ_OP,
     NE_OP,
 
