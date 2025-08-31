@@ -18,6 +18,7 @@ enum class TokenType {
     BOOL_LITERAL,
     FLOAT_LITERAL,
     IDENTIFIER,
+    TYPENAME,
     RETURN,
     IF,
     BREAK,

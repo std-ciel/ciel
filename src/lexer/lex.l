@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unordered_set>
 #include "token_type.hpp"
 #include "lexer_errors.hpp"
 #include "tokens.hpp"
@@ -40,8 +41,10 @@ int column = 1;
 std::string string_buf;
 
 static std::vector<Token> g_tokens;
+static std::unordered_set<std::string> g_type_names;
 static std::vector<LexError> g_errors;
 static bool had_errors = false;
+static int type_def_depth = 0;
 
 static char escape_char(char *buf, size_t length);
 static char escape_hexbyte(char *buf, size_t length);
@@ -187,10 +190,26 @@ exponent            [Ee][+-]?
                                     auto t = reserved_word(yytext);
                                     if (t.has_value()) {
                                         add_token(yytext, t.value());
+                                        if (t.value() == TokenType::TYPEDEF)
+                                            type_def_depth = 2;
+                                        else if (t.value() != TokenType::STRUCT && t.value() != TokenType::UNION && t.value() != TokenType::ENUM && t.value() != TokenType::CLASS)
+                                            --type_def_depth;
                                         return to_bison_token(t.value());
                                     } else {
-                                        add_token(yytext, TokenType::IDENTIFIER);
-                                        return to_bison_token(TokenType::IDENTIFIER);
+                                        if(type_def_depth == 1) {
+                                            add_token(yytext, TokenType::TYPENAME);
+                                            type_def_depth=0;
+                                            g_type_names.insert(yytext);
+                                            return to_bison_token(TokenType::TYPENAME);
+                                        }else{
+                                            --type_def_depth;
+                                            if(g_type_names.find(yytext) != g_type_names.end()) {
+                                                add_token(yytext, TokenType::TYPENAME);
+                                                return to_bison_token(TokenType::TYPENAME);
+                                            }
+                                            add_token(yytext, TokenType::IDENTIFIER);
+                                            return to_bison_token(TokenType::IDENTIFIER);
+                                        }
                                     }
                                 }
 

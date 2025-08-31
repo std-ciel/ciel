@@ -111,6 +111,7 @@ static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::STRING_LITERAL, "string_literal"},
     {TokenType::FLOAT_LITERAL, "float_literal"},
     {TokenType::IDENTIFIER, "identifier"},
+    {TokenType::TYPENAME, "typename"},
     {TokenType::RETURN, "return"},
     {TokenType::IF, "if"},
     {TokenType::BREAK, "break"},
