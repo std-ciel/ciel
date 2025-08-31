@@ -8,6 +8,8 @@
 #include "print_tokens.hpp"
 #include "tokens.hpp"
 
+void print_parse_results();
+
 int main(int argc, char *argv[])
 {
     argparse::ArgumentParser program("cielc", "1.0.0");
@@ -73,6 +75,8 @@ int main(int argc, char *argv[])
         lexer.switch_streams(&file, &std::cout);
     }
 
+    bool parse_failed = false;
+
     if (lexer_only) {
         while (lexer.yylex_standalone() != 0) {
         }
@@ -82,13 +86,14 @@ int main(int argc, char *argv[])
         std::cout << "\n┌─────────────────────┐\n";
         std::cout << "│   PARSING PHASE     │\n";
         std::cout << "└─────────────────────┘\n";
-
+        // parser.set_debug_level(1);
         int parse_result = parser.parse();
 
         if (parse_result == 0) {
             std::cout << "Parsing completed successfully" << std::endl;
         } else {
             std::cout << "Parsing failed with errors" << std::endl;
+            parse_failed = true;
         }
     }
 
@@ -128,11 +133,13 @@ int main(int argc, char *argv[])
             std::cout << "\n┌─────────────────────┐\n";
             std::cout << "│   PARSING RESULTS   │\n";
             std::cout << "└─────────────────────┘\n";
-            std::cout << "Parser not yet implemented" << std::endl;
-            std::cout << std::endl;
+            print_parse_results();
         }
     }
 
     lexer_clear_tokens();
+    if (parse_failed) {
+        return 1;
+    }
     return 0;
 }
