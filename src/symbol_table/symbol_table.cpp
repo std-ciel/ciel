@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
+#include <string>
 
 SymbolTable::SymbolTable()
     : next_scope_id(0), current_scope_id(0), current_scope_level(0)
@@ -11,7 +12,7 @@ SymbolTable::SymbolTable()
 
 void SymbolTable::enter_scope()
 {
-    size_t parent_id = current_scope_id;
+    ScopeID parent_id = current_scope_id;
     current_scope_level++;
     current_scope_id = next_scope_id++;
 
@@ -32,54 +33,43 @@ void SymbolTable::exit_scope()
 }
 
 bool SymbolTable::add_symbol(const std::string &name,
-                             const std::string &type_name)
+                             QualType type,
+                             StorageClass storage_class)
 {
-    auto &current_scope = scopes.at(current_scope_id);
-    if (current_scope.symbols.find(name) != current_scope.symbols.end()) {
+    auto scope_iter = scopes.find(current_scope_id);
+    if (scope_iter == scopes.end()) {
         return false;
     }
 
-    auto type_ptr = type_factory.lookup_type(type_name, scope_stack);
-    if (!type_ptr.has_value()) {
+    Scope &scope = scope_iter->second;
+    if (scope.symbols.find(name) != scope.symbols.end()) {
         return false;
     }
 
-    auto symbol = std::make_shared<Symbol>(name,
-                                           type_ptr.value(),
-                                           current_scope_id,
-                                           current_scope.parent_id);
-    current_scope.symbols[name] = symbol;
+    if (current_scope_id == GLOBAL_SCOPE_ID &&
+        storage_class == StorageClass::AUTO) {
+        storage_class = StorageClass::STATIC;
+        // TODO: Warn that global symbols default to static
+    }
+
+    SymbolPtr symbol = std::make_shared<Symbol>(name,
+                                                type,
+                                                storage_class,
+                                                current_scope_id,
+                                                scope.parent_id);
+    scope.symbols[name] = symbol;
+
+    for (auto it = scope_stack.rbegin(); it != scope_stack.rend(); ++it) {
+        ScopeID scope_id = *it;
+        auto sit = scopes.find(scope_id);
+        if (sit != scopes.end()) {
+            Scope &s = sit->second;
+            if (s.is_present(name)) {
+                // TODO: Warn that symbol shadows another symbol in outer scope
+            }
+        }
+    }
     return true;
-}
-
-bool SymbolTable::add_symbol(const std::string &name, TypePtr type)
-{
-    if (!type) {
-        return false;
-    }
-
-    auto &current_scope = scopes.at(current_scope_id);
-    if (current_scope.symbols.find(name) != current_scope.symbols.end()) {
-        return false;
-    }
-
-    auto symbol = std::make_shared<Symbol>(name,
-                                           type,
-                                           current_scope_id,
-                                           current_scope.parent_id);
-    current_scope.symbols[name] = symbol;
-    return true;
-}
-
-// New method with TypeId
-bool SymbolTable::add_symbol(const std::string &name, TypeId type_id)
-{
-    auto type_ptr = type_factory.get_type_by_id(type_id);
-    if (!type_ptr.has_value()) {
-        return false;
-    }
-
-    return add_symbol(name, type_ptr.value());
 }
 
 std::optional<SymbolPtr>
@@ -111,6 +101,7 @@ void SymbolTable::print_symbols() const
     std::size_t w_parent = std::string("Parent ID").size();
     std::size_t w_name = std::string("Symbol Name").size();
     std::size_t w_type = std::string("Type").size();
+    std::size_t w_storage = std::string("Storage Class").size();
 
     for (const auto &scope_pair : scopes) {
         const Scope &scope = scope_pair.second;
@@ -123,15 +114,20 @@ void SymbolTable::print_symbols() const
         for (const auto &symbol_pair : scope.symbols) {
             const SymbolPtr &symbol = symbol_pair.second;
             w_name = std::max(w_name, symbol->get_name().size());
-            std::string type_str =
-                symbol->get_type() ? symbol->get_type()->name : "nullptr";
+            std::string type_str = symbol->get_type().type
+                                       ? symbol->get_type().debug_name()
+                                       : "nullptr";
             w_type = std::max(w_type, type_str.size());
+            std::string storage_str =
+                storage_class_to_string(symbol->get_storage_class());
+            w_storage = std::max(w_storage, storage_str.size());
         }
     }
 
     auto make_sep = [&](char fill = '-') {
         std::string s;
-        s.reserve(w_scope + w_level + w_parent + w_name + w_type + 13);
+        s.reserve(w_scope + w_level + w_parent + w_name + w_type + w_storage +
+                  16);
         s.push_back('+');
         s.append(w_scope + 2, fill);
         s.push_back('+');
@@ -142,6 +138,8 @@ void SymbolTable::print_symbols() const
         s.append(w_name + 2, fill);
         s.push_back('+');
         s.append(w_type + 2, fill);
+        s.push_back('+');
+        s.append(w_storage + 2, fill);
         s.push_back('+');
         return s;
     };
@@ -155,7 +153,9 @@ void SymbolTable::print_symbols() const
               << ' ' << '|' << ' ' << std::left << std::setw(w_parent)
               << "Parent ID" << ' ' << '|' << ' ' << std::left
               << std::setw(w_name) << "Symbol Name" << ' ' << '|' << ' '
-              << std::left << std::setw(w_type) << "Type" << ' ' << '|' << '\n'
+              << std::left << std::setw(w_type) << "Type" << ' ' << '|' << ' '
+              << std::left << std::setw(w_storage) << "Storage Class" << ' '
+              << '|' << '\n'
               << sep << '\n';
 
     // Rows
@@ -166,8 +166,11 @@ void SymbolTable::print_symbols() const
         }
         for (const auto &symbol_pair : scope.symbols) {
             const SymbolPtr &symbol = symbol_pair.second;
-            std::string type_str =
-                symbol->get_type() ? symbol->get_type()->name : "nullptr";
+            std::string type_str = symbol->get_type().type
+                                       ? symbol->get_type().debug_name()
+                                       : "nullptr";
+            std::string storage_str =
+                storage_class_to_string(symbol->get_storage_class());
 
             std::cout << '|' << ' ' << std::left << std::setw(w_scope)
                       << scope.id << ' ' << '|' << ' ' << std::left
@@ -175,85 +178,10 @@ void SymbolTable::print_symbols() const
                       << std::left << std::setw(w_parent) << scope.parent_id
                       << ' ' << '|' << ' ' << std::left << std::setw(w_name)
                       << symbol->get_name() << ' ' << '|' << ' ' << std::left
-                      << std::setw(w_type) << type_str << ' ' << '|' << '\n';
+                      << std::setw(w_type) << type_str << ' ' << '|' << ' '
+                      << std::left << std::setw(w_storage) << storage_str << ' '
+                      << '|' << '\n';
         }
-    }
-
-    std::cout << sep << '\n';
-}
-
-void SymbolTable::print_custom_types() const
-{
-    // Compute column widths
-    std::size_t w_id = std::string("Type ID").size();
-    std::size_t w_name = std::string("Type Name").size();
-    std::size_t w_category = std::string("Category").size();
-    std::size_t w_qualifier = std::string("Qualifier").size();
-    bool is_empty = true;
-    for (const auto &type_pair : type_factory.get_defined_types()) {
-        const TypePtr &type = type_pair.second;
-        if (type->category != TypeCategory::POINTER &&
-            type->category != TypeCategory::ARRAY &&
-            type->category != TypeCategory::PRIMITIVE &&
-            type->category != TypeCategory::LABEL) {
-            w_id = std::max(w_id, std::to_string(type->id).size());
-            w_name = std::max(w_name, type->name.size());
-            w_category =
-                std::max(w_category,
-                         type_category_to_string(type->category).size());
-            w_qualifier =
-                std::max(w_qualifier,
-                         type_qualifier_to_string(type->type_qualifier).size());
-            is_empty = false;
-        }
-    }
-
-    auto make_sep = [&](char fill = '-') {
-        std::string s;
-        s.reserve(w_id + w_name + w_category + w_qualifier + 13);
-        s.push_back('+');
-        s.append(w_id + 2, fill);
-        s.push_back('+');
-        s.append(w_name + 2, fill);
-        s.push_back('+');
-        s.append(w_category + 2, fill);
-        s.push_back('+');
-        s.append(w_qualifier + 2, fill);
-        s.push_back('+');
-        return s;
-    };
-
-    const std::string sep = make_sep();
-
-    if (is_empty) {
-        std::cout << "No custom types defined.\n";
-        return;
-    }
-    // Header
-    std::cout << sep << '\n'
-              << '|' << ' ' << std::left << std::setw(w_id) << "Type ID" << ' '
-              << '|' << ' ' << std::left << std::setw(w_name) << "Type Name"
-              << ' ' << '|' << ' ' << std::left << std::setw(w_category)
-              << "Category" << ' ' << '|' << ' ' << std::left
-              << std::setw(w_qualifier) << "Qualifier" << ' ' << '|' << '\n'
-              << sep << '\n';
-
-    // Rows
-    for (const auto &type_pair : type_factory.get_defined_types()) {
-        const TypePtr &type = type_pair.second;
-        if (type->category == TypeCategory::POINTER ||
-            type->category == TypeCategory::ARRAY ||
-            type->category == TypeCategory::PRIMITIVE) {
-            continue;
-        }
-        std::cout << '|' << ' ' << std::left << std::setw(w_id) << type->id
-                  << ' ' << '|' << ' ' << std::left << std::setw(w_name)
-                  << type->name << ' ' << '|' << ' ' << std::left
-                  << std::setw(w_category)
-                  << type_category_to_string(type->category) << ' ' << '|'
-                  << ' ' << std::left << std::setw(w_qualifier)
-                  << type_qualifier_to_string(type->type_qualifier) << ' '
-                  << '|' << '\n';
     }
 
     std::cout << sep << '\n';

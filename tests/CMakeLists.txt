@@ -1,6 +1,21 @@
 add_subdirectory(googletest)
 include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 
+# Add unit tests for symbol_table and type_factory
+add_executable(unit_tests 
+    test_type_factory.cpp 
+    test_symbol_table.cpp
+)
+
+# Link with GoogleTest and the project libraries
+target_link_libraries(unit_tests gtest gtest_main ciel_lexer)
+
+# Include project directories
+target_include_directories(unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Add the test to CTest
+add_test(NAME unit_tests COMMAND unit_tests)
+
 
 file(GLOB VALID_SAMPLE_FILES
     RELATIVE ${CMAKE_SOURCE_DIR}

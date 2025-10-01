@@ -42,7 +42,6 @@
 
   enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION };
 
-  enum class StorageClass { NONE, STATIC /* TYPEDEF handled by dedicated rule */ };
 
   struct GlobalParserState {
     std::vector<ContextKind> ctx_stack;
@@ -70,12 +69,13 @@
   #include <iostream>
   #include <sstream>
   #include "lexer/lexer.hpp"
+  #include "symbol_table/type_factory.hpp"
   #include "symbol_table/symbol_table.hpp"
 
   #undef yylex
   #define yylex lexer.yylex
   static SymbolTable symbol_table;
-
+  static TypeFactory type_factory;
   static GlobalParserState parser_state;
 
   // Counter to uniquely name anonymous enums in a scope-stable way
@@ -93,7 +93,7 @@
   }
 
   static TypePtr builtin_type(const std::string& n) {
-    auto opt = symbol_table.get_type_factory().get_type_by_name(n, 0);
+    auto opt = type_factory.get_type_by_name(n, 0);
     return opt.has_value() ? opt.value() : nullptr;
   }
 
@@ -169,11 +169,11 @@
     }
     os << ")->" << (ret ? ret->name : "<null>");
     FunctionType fnty(ret, params, param_names, variadic, FunctionType::FunctionKind::NORMAL, parent_class);
-    return symbol_table.get_type_factory().make(os.str(),
-                                                symbol_table.get_current_scope_id(),
-                                                TypeCategory::FUNCTION,
-                                                TypeQualifier::NONE,
-                                                fnty);
+    return type_factory.make(os.str(),
+                             symbol_table.get_current_scope_id(),
+                             TypeCategory::FUNCTION,
+                             TypeQualifier::NONE,
+                             fnty);
   }
 
   // Helper to build special function types (ctor/dtor/operator)
@@ -201,7 +201,7 @@
     if (kind == FunctionType::FunctionKind::OPERATOR_OVERLOAD) {
       fnty.operator_name = operator_name;
     }
-    return symbol_table.get_type_factory().make(
+    return type_factory.make(
         os.str(), symbol_table.get_current_scope_id(), TypeCategory::FUNCTION,
         TypeQualifier::NONE, fnty);
   }
@@ -218,10 +218,9 @@
 
   static TypePtr apply_ptr_and_arrays(TypePtr base, size_t ptr_levels, const std::vector<size_t>& dims) {
     if (!base) return nullptr;
-    auto& tf = symbol_table.get_type_factory();
-    TypePtr t = (ptr_levels > 0) ? tf.make_multi_level_pointer(base, ptr_levels, symbol_table.get_current_scope_id()) : base;
+    TypePtr t = (ptr_levels > 0) ? type_factory.make_multi_level_pointer(base, ptr_levels, symbol_table.get_current_scope_id()) : base;
     if (!dims.empty()) {
-      t = tf.make_multi_dimensional_array(t, dims, symbol_table.get_current_scope_id());
+      t = type_factory.make_multi_dimensional_array(t, dims, symbol_table.get_current_scope_id());
     }
     return t;
   }
@@ -541,7 +540,7 @@ declaration
         TypePtr base = $2;
         TypePtr actual = apply_ptr_and_arrays(base, ptrs, {});
 		if (actual) {
-		  (void)symbol_table.get_type_factory().make($4, symbol_table.get_current_scope_id(), TypeCategory::TYPEDEF, TypeQualifier::NONE, TypedefType(actual));
+		  (void)type_factory.make($4, symbol_table.get_current_scope_id(), TypeCategory::TYPEDEF, TypeQualifier::NONE, TypedefType(actual));
 		}
         parser_state.reset_decl();
       }
@@ -625,7 +624,7 @@ type_specifier
       }
     | TYPE_NAME
       {
-        auto opt = symbol_table.get_type_factory().lookup_type($1, symbol_table.get_scope_chain());
+        auto opt = type_factory.lookup_type($1, symbol_table.get_scope_chain());
         if (opt.has_value()) { $$ = opt.value(); parser_state.current_decl_base_type = $$; }
 		else {
 		  std::cerr << "Error: unknown type name '" << $1 << "'\n";
@@ -637,13 +636,12 @@ type_specifier
 struct_or_union_specifier
     : struct_or_union IDENTIFIER OPEN_BRACE_OP struct_declaration_list CLOSE_BRACE_OP
       {
-        auto &tf = symbol_table.get_type_factory();
         std::string name = ($1 == TypeCategory::STRUCT ? std::string("struct ") : std::string("union ")) + $2;
         // Create the aggregate type in the current (outer) scope
         if ($1 == TypeCategory::STRUCT) {
-          $$ = tf.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType($4));
+          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType($4));
         } else {
-          $$ = tf.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType($4));
+          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType($4));
         }
         // Create a dedicated member scope and add fields as symbols
         symbol_table.enter_scope();
@@ -654,14 +652,13 @@ struct_or_union_specifier
       }
     | struct_or_union OPEN_BRACE_OP struct_declaration_list CLOSE_BRACE_OP
       {
-        auto &tf = symbol_table.get_type_factory();
         std::ostringstream os;
         if ($1 == TypeCategory::STRUCT) {
           os << "<anon-struct@" << symbol_table.get_current_scope_id() << ":" << (anon_struct_counter++) << ">";
-          $$ = tf.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType($3));
+          $$ = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType($3));
         } else {
           os << "<anon-union@" << symbol_table.get_current_scope_id() << ":" << (anon_union_counter++) << ">";
-          $$ = tf.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType($3));
+          $$ = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType($3));
         }
         symbol_table.enter_scope();
         for (const auto &kv : $3) {
@@ -671,28 +668,26 @@ struct_or_union_specifier
       }
     | struct_or_union IDENTIFIER
       {
-        auto &tf = symbol_table.get_type_factory();
         std::string name = ($1 == TypeCategory::STRUCT ? std::string("struct ") : std::string("union ")) + $2;
         // Try to find an existing type in the scope chain; otherwise create a forward declaration
-        auto found = tf.lookup_type(name, symbol_table.get_scope_chain());
+        auto found = type_factory.lookup_type(name, symbol_table.get_scope_chain());
         if (found.has_value()) {
           $$ = found.value();
         } else {
           if ($1 == TypeCategory::STRUCT) {
-            $$ = tf.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType{});
+            $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType{});
           } else {
-            $$ = tf.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType{});
+            $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType{});
           }
         }
       }
 	| struct_or_union IDENTIFIER OPEN_BRACE_OP CLOSE_BRACE_OP // to allow empty structs/unions
       {
-        auto &tf = symbol_table.get_type_factory();
         std::string name = ($1 == TypeCategory::STRUCT ? std::string("struct ") : std::string("union ")) + $2;
         if ($1 == TypeCategory::STRUCT) {
-          $$ = tf.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType{});
+          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType{});
         } else {
-          $$ = tf.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType{});
+          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType{});
         }
       }
     ;
@@ -762,15 +757,14 @@ struct_declarator
 enum_specifier
     : ENUM IDENTIFIER OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
-        auto& tf = symbol_table.get_type_factory();
         std::string enum_name = "enum " + $2;
-        TypePtr t = tf.make(enum_name, symbol_table.get_current_scope_id(),
+        TypePtr t = type_factory.make(enum_name, symbol_table.get_current_scope_id(),
                             TypeCategory::ENUM, TypeQualifier::NONE, EnumType{});
         std::unordered_set<EnumConstant, EnumConstant::Hash> values;
         int64_t v = 0;
         for (const auto& nm : $4) {
           values.insert(EnumConstant(v, t));
-			tf.make(nm, symbol_table.get_current_scope_id(), TypeCategory::ENUM_CONSTANT, TypeQualifier::NONE, EnumConstant(v, t));
+			type_factory.make(nm, symbol_table.get_current_scope_id(), TypeCategory::ENUM_CONSTANT, TypeQualifier::NONE, EnumConstant(v, t));
 		  ++v;
         }
         t->info = EnumType(std::move(values));
@@ -778,25 +772,23 @@ enum_specifier
       }
     | ENUM OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
-        auto& tf = symbol_table.get_type_factory();
         std::ostringstream os;
         os << "<anon-enum@" << symbol_table.get_current_scope_id() << ":" << (anon_enum_counter++) << ">";
-        TypePtr t = tf.make(os.str(), symbol_table.get_current_scope_id(),
+        TypePtr t = type_factory.make(os.str(), symbol_table.get_current_scope_id(),
                             TypeCategory::ENUM, TypeQualifier::NONE, EnumType{});
         std::unordered_set<EnumConstant, EnumConstant::Hash> values;
         int64_t v = 0;
         for (const auto& nm : $3) {
           values.insert(EnumConstant(v, t));
-		  tf.make(nm, symbol_table.get_current_scope_id(), TypeCategory::ENUM_CONSTANT, TypeQualifier::NONE, EnumConstant(v, t));
+		  type_factory.make(nm, symbol_table.get_current_scope_id(), TypeCategory::ENUM_CONSTANT, TypeQualifier::NONE, EnumConstant(v, t));
         }
         t->info = EnumType(std::move(values));
         $$ = t;
       }
     | ENUM IDENTIFIER
       {
-        auto& tf = symbol_table.get_type_factory();
         std::string enum_name = "enum " + $2;
-        TypePtr t = tf.make(enum_name, symbol_table.get_current_scope_id(),
+        TypePtr t = type_factory.make(enum_name, symbol_table.get_current_scope_id(),
                             TypeCategory::ENUM, TypeQualifier::NONE, EnumType{});
         $$ = t;
       }
@@ -1012,9 +1004,9 @@ statement
 
 labeled_statement
     : IDENTIFIER COLON_OP statement {
-		auto label=symbol_table.get_type_factory().lookup_type($1, symbol_table.get_scope_chain());
+		auto label=type_factory.lookup_type($1, symbol_table.get_scope_chain());
 		if (!label.has_value()) {
-		  label = symbol_table.get_type_factory().make("label", 0, TypeCategory::LABEL, TypeQualifier::NONE, LabelType{});
+		  label = type_factory.make("label", 0, TypeCategory::LABEL, TypeQualifier::NONE, LabelType{});
 		}
 		(void)symbol_table.add_symbol($1, label.value());
 	}
@@ -1101,10 +1093,9 @@ declaration_list
 class_specifier_tail
   : inheritance_opt
     {
-      auto &tf = symbol_table.get_type_factory();
       std::ostringstream os;
       os << "<anon-class@" << symbol_table.get_current_scope_id() << ":" << (anon_class_counter++) << ">";
-      parser_state.current_class_type = tf.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
+      parser_state.current_class_type = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
       parser_state.current_access = AccessSpecifier::PRIVATE; // default for class
     }
     class_open_brace class_member_list class_close_brace
@@ -1120,13 +1111,12 @@ class_specifier_tail
     }
   | IDENTIFIER inheritance_opt
     {
-      auto &tf = symbol_table.get_type_factory();
       std::string full_name = std::string("class ") + $1;
-      auto found = tf.lookup_type(full_name, symbol_table.get_scope_chain());
+      auto found = type_factory.lookup_type(full_name, symbol_table.get_scope_chain());
       if (found.has_value()) {
         parser_state.current_class_type = found.value();
       } else {
-        parser_state.current_class_type = tf.make(full_name, symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
+        parser_state.current_class_type = type_factory.make(full_name, symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
       }
       parser_state.current_access = AccessSpecifier::PRIVATE;
     }
@@ -1143,13 +1133,12 @@ class_specifier_tail
     }
   | IDENTIFIER inheritance_opt
     {
-      auto &tf = symbol_table.get_type_factory();
       std::string full_name = std::string("class ") + $1;
-      auto found = tf.lookup_type(full_name, symbol_table.get_scope_chain());
+      auto found = type_factory.lookup_type(full_name, symbol_table.get_scope_chain());
       if (found.has_value()) {
         $$ = found.value();
       } else {
-        $$ = tf.make(full_name, symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
+        $$ = type_factory.make(full_name, symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
       }
 
       if (parser_state.parent_class_type) {
@@ -1160,10 +1149,9 @@ class_specifier_tail
   | inheritance_opt class_open_brace class_close_brace
     {
       // empty anonymous class
-      auto &tf = symbol_table.get_type_factory();
       std::ostringstream os;
       os << "<anon-class@" << symbol_table.get_current_scope_id() << ":" << (anon_class_counter++) << ">";
-      TypePtr t = tf.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
+      TypePtr t = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
       if (parser_state.parent_class_type) {
         if (auto cls = std::get_if<ClassType>(&t->info)) {
           cls->set_base_class(parser_state.parent_class_type, parser_state.inherited_access);
@@ -1185,9 +1173,8 @@ inheritance_list
 
 inheritance_specifier
     : access_specifier IDENTIFIER {
-    auto& tf = symbol_table.get_type_factory();
     std::string full = std::string("class ") + $2;
-    auto opt = tf.lookup_type(full, symbol_table.get_scope_chain());
+    auto opt = type_factory.lookup_type(full, symbol_table.get_scope_chain());
     if (opt.has_value() && opt.value()->category == TypeCategory::CLASS) {
       parser_state.parent_class_type = opt.value();
       parser_state.inherited_access = $1;
@@ -1197,9 +1184,8 @@ inheritance_specifier
     }
 	}
     | IDENTIFIER {
-    auto& tf = symbol_table.get_type_factory();
     std::string full = std::string("class ") + $1;
-    auto opt = tf.lookup_type(full, symbol_table.get_scope_chain());
+    auto opt = type_factory.lookup_type(full, symbol_table.get_scope_chain());
     if (opt.has_value() && opt.value()->category == TypeCategory::CLASS) {
       parser_state.parent_class_type = opt.value();
       parser_state.inherited_access = AccessSpecifier::PRIVATE; // default
@@ -1362,7 +1348,7 @@ function_declaration_or_definition
 		if (expected != got) {
 		  std::cerr << "Warning: operator overload function name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
 		}
-		TypePtr ret = symbol_table.get_type_factory().lookup_type($1, symbol_table.get_scope_chain()).value_or(nullptr);
+		TypePtr ret = type_factory.lookup_type($1, symbol_table.get_scope_chain()).value_or(nullptr);
         if (ret && !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           const auto &plist = $5;
           std::string opname = $3;
