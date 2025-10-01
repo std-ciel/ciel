@@ -38,7 +38,9 @@ add_library(ciel_lexer STATIC
     src/lexer/print_tokens.cpp
     src/parser/token_converter.cpp
     src/symbol_table/symbol_table.cpp
+    src/symbol_table/symbol.cpp
     src/symbol_table/type.cpp
+    src/symbol_table/type_factory.cpp
 )
 target_include_directories(ciel_lexer PUBLIC
     ${CMAKE_SOURCE_DIR}/include/token
