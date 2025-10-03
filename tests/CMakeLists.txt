@@ -5,6 +5,7 @@ include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 add_executable(unit_tests 
     test_type_factory.cpp 
     test_symbol_table.cpp
+    test_mangling.cpp
 )
 
 # Link with GoogleTest and the project libraries
