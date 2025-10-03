@@ -61,6 +61,7 @@ struct Type {
     explicit Type(TypeKind kind) : kind(kind) {}
     virtual ~Type() = default;
     virtual std::string debug_name() const = 0;
+    virtual std::string mangled_name() const = 0;
 };
 
 struct QualType {
@@ -91,6 +92,24 @@ struct QualType {
         else if (qualifier == Qualifier::Q_CONST_VOLATILE)
             q = " const volatile";
         return type->debug_name() + q;
+    }
+
+    std::string mangled_name() const
+    {
+        if (!type)
+            return "v"; // invalid -> void
+
+        std::string base = type->mangled_name();
+
+        // Apply CV-qualifiers according to Itanium ABI
+        if (qualifier == Qualifier::Q_CONST)
+            return "K" + base;
+        else if (qualifier == Qualifier::Q_VOLATILE)
+            return "V" + base;
+        else if (qualifier == Qualifier::Q_CONST_VOLATILE)
+            return "VK" + base; // volatile const (order matters)
+
+        return base;
     }
 };
 
@@ -139,6 +158,28 @@ struct BuiltinType : public Type {
             return "unknown_builtin";
         }
     }
+
+    std::string mangled_name() const override
+    {
+        switch (builtin_kind) {
+        case BuiltinTypeKind::VOID:
+            return "v";
+        case BuiltinTypeKind::BOOL:
+            return "b";
+        case BuiltinTypeKind::CHAR:
+            return "c";
+        case BuiltinTypeKind::INT:
+            return "i";
+        case BuiltinTypeKind::FLOAT:
+            return "f";
+        case BuiltinTypeKind::UNSIGNED:
+            return "j"; // unsigned int
+        case BuiltinTypeKind::SIGNED:
+            return "i"; // signed int (same as int)
+        default:
+            return "u"; // unknown type
+        }
+    }
 };
 
 struct PointerType : public Type {
@@ -152,6 +193,11 @@ struct PointerType : public Type {
     std::string debug_name() const override
     {
         return pointee.debug_name() + "*";
+    }
+
+    std::string mangled_name() const override
+    {
+        return "P" + pointee.mangled_name();
     }
 };
 
@@ -169,6 +215,18 @@ struct ArrayType : public Type {
     {
         return element_type.debug_name() + "[" +
                (size ? std::to_string(*size) : "") + "]";
+    }
+
+    std::string mangled_name() const override
+    {
+        if (size) {
+            // Array with known size: A<size>_<element-type>
+            return "A" + std::to_string(*size) + "_" +
+                   element_type.mangled_name();
+        } else {
+            // Array with unknown size: A_<element-type>
+            return "A_" + element_type.mangled_name();
+        }
     }
 };
 
@@ -204,6 +262,13 @@ struct FunctionType : public Type {
         name += ")";
         return name;
     }
+
+    [[deprecated("This function is not meant to be used. Please use "
+                 "mangle_function_name function instead.")]] std::string
+    mangled_name() const override
+    {
+        return ""; // Not to be used
+    }
 };
 
 struct RecordType : public Type {
@@ -224,6 +289,12 @@ struct RecordType : public Type {
     {
         return (is_union ? "union " : "struct ") + tag;
     }
+
+    std::string mangled_name() const override
+    {
+        // Record type: <tag-length><tag-name>
+        return std::to_string(tag.length()) + tag;
+    }
 };
 
 struct EnumType : public Type {
@@ -242,6 +313,12 @@ struct EnumType : public Type {
     std::string debug_name() const override
     {
         return "enum " + tag;
+    }
+
+    std::string mangled_name() const override
+    {
+        // Enum type: <tag-length><tag-name>
+        return std::to_string(tag.length()) + tag;
     }
 };
 
@@ -269,6 +346,12 @@ struct ClassType : public Type {
     {
         return "class " + name;
     }
+
+    std::string mangled_name() const override
+    {
+        // Class type: <name-length><name>
+        return std::to_string(name.length()) + name;
+    }
 };
 
 struct TypedefType : public Type {
@@ -284,6 +367,12 @@ struct TypedefType : public Type {
     std::string debug_name() const override
     {
         return "typedef " + name;
+    }
+
+    std::string mangled_name() const override
+    {
+        // For typedef, delegate to the underlying type's mangling
+        return underlying_type.mangled_name();
     }
 };
 
