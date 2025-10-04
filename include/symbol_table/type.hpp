@@ -41,8 +41,6 @@ enum class BuiltinTypeKind {
 
 enum class Access { PUBLIC, PROTECTED, PRIVATE };
 
-enum class FunctionKind { NORMAL, METHOD, CONSTRUCTOR, DESTRUCTOR, OPERATOR };
-
 struct BaseSpecifier {
     TypePtr base_type;
     Access access;
@@ -234,18 +232,15 @@ struct FunctionType : public Type {
     QualType return_type;
     std::vector<QualType> param_types;
     bool is_variadic;
-    FunctionKind function_kind;
 
     FunctionType(QualType return_type,
                  std::vector<QualType> param_types,
-                 FunctionKind kind,
-                 bool is_variadic = false,
-                 bool is_member_function = false)
+                 bool is_variadic = false)
         : Type(TypeKind::Function), return_type(std::move(return_type)),
-          param_types(std::move(param_types)), is_variadic(is_variadic),
-          function_kind(kind)
+          param_types(std::move(param_types)), is_variadic(is_variadic)
     {
     }
+
     std::string debug_name() const override
     {
         std::string name = return_type.debug_name() + " (";
