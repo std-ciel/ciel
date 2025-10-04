@@ -9,6 +9,25 @@ using ScopeID = size_t;
 
 enum class StorageClass { STATIC, REGISTER, AUTO };
 
+enum class FunctionKind { NORMAL, METHOD, CONSTRUCTOR, DESTRUCTOR, OPERATOR };
+
+struct FunctionMeta {
+    FunctionKind function_kind;
+    bool is_defined;
+    std::vector<std::string> params;
+    std::optional<TypePtr> parent_class;
+
+    FunctionMeta() : function_kind(FunctionKind::NORMAL), is_defined(false) {}
+
+    FunctionMeta(FunctionKind kind,
+                 std::vector<std::string> params,
+                 std::optional<TypePtr> parent_class = std::nullopt)
+        : function_kind(kind), is_defined(false), params(std::move(params)),
+          parent_class(std::move(parent_class))
+    {
+    }
+};
+
 class Symbol {
   public:
     Symbol(std::string name,
@@ -49,6 +68,7 @@ class Symbol {
     StorageClass storage_class = StorageClass::AUTO;
     ScopeID scope_id;
     ScopeID parent_scope;
+    std::optional<FunctionMeta> function_meta;
 };
 
 using SymbolPtr = std::shared_ptr<Symbol>;
