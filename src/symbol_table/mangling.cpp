@@ -25,6 +25,7 @@ static const std::unordered_map<std::string, std::string>
 
 std::string mangle_function_name(const std::string &name,
                                  const FunctionType &ftype,
+                                 const FunctionMeta &meta,
                                  std::optional<ClassType> cls)
 {
     std::string result = "_Z";
@@ -32,7 +33,7 @@ std::string mangle_function_name(const std::string &name,
         result += cls->mangled_name();
     }
 
-    switch (ftype.function_kind) {
+    switch (meta.function_kind) {
     case FunctionKind::CONSTRUCTOR:
         result += "C1"; // C1 for constructor
         break;
