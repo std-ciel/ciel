@@ -97,61 +97,6 @@
     return opt.has_value() ? opt.value() : nullptr;
   }
 
-  static std::string mangle_function_name(const std::string& base,
-                                          const std::vector<TypePtr>& params,
-                                          bool variadic) {
-    std::ostringstream os;
-    os << base << '(';
-    for (size_t i = 0; i < params.size(); ++i) {
-      if (i) os << ',';
-      os << (params[i] ? params[i]->name : std::string("<null>"));
-    }
-    if (variadic) {
-      if (!params.empty()) os << ',';
-      os << "...";
-    }
-    os << ')';
-    return os.str();
-  }
-
-  // Special mangling for constructors, destructors, and operators
-  static std::string mangle_special_function_name(
-      FunctionType::FunctionKind kind,
-      TypePtr parent_class,
-      const std::string& op_name,
-      const std::vector<TypePtr>& params,
-      bool variadic)
-  {
-    std::ostringstream os;
-    switch (kind) {
-      case FunctionType::FunctionKind::CONSTRUCTOR:
-        os << "ctor " << (parent_class ? parent_class->name : std::string("<no-class>"));
-        break;
-      case FunctionType::FunctionKind::DESTRUCTOR:
-        os << "dtor " << (parent_class ? parent_class->name : std::string("<no-class>"));
-        break;
-      case FunctionType::FunctionKind::OPERATOR_OVERLOAD:
-        os << "op" << op_name;
-        if (parent_class) {
-          os << ' ' << parent_class->name;
-        }
-        break;
-      default:
-        return mangle_function_name(op_name, params, variadic);
-    }
-    os << '(';
-    for (size_t i = 0; i < params.size(); ++i) {
-      if (i) os << ',';
-      os << (params[i] ? params[i]->name : std::string("<null>"));
-    }
-    if (variadic) {
-      if (!params.empty()) os << ',';
-      os << "...";
-    }
-    os << ')';
-    return os.str();
-  }
-
   static TypePtr make_function_type(TypePtr ret,
                                     const std::vector<TypePtr>& params,
                                     const std::vector<std::string>& param_names,
