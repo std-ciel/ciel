@@ -41,6 +41,7 @@ add_library(ciel_lexer STATIC
     src/symbol_table/symbol.cpp
     src/symbol_table/type.cpp
     src/symbol_table/type_factory.cpp
+    src/symbol_table/mangling.cpp
 )
 target_include_directories(ciel_lexer PUBLIC
     ${CMAKE_SOURCE_DIR}/include/token
