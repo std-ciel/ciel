@@ -34,13 +34,20 @@ void SymbolTable::exit_scope()
 
 bool SymbolTable::add_symbol(const std::string &name,
                              QualType type,
-                             StorageClass storage_class)
+                             StorageClass storage_class,
+                             std::optional<FunctionMeta> function_meta)
 {
     auto scope_iter = scopes.find(current_scope_id);
     if (scope_iter == scopes.end()) {
         return false;
     }
 
+    if (type.type->kind == TypeKind::Function) {
+        if (!function_meta.has_value()) {
+            // TODO: add error handling
+            return false;
+        }
+    }
     Scope &scope = scope_iter->second;
     if (scope.symbols.find(name) != scope.symbols.end()) {
         return false;

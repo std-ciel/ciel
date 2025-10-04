@@ -16,7 +16,8 @@ class SymbolTable {
 
     bool add_symbol(const std::string &name,
                     QualType type,
-                    StorageClass storage_class = StorageClass::AUTO);
+                    StorageClass storage_class = StorageClass::AUTO,
+                    std::optional<FunctionMeta> function_meta = std::nullopt);
 
     std::optional<SymbolPtr> lookup_symbol(const std::string &name) const;
 
