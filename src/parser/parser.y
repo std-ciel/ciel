@@ -1,9 +1,12 @@
 %skeleton "lalr1.cc"
+
 %require "3.8"
+
 %define api.namespace {yy}
 %define api.parser.class {Parser}
 %define api.value.type variant
 %define parse.error verbose
+
 %locations
 %debug
 %verbose
@@ -13,8 +16,12 @@
   #include <vector>
   #include <memory>
   #include <optional>
+  #include <variant>
 
   #include "symbol_table/type.hpp"
+  #include "symbol_table/symbol.hpp"
+  #include "symbol_table/mangling.hpp"
+
 
   class Lexer;
 
@@ -24,41 +31,46 @@
     std::vector<size_t> array_dims;
     bool is_function = false;
     bool has_params = false;
-    std::vector<TypePtr> param_types;
+    std::vector<QualifiedType> param_types;
     std::vector<std::string> param_names;
     bool is_variadic = false;
   };
 
   struct ParamDeclInfo {
-    TypePtr type = nullptr;
+    QualifiedType type;
     std::string name;
   };
 
   struct ParamListInfo {
-    std::vector<TypePtr> types;
+    std::vector<QualifiedType> types;
     std::vector<std::string> names;
     bool variadic = false;
   };
 
   enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION };
 
-
   struct GlobalParserState {
-    std::vector<ContextKind> ctx_stack;
-    AccessSpecifier current_access = AccessSpecifier::PRIVATE;
-    TypePtr current_decl_base_type = nullptr;
-    std::vector<TypeQualifier> current_decl_qualifiers;
-    StorageClass current_storage = StorageClass::NONE;
-	AccessSpecifier inherited_access = AccessSpecifier::PRIVATE;
-	TypePtr parent_class_type = nullptr;
-  TypePtr current_class_type = nullptr;
-    void push_ctx(ContextKind k) { ctx_stack.push_back(k); }
+    std::vector<ContextKind> ctx_stack = {ContextKind::GLOBAL};
+    Access current_access = Access::PRIVATE;
+    QualifiedType current_decl_base_type;
+    std::vector<Qualifier> current_decl_qualifiers;
+	  Access inherited_access = Access::PRIVATE;
+	  ClassTypePtr parent_class_type = nullptr;
+    ClassTypePtr current_class_type = nullptr;
+
+    StorageClass current_storage = StorageClass::STATIC;
+
+    void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
     void pop_ctx() { if (!ctx_stack.empty()) ctx_stack.pop_back(); }
 
     void reset_decl() {
-      current_decl_base_type = nullptr;
+      current_decl_base_type = QualifiedType{};
       current_decl_qualifiers.clear();
-      current_storage = StorageClass::NONE;
+      if (ctx_stack.back() == ContextKind::GLOBAL) {
+        current_storage = StorageClass::STATIC;
+      } else {
+        current_storage = StorageClass::AUTO;
+      }
     }
   };
 }
@@ -69,6 +81,7 @@
   #include <iostream>
   #include <sstream>
   #include "lexer/lexer.hpp"
+  #include "parser/parser_errors.hpp"
   #include "symbol_table/type_factory.hpp"
   #include "symbol_table/symbol_table.hpp"
 
@@ -86,73 +99,35 @@
 
   void print_parse_results()
   {
-	std::cout<< "Custom Types:\n";
-	symbol_table.print_custom_types();
-	std::cout << "Symbol Table:\n";
-	symbol_table.print_symbols();
+	  std::cout<< "Custom Types:\n";
+    type_factory.print_custom_types();
+	  std::cout << "Symbol Table:\n";
+	  symbol_table.print_symbols();
   }
 
   static TypePtr builtin_type(const std::string& n) {
-    auto opt = type_factory.get_type_by_name(n, 0);
+    auto opt = type_factory.lookup(n);
     return opt.has_value() ? opt.value() : nullptr;
   }
 
   static TypePtr make_function_type(TypePtr ret,
-                                    const std::vector<TypePtr>& params,
-                                    const std::vector<std::string>& param_names,
+                                    const std::vector<QualifiedType>& params,
                                     bool variadic,
-                                    TypePtr parent_class = nullptr) {
-    std::ostringstream os;
-    os << "fn(";
-    for (size_t i = 0; i < params.size(); ++i) {
-      if (i) os << ',';
-      os << (params[i] ? params[i]->name : std::string("<null>"));
-    }
-    if (variadic) {
-      if (!params.empty()) os << ',';
-      os << "...";
-    }
-    os << ")->" << (ret ? ret->name : "<null>");
-    FunctionType fnty(ret, params, param_names, variadic, FunctionType::FunctionKind::NORMAL, parent_class);
-    return type_factory.make(os.str(),
-                             symbol_table.get_current_scope_id(),
-                             TypeCategory::FUNCTION,
-                             TypeQualifier::NONE,
-                             fnty);
-  }
+                                    int line,
+                                    int column) {
+    QualifiedType qualified_ret(ret, Qualifier::NONE);
 
-  // Helper to build special function types (ctor/dtor/operator)
-  static TypePtr make_function_type_ex(
-      TypePtr ret,
-      const std::vector<TypePtr>& params,
-      const std::vector<std::string>& param_names,
-      bool variadic,
-      FunctionType::FunctionKind kind,
-      TypePtr parent_class = nullptr,
-      const std::string& operator_name = std::string{})
-  {
-    std::ostringstream os;
-    os << "fn(";
-    for (size_t i = 0; i < params.size(); ++i) {
-      if (i) os << ',';
-      os << (params[i] ? params[i]->name : std::string("<null>"));
+    auto result = type_factory.make<FunctionType>(qualified_ret, params, variadic);
+    if (result.is_err()) {
+      parser_add_error(line, column, "Failed to create function type");
+      // Return a dummy function type to allow parsing to continue
+      return std::make_shared<FunctionType>(qualified_ret, params, variadic);
     }
-    if (variadic) {
-      if (!params.empty()) os << ',';
-      os << "...";
-    }
-    os << ")->" << (ret ? ret->name : "<null>");
-    FunctionType fnty(ret, params, param_names, variadic, kind, parent_class);
-    if (kind == FunctionType::FunctionKind::OPERATOR_OVERLOAD) {
-      fnty.operator_name = operator_name;
-    }
-    return type_factory.make(
-        os.str(), symbol_table.get_current_scope_id(), TypeCategory::FUNCTION,
-        TypeQualifier::NONE, fnty);
+    return result.value();
   }
 
   static void params_to_vectors(const std::vector<ParamDeclInfo>& in,
-                                std::vector<TypePtr>& types,
+                                std::vector<QualifiedType>& types,
                                 std::vector<std::string>& names) {
     types.clear();
     names.clear();
@@ -161,18 +136,46 @@
     for (const auto& p : in) { types.push_back(p.type); names.push_back(p.name); }
   }
 
-  static TypePtr apply_ptr_and_arrays(TypePtr base, size_t ptr_levels, const std::vector<size_t>& dims) {
-    if (!base) return nullptr;
-    TypePtr t = (ptr_levels > 0) ? type_factory.make_multi_level_pointer(base, ptr_levels, symbol_table.get_current_scope_id()) : base;
-    if (!dims.empty()) {
-      t = type_factory.make_multi_dimensional_array(t, dims, symbol_table.get_current_scope_id());
-    }
-    return t;
+  static QualifiedType apply_ptr(QualifiedType base, size_t ptr_levels, int line, int column) {
+      if (ptr_levels == 0) {
+        return base;
+      }
+
+      // Create a vector of qualifiers for each pointer level
+      // For now, we don't have per-level qualifiers, so use NONE
+      std::vector<Qualifier> ptr_qualifiers(ptr_levels, Qualifier::NONE);
+      
+      auto result = type_factory.make_pointer_chain(base, ptr_qualifiers);
+      if (result.is_err()) {
+        parser_add_error(line, column, "Failed to create pointer chain");
+        return base;
+      }
+      return result.value();
   }
 
-  static void add_symbol_if_valid(const DeclaratorInfo& di, TypePtr type) {
-    if (!di.name.empty() && type) {
-      (void)symbol_table.add_symbol(di.name, type);
+  static QualifiedType apply_arrays(QualifiedType base, const std::vector<size_t>& dims, int line, int column) {
+    auto result = type_factory.make_array_chain(base, dims);
+    if (result.is_err()) {
+      parser_add_error(line, column, "Failed to create array chain");
+      return base;
+    }
+    return result.value();
+  }
+
+  // Helper to safely extract Result<TypePtr, TypeFactoryError> with error reporting
+  static TypePtr unwrap_type_or_error(Result<TypePtr, TypeFactoryError> result, const std::string& context, int line, int column) {
+    if (result.is_err()) {
+      std::string error_msg = context + ": " + type_factory_error_to_string(result.error());
+      parser_add_error(line, column, error_msg);
+      // Return nullptr as a fallback
+      return nullptr;
+    }
+    return result.value();
+  }
+
+  static void add_symbol_if_valid(const DeclaratorInfo& di, QualifiedType type) {
+    if (!di.name.empty()) {
+      (void)symbol_table.add_symbol(di.name, type, parser_state.current_storage);
     }
   }
 }
@@ -251,8 +254,8 @@
 %type <TypePtr> type_specifier specifier_qualifier_list type_name declaration_specifiers
 %type <unsigned> pointer pointer_opt
 %type <DeclaratorInfo> declarator direct_declarator
-%type <std::unordered_map<std::string, TypePtr>> struct_declaration_list
-%type <std::unordered_map<std::string, TypePtr>> struct_declaration
+%type <std::unordered_map<std::string, QualifiedType>> struct_declaration_list
+%type <std::unordered_map<std::string, QualifiedType>> struct_declaration
 %type <std::vector<DeclaratorInfo>> struct_declarator_list
 %type <DeclaratorInfo> struct_declarator
 
@@ -265,8 +268,8 @@
 %type <std::string> enumerator
 
 
-%type <TypeCategory> struct_or_union
-%type <AccessSpecifier> access_specifier
+%type <std::string> struct_or_union
+%type <Access> access_specifier
 %type <TypePtr> class_specifier_tail
 %type <ParamListInfo> parameter_type_list
 %type <std::vector<ParamDeclInfo>> parameter_list
@@ -322,7 +325,6 @@ class_close_brace
 
 primary_expression
     : IDENTIFIER
-    // | TYPE_NAME
     | INT_LITERAL
     | FLOAT_LITERAL
     | CHAR_LITERAL
@@ -340,7 +342,7 @@ postfix_expression
     | postfix_expression ARROW_OP IDENTIFIER
     | postfix_expression INCREMENT_OP
     | postfix_expression DECREMENT_OP
-  | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
+    | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
     ;
 
 argument_expression_list
@@ -389,9 +391,9 @@ shift_expression
 relational_expression
     : shift_expression
     | relational_expression LT_OP shift_expression
-	| relational_expression LE_OP shift_expression
-	| relational_expression GT_OP shift_expression
-	| relational_expression GE_OP shift_expression
+	  | relational_expression LE_OP shift_expression
+	  | relational_expression GT_OP shift_expression
+	  | relational_expression GE_OP shift_expression
     ;
 
 equality_expression
@@ -461,18 +463,37 @@ declaration
       }
     | declaration_specifiers init_declarator_list SEMICOLON_OP
       {
-    	TypePtr base = $1;
-        if (base) {
+        QualifiedType base = parser_state.current_decl_base_type;
+
+        if (base.type) {
           for (const auto &di : $2) {
             if (di.is_function) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
-                TypePtr fn = make_function_type(base, di.param_types, di.param_names, di.is_variadic, nullptr);
-                std::string mangled = mangle_function_name(di.name, di.param_types, di.is_variadic);
-                (void)symbol_table.add_symbol(mangled, fn);
+                TypePtr fn = make_function_type(base.type, di.param_types, di.is_variadic, @1.begin.line, @1.begin.column);
+
+                FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
+
+                // TODO fix later about the std::nullopt
+                std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, std::nullopt);
+
+                (void)symbol_table.add_symbol(mangled,
+                                              QualifiedType(fn, Qualifier::NONE),
+                                              parser_state.current_storage,
+                                              std::optional<FunctionMeta>{meta});
+
               }
             } else {
-              TypePtr final_t = apply_ptr_and_arrays(base, di.pointer_levels, di.array_dims);
+              QualifiedType final_t;
+              if(di.pointer_levels > 0) {
+                final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+              }
+              else if(!di.array_dims.empty()) {
+                final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+              }
+              else {
+                final_t = base;
+              }
               add_symbol_if_valid(di, final_t);
             }
           }
@@ -483,21 +504,100 @@ declaration
       {
         size_t ptrs = $3;
         TypePtr base = $2;
-        TypePtr actual = apply_ptr_and_arrays(base, ptrs, {});
-		if (actual) {
-		  (void)type_factory.make($4, symbol_table.get_current_scope_id(), TypeCategory::TYPEDEF, TypeQualifier::NONE, TypedefType(actual));
-		}
+        if (base){
+          QualifiedType actual = apply_ptr(QualifiedType(base, Qualifier::NONE), ptrs, @1.begin.line, @1.begin.column);
+          (void)unwrap_type_or_error(type_factory.make<TypedefType>($4, actual), "typedef", @1.begin.line, @1.begin.column);
+        }
         parser_state.reset_decl();
       }
     ;
 
 declaration_specifiers
-  : storage_class_specifier declaration_specifiers { $$ = $2; parser_state.current_decl_base_type=$$; }
+  : storage_class_specifier declaration_specifiers 
+    { 
+      $$ = $2; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
   | storage_class_specifier { $$ = nullptr; }
-  | type_specifier declaration_specifiers { $$ = $1 ? $1 : $2; parser_state.current_decl_base_type=$$; }
-  | type_specifier { $$ = $1; parser_state.current_decl_base_type=$$; }
-  | type_qualifier declaration_specifiers { $$ = $2; parser_state.current_decl_base_type=$$; }
-  | type_qualifier { $$ = nullptr; }
+  | type_specifier declaration_specifiers 
+    { 
+      $$ = $1 ? $1 : $2; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
+  | type_specifier 
+    { 
+      $$ = $1; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
+  | type_qualifier declaration_specifiers 
+    { 
+      $$ = $2; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
+  | type_qualifier 
+    { 
+      $$ = nullptr; 
+    }
   ;
 
 storage_class_specifier
@@ -505,7 +605,6 @@ storage_class_specifier
       {
         parser_state.current_storage = StorageClass::STATIC;
       }
-    // | TYPEDEF
     ;
 
 init_declarator_list
@@ -520,15 +619,26 @@ init_declarator
       {
         $$ = $1;
         const DeclaratorInfo &di = $1;
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
-          TypePtr final_t = apply_ptr_and_arrays(base, di.pointer_levels, di.array_dims);
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
+          QualifiedType final_t;
+
+          if(di.pointer_levels > 0){
+            final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+          }
+          else if(!di.array_dims.empty()){
+            final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+          }
+          else {
+            final_t = base;
+          }
+
           add_symbol_if_valid(di, final_t);
+
           if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
             if (!di.name.empty()) {
-              if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-                (*cls).fields[di.name] = type_access(parser_state.current_access, final_t);
-              }
+              auto mi = MemberInfo{final_t, parser_state.current_access, false};
+              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
             }
           }
         }
@@ -537,15 +647,26 @@ init_declarator
       {
         $$ = $1;
         const DeclaratorInfo &di = $1;
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
-          TypePtr final_t = apply_ptr_and_arrays(base, di.pointer_levels, di.array_dims);
+        QualifiedType base = parser_state.current_decl_base_type;
+
+        if (base.type) {
+          QualifiedType final_t;
+          if(di.pointer_levels > 0){
+            final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+          }
+          else if(!di.array_dims.empty()){
+            final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+          }
+          else {
+            final_t = base;
+          }
+
           add_symbol_if_valid(di, final_t);
+
           if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
             if (!di.name.empty()) {
-              if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-                (*cls).fields[di.name] = type_access(parser_state.current_access, final_t);
-              }
+              auto mi = MemberInfo{final_t, parser_state.current_access, false};
+              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
             }
           }
         }
@@ -569,26 +690,28 @@ type_specifier
       }
     | TYPE_NAME
       {
-        auto opt = type_factory.lookup_type($1, symbol_table.get_scope_chain());
-        if (opt.has_value()) { $$ = opt.value(); parser_state.current_decl_base_type = $$; }
-		else {
-		  std::cerr << "Error: unknown type name '" << $1 << "'\n";
-		  $$ = nullptr;
-		}
+        // TYPE_NAME tokens are typedef names, which are stored with "typedef " prefix
+        std::string typedef_name = "typedef " + $1;
+        auto opt = type_factory.lookup(typedef_name);
+        if (opt.has_value()) {
+          $$ = opt.value();
+          parser_state.current_decl_base_type = $$;
+        }
+        else {
+          parser_add_error(@1.begin.line, @1.begin.column, "unknown type name '" + $1 + "'");
+          $$ = nullptr;
+        }
       }
     ;
 
 struct_or_union_specifier
     : struct_or_union IDENTIFIER OPEN_BRACE_OP struct_declaration_list CLOSE_BRACE_OP
       {
-        std::string name = ($1 == TypeCategory::STRUCT ? std::string("struct ") : std::string("union ")) + $2;
+        std::string tag = $2;
+        bool is_union = ($1 == "union");
         // Create the aggregate type in the current (outer) scope
-        if ($1 == TypeCategory::STRUCT) {
-          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType($4));
-        } else {
-          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType($4));
-        }
-        // Create a dedicated member scope and add fields as symbols
+        $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
+        // Create a dedicated member scope and add members as symbols
         symbol_table.enter_scope();
         for (const auto &kv : $4) {
           symbol_table.add_symbol(kv.first, kv.second);
@@ -598,13 +721,24 @@ struct_or_union_specifier
     | struct_or_union OPEN_BRACE_OP struct_declaration_list CLOSE_BRACE_OP
       {
         std::ostringstream os;
-        if ($1 == TypeCategory::STRUCT) {
+
+        TypePtr rec;
+        if ($1 == "struct") {
           os << "<anon-struct@" << symbol_table.get_current_scope_id() << ":" << (anon_struct_counter++) << ">";
-          $$ = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType($3));
+          rec = unwrap_type_or_error(type_factory.make<RecordType>(os.str(), false, true), "anonymous struct", @1.begin.line, @1.begin.column);
         } else {
           os << "<anon-union@" << symbol_table.get_current_scope_id() << ":" << (anon_union_counter++) << ">";
-          $$ = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType($3));
+          rec = unwrap_type_or_error(type_factory.make<RecordType>(os.str(), true, true), "anonymous union", @1.begin.line, @1.begin.column);
         }
+
+        // Add fields to the RecordType
+        auto record_type = std::static_pointer_cast<RecordType>(rec);
+        for (const auto &kv : $3) {
+          record_type->add_field(kv.first, kv.second);
+        }
+
+        $$ = rec;
+
         symbol_table.enter_scope();
         for (const auto &kv : $3) {
           symbol_table.add_symbol(kv.first, kv.second);
@@ -613,33 +747,31 @@ struct_or_union_specifier
       }
     | struct_or_union IDENTIFIER
       {
-        std::string name = ($1 == TypeCategory::STRUCT ? std::string("struct ") : std::string("union ")) + $2;
-        // Try to find an existing type in the scope chain; otherwise create a forward declaration
-        auto found = type_factory.lookup_type(name, symbol_table.get_scope_chain());
+        // Tag name without "struct"/"union" prefix (debug_name() adds it)
+        std::string tag = $2;
+        std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
+        bool is_union = ($1 == "union");
+
+        // Try to find an existing type globally
+        auto found = type_factory.lookup(full_name);
         if (found.has_value()) {
           $$ = found.value();
         } else {
-          if ($1 == TypeCategory::STRUCT) {
-            $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType{});
-          } else {
-            $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType{});
-          }
+          // Type doesn't exist - create a forward declaration
+          $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, false), "struct/union forward declaration", @1.begin.line, @2.begin.column);
         }
       }
-	| struct_or_union IDENTIFIER OPEN_BRACE_OP CLOSE_BRACE_OP // to allow empty structs/unions
+	  | struct_or_union IDENTIFIER OPEN_BRACE_OP CLOSE_BRACE_OP // to allow empty structs/unions
       {
-        std::string name = ($1 == TypeCategory::STRUCT ? std::string("struct ") : std::string("union ")) + $2;
-        if ($1 == TypeCategory::STRUCT) {
-          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::STRUCT, TypeQualifier::NONE, StructType{});
-        } else {
-          $$ = type_factory.make(name, symbol_table.get_current_scope_id(), TypeCategory::UNION, TypeQualifier::NONE, UnionType{});
-        }
+        std::string tag = $2;
+        bool is_union = ($1 == "union");
+        $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "empty struct/union", @1.begin.line, @2.begin.column);
       }
     ;
 
 struct_or_union
-    : STRUCT  { $$ = TypeCategory::STRUCT; /* context can be tracked if needed */ }
-    | UNION   { $$ = TypeCategory::UNION; }
+    : STRUCT  { $$ = "struct"; /* context can be tracked if needed */ }
+    | UNION   { $$ = "union"; }
     ;
 
 struct_declaration_list
@@ -657,19 +789,26 @@ struct_declaration_list
 struct_declaration
     : specifier_qualifier_list SEMICOLON_OP
       {
-        $$ = std::unordered_map<std::string, TypePtr>{};
+        $$ = std::unordered_map<std::string, QualifiedType>{};
       }
     | specifier_qualifier_list struct_declarator_list SEMICOLON_OP
       {
-        $$ = std::unordered_map<std::string, TypePtr>{};
-        TypePtr base = $1;
+        $$ = std::unordered_map<std::string, QualifiedType>{};
+        auto base = $1;
         if (base) {
           for (const auto &di : $2) {
             if (!di.name.empty()) {
-              TypePtr field_t = apply_ptr_and_arrays(base, di.pointer_levels, di.array_dims);
-              if (field_t) {
-                $$[di.name] = field_t;
+              QualifiedType final_t;
+
+              if(di.pointer_levels){
+                final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
               }
+              else{
+                final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+              }
+
+              // TODO handle errors
+              $$[di.name] = final_t;
             }
           }
         }
@@ -702,40 +841,39 @@ struct_declarator
 enum_specifier
     : ENUM IDENTIFIER OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
-        std::string enum_name = "enum " + $2;
-        TypePtr t = type_factory.make(enum_name, symbol_table.get_current_scope_id(),
-                            TypeCategory::ENUM, TypeQualifier::NONE, EnumType{});
-        std::unordered_set<EnumConstant, EnumConstant::Hash> values;
+        std::string tag = $2;
+        TypePtr t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
+
         int64_t v = 0;
         for (const auto& nm : $4) {
-          values.insert(EnumConstant(v, t));
-			type_factory.make(nm, symbol_table.get_current_scope_id(), TypeCategory::ENUM_CONSTANT, TypeQualifier::NONE, EnumConstant(v, t));
-		  ++v;
+          std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
+          v++;
         }
-        t->info = EnumType(std::move(values));
         $$ = t;
       }
     | ENUM OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
         std::ostringstream os;
         os << "<anon-enum@" << symbol_table.get_current_scope_id() << ":" << (anon_enum_counter++) << ">";
-        TypePtr t = type_factory.make(os.str(), symbol_table.get_current_scope_id(),
-                            TypeCategory::ENUM, TypeQualifier::NONE, EnumType{});
-        std::unordered_set<EnumConstant, EnumConstant::Hash> values;
+        TypePtr t = unwrap_type_or_error(type_factory.make<EnumType>(os.str(), true), "anonymous enum", @1.begin.line, @1.begin.column);
         int64_t v = 0;
         for (const auto& nm : $3) {
-          values.insert(EnumConstant(v, t));
-		  type_factory.make(nm, symbol_table.get_current_scope_id(), TypeCategory::ENUM_CONSTANT, TypeQualifier::NONE, EnumConstant(v, t));
+          std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
+          v++;
         }
-        t->info = EnumType(std::move(values));
         $$ = t;
       }
     | ENUM IDENTIFIER
       {
-        std::string enum_name = "enum " + $2;
-        TypePtr t = type_factory.make(enum_name, symbol_table.get_current_scope_id(),
-                            TypeCategory::ENUM, TypeQualifier::NONE, EnumType{});
-        $$ = t;
+        std::string tag = $2;
+        std::string full_name = "enum " + tag;
+        // Try to find existing enum globally; otherwise create a forward declaration
+        auto found = type_factory.lookup(full_name);
+        if (found.has_value()) {
+          $$ = found.value();
+        } else {
+          $$ = unwrap_type_or_error(type_factory.make<EnumType>(tag, false), "enum forward declaration", @1.begin.line, @2.begin.column);
+        }
       }
     ;
 
@@ -760,9 +898,9 @@ enumerator
 
 type_qualifier
     : CONST
-      { parser_state.current_decl_qualifiers.push_back(TypeQualifier::CONST); }
+      { parser_state.current_decl_qualifiers.push_back(Qualifier::CONST); }
     | VOLATILE
-      { parser_state.current_decl_qualifiers.push_back(TypeQualifier::VOLATILE); }
+      { parser_state.current_decl_qualifiers.push_back(Qualifier::VOLATILE); }
     ;
 
 declarator
@@ -790,11 +928,11 @@ direct_declarator
         $$ = $1;
         $$.array_dims.push_back(0);
       }
-    | direct_declarator OPEN_BRACKET_OP constant_expression CLOSE_BRACKET_OP
+    | direct_declarator OPEN_BRACKET_OP INT_LITERAL CLOSE_BRACKET_OP
       {
         $$ = $1;
-        // For now, we don't evaluate constant_expression; use 0 placeholder.
-        $$.array_dims.push_back(0);
+        // TODO: add support for constant expressions (low-priority)
+        $$.array_dims.push_back($3);
       }
     | direct_declarator OPEN_PAREN_OP CLOSE_PAREN_OP
       {
@@ -807,9 +945,9 @@ direct_declarator
         $$ = $1;
         $$.is_function = true;
         $$.has_params = true;
-		$$.param_types = $3.types;
-		$$.param_names = $3.names;
-		$$.is_variadic = $3.variadic;
+		    $$.param_types = $3.types;
+		    $$.param_names = $3.names;
+		    $$.is_variadic = $3.variadic;
       }
     ;
 
@@ -859,9 +997,20 @@ parameter_declaration
     : declaration_specifiers declarator
       {
         $$ = ParamDeclInfo{};
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
-          TypePtr t = apply_ptr_and_arrays(base, $2.pointer_levels, $2.array_dims);
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
+          QualifiedType t;
+
+          if($2.pointer_levels){
+            t = apply_ptr(base, $2.pointer_levels, @1.begin.line, @2.begin.column);
+          }
+          else if(!$2.array_dims.empty()){
+            t = apply_arrays(base, $2.array_dims, @1.begin.line, @2.begin.column);
+          }
+          else {
+            t = base;
+          }
+
           $$.type = t;
         }
         $$.name = $2.name; // may be empty if unnamed
@@ -870,8 +1019,8 @@ parameter_declaration
     | declaration_specifiers abstract_declarator
       {
         $$ = ParamDeclInfo{};
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
           $$.type = base;
         }
         $$.name = std::string{};
@@ -911,9 +1060,9 @@ type_name
     ;
 
 initializer
-  : assignment_expression
-  | OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
-  | OPEN_BRACE_OP initializer_list COMMA_OP CLOSE_BRACE_OP
+    : assignment_expression
+    | OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
+    | OPEN_BRACE_OP initializer_list COMMA_OP CLOSE_BRACE_OP
     ;
 
 initializer_list
@@ -944,17 +1093,17 @@ statement
     | selection_statement
     | iteration_statement
     | jump_statement
-	| declaration   // to allow declarations as statements for gotos
+	  | declaration   // to allow declarations as statements for gotos
     ;
 
 labeled_statement
     : IDENTIFIER COLON_OP statement {
-		auto label=type_factory.lookup_type($1, symbol_table.get_scope_chain());
-		if (!label.has_value()) {
-		  label = type_factory.make("label", 0, TypeCategory::LABEL, TypeQualifier::NONE, LabelType{});
-		}
-		(void)symbol_table.add_symbol($1, label.value());
-	}
+        auto label=type_factory.lookup_by_scope($1, symbol_table.get_scope_chain());
+        if (!label.has_value()) {
+          label = unwrap_type_or_error(type_factory.make<BuiltinType>(BuiltinTypeKind::LABEL), "label", @1.begin.line, @1.begin.column);
+        }
+        (void)symbol_table.add_symbol($1, QualifiedType(label.value(), Qualifier::NONE));
+	  }
     | CASE constant_expression COLON_OP statement
     | DEFAULT COLON_OP statement
     ;
@@ -986,7 +1135,7 @@ selection_statement
 
 iteration_statement
     : WHILE OPEN_PAREN_OP expression CLOSE_PAREN_OP statement
-	| UNTIL OPEN_PAREN_OP expression CLOSE_PAREN_OP statement
+	  | UNTIL OPEN_PAREN_OP expression CLOSE_PAREN_OP statement
     | DO statement WHILE OPEN_PAREN_OP expression CLOSE_PAREN_OP SEMICOLON_OP
     | FOR OPEN_PAREN_OP expression_statement expression_statement CLOSE_PAREN_OP statement
     | FOR OPEN_PAREN_OP expression_statement expression_statement expression CLOSE_PAREN_OP statement
@@ -1014,15 +1163,19 @@ external_declaration
 
 function_definition
     : declaration_specifiers declarator compound_statement {
-		TypePtr base = $1;
+		auto base = $1;
 		if (base) {
 		  const DeclaratorInfo &di = $2;
 			if (di.is_function && !di.name.empty()) {
-			TypePtr fn = make_function_type(base, di.param_types, di.param_names, di.is_variadic, nullptr);
-			std::string mangled = mangle_function_name(di.name, di.param_types, di.is_variadic);
-			(void)symbol_table.add_symbol(mangled, fn);
+            TypePtr fn = make_function_type(base, di.param_types, di.is_variadic, @1.begin.line, @2.begin.column);
+            FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
+            std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta , std::nullopt);
+            (void)symbol_table.add_symbol(mangled,
+                                          QualifiedType(fn, Qualifier::NONE),
+                                          parser_state.current_storage,
+                                          std::optional<FunctionMeta>{meta});
 			} else {
-				std::cerr << "Error: function definition requires function declarator\n";
+				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires function declarator");
 			}
 		}
 		parser_state.reset_decl();
@@ -1040,54 +1193,46 @@ class_specifier_tail
     {
       std::ostringstream os;
       os << "<anon-class@" << symbol_table.get_current_scope_id() << ":" << (anon_class_counter++) << ">";
-      parser_state.current_class_type = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
-      parser_state.current_access = AccessSpecifier::PRIVATE; // default for class
+      parser_state.current_class_type = std::static_pointer_cast<ClassType>(unwrap_type_or_error(type_factory.make<ClassType>(os.str(), parser_state.parent_class_type, parser_state.inherited_access, false), "anonymous class", @1.begin.line, @1.begin.column));
+      parser_state.current_access = Access::PRIVATE; // default for class
     }
     class_open_brace class_member_list class_close_brace
     {
-      if (parser_state.parent_class_type) {
-        if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-          cls->set_base_class(parser_state.parent_class_type, parser_state.inherited_access);
-        }
-      }
       $$ = parser_state.current_class_type;
       parser_state.current_class_type = nullptr;
       parser_state.parent_class_type = nullptr;
     }
   | IDENTIFIER inheritance_opt
     {
-      std::string full_name = std::string("class ") + $1;
-      auto found = type_factory.lookup_type(full_name, symbol_table.get_scope_chain());
+      std::string name = $1;
+      std::string full_name = std::string("class ") + name;
+      auto found = type_factory.lookup(full_name);
       if (found.has_value()) {
-        parser_state.current_class_type = found.value();
+        parser_state.current_class_type = std::static_pointer_cast<ClassType>(found.value());
       } else {
-        parser_state.current_class_type = type_factory.make(full_name, symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
+        parser_state.current_class_type = std::static_pointer_cast<ClassType>(unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class definition", @1.begin.line, @1.begin.column));
       }
-      parser_state.current_access = AccessSpecifier::PRIVATE;
+      parser_state.current_access = Access::PRIVATE;
     }
     class_open_brace class_member_list class_close_brace
     {
-      if (parser_state.parent_class_type) {
-        if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-          cls->set_base_class(parser_state.parent_class_type, parser_state.inherited_access);
-        }
-      }
       $$ = parser_state.current_class_type;
       parser_state.current_class_type = nullptr;
       parser_state.parent_class_type = nullptr;
     }
   | IDENTIFIER inheritance_opt
     {
-      std::string full_name = std::string("class ") + $1;
-      auto found = type_factory.lookup_type(full_name, symbol_table.get_scope_chain());
+      std::string name = $1;
+      std::string full_name = std::string("class ") + name;
+      auto found = type_factory.lookup(full_name);
       if (found.has_value()) {
         $$ = found.value();
       } else {
-        $$ = type_factory.make(full_name, symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
+        $$ = unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class forward declaration", @1.begin.line, @1.begin.column);
       }
 
       if (parser_state.parent_class_type) {
-        std::cerr << "Error: inheritance list provided without class definition for '" << full_name << "'\n";
+        parser_add_error(@1.begin.line, @1.begin.column, "inheritance list provided without class definition for '" + full_name + "'");
       }
       parser_state.parent_class_type = nullptr;
     }
@@ -1096,12 +1241,7 @@ class_specifier_tail
       // empty anonymous class
       std::ostringstream os;
       os << "<anon-class@" << symbol_table.get_current_scope_id() << ":" << (anon_class_counter++) << ">";
-      TypePtr t = type_factory.make(os.str(), symbol_table.get_current_scope_id(), TypeCategory::CLASS, TypeQualifier::NONE, ClassType{});
-      if (parser_state.parent_class_type) {
-        if (auto cls = std::get_if<ClassType>(&t->info)) {
-          cls->set_base_class(parser_state.parent_class_type, parser_state.inherited_access);
-        }
-      }
+      TypePtr t = unwrap_type_or_error(type_factory.make<ClassType>(os.str(), parser_state.parent_class_type, parser_state.inherited_access, false), "empty anonymous class", @1.begin.line, @1.begin.column);
       $$ = t;
       parser_state.parent_class_type = nullptr;
     } // to allow empty classes
@@ -1118,24 +1258,26 @@ inheritance_list
 
 inheritance_specifier
     : access_specifier IDENTIFIER {
-    std::string full = std::string("class ") + $2;
-    auto opt = type_factory.lookup_type(full, symbol_table.get_scope_chain());
-    if (opt.has_value() && opt.value()->category == TypeCategory::CLASS) {
-      parser_state.parent_class_type = opt.value();
+    std::string name = $2;
+    std::string full = std::string("class ") + name;
+    auto opt = type_factory.lookup(full);
+    if (opt.has_value() && opt.value()->kind == TypeKind::CLASS) {
+      parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
       parser_state.inherited_access = $1;
     } else {
-      std::cerr << "Error: unknown class name '" << $2 << "' for inheritance\n";
+      parser_add_error(@2.begin.line, @2.begin.column, "unknown class name '" + name + "' for inheritance");
       parser_state.parent_class_type = nullptr;
     }
 	}
     | IDENTIFIER {
-    std::string full = std::string("class ") + $1;
-    auto opt = type_factory.lookup_type(full, symbol_table.get_scope_chain());
-    if (opt.has_value() && opt.value()->category == TypeCategory::CLASS) {
-      parser_state.parent_class_type = opt.value();
-      parser_state.inherited_access = AccessSpecifier::PRIVATE; // default
+    std::string name = $1;
+    std::string full = std::string("class ") + name;
+    auto opt = type_factory.lookup(full);
+    if (opt.has_value() && opt.value()->kind == TypeKind::CLASS) {
+      parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
+      parser_state.inherited_access = Access::PRIVATE; // default
     } else {
-      std::cerr << "Error: unknown class name '" << $1 << "' for inheritance\n";
+      parser_add_error(@1.begin.line, @1.begin.column, "unknown class name '" + name + "' for inheritance");
       parser_state.parent_class_type = nullptr;
     }
 	}
@@ -1156,9 +1298,9 @@ class_member
     ;
 
 access_specifier
-  : PUBLIC    { $$ = AccessSpecifier::PUBLIC; }
-  | PRIVATE   { $$ = AccessSpecifier::PRIVATE; }
-  | PROTECTED { $$ = AccessSpecifier::PROTECTED; }
+  : PUBLIC    { $$ = Access::PUBLIC; }
+  | PRIVATE   { $$ = Access::PRIVATE; }
+  | PROTECTED { $$ = Access::PROTECTED; }
   ;
 
 function_declaration_or_definition
@@ -1168,20 +1310,32 @@ function_declaration_or_definition
   		TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
-            TypePtr fn = make_function_type(ret, di.param_types, di.param_names, di.is_variadic, parser_state.current_class_type);
-            std::string mangled = mangle_function_name(di.name, di.param_types, di.is_variadic);
-            if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-              (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-            }
-            symbol_table.add_symbol(mangled, fn);
+            TypePtr fn = make_function_type(ret, di.param_types, di.is_variadic, @1.begin.line, @2.begin.column);
+            FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
+
+            std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+
+            symbol_table.add_symbol(mangled,
+                                    QualifiedType(fn, Qualifier::NONE),
+                                    parser_state.current_storage,
+                                    std::optional<FunctionMeta>{meta});
           } else {
-            TypePtr final_t = apply_ptr_and_arrays(ret, di.pointer_levels, di.array_dims);
-            if (final_t) {
-              symbol_table.add_symbol(di.name, final_t);
-              if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-                (*cls).fields[di.name] = type_access(parser_state.current_access, final_t);
-              }
+            QualifiedType final_t;
+            if(di.pointer_levels){
+              final_t = apply_ptr(ret, di.pointer_levels, @1.begin.line, @2.begin.column);
             }
+            else{
+              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @1.begin.column);
+            }
+
+            // TODO error handling
+            symbol_table.add_symbol(di.name, final_t);
+            auto mi = MemberInfo{final_t, parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+
           }
         }
         parser_state.reset_decl();
@@ -1192,20 +1346,32 @@ function_declaration_or_definition
   		TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
-            TypePtr fn = make_function_type(ret, di.param_types, di.param_names, di.is_variadic, parser_state.current_class_type);
-            std::string mangled = mangle_function_name(di.name, di.param_types, di.is_variadic);
-            if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-              (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-            }
-            symbol_table.add_symbol(mangled, fn);
+            TypePtr fn = make_function_type(ret, di.param_types, di.is_variadic, @1.begin.line, @2.begin.column);
+
+            FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
+
+            std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+
+            symbol_table.add_symbol(mangled,
+                                    QualifiedType(fn, Qualifier::NONE),
+                                    parser_state.current_storage,
+                                    std::optional<FunctionMeta>{meta});
           } else {
-            TypePtr final_t = apply_ptr_and_arrays(ret, di.pointer_levels, di.array_dims);
-            if (final_t) {
-              symbol_table.add_symbol(di.name, final_t);
-              if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-                (*cls).fields[di.name] = type_access(parser_state.current_access, final_t);
-              }
+            QualifiedType final_t;
+            if(di.pointer_levels){
+              final_t = apply_ptr(ret, di.pointer_levels, @1.begin.line, @2.begin.column);
             }
+            else{
+              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @1.begin.column);
+            }
+
+            // TODO error handling
+            symbol_table.add_symbol(di.name, final_t);
+            auto mi = MemberInfo{final_t, parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
           }
         }
         parser_state.reset_decl();
@@ -1214,181 +1380,200 @@ function_declaration_or_definition
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           // Optional check: name matches class
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
           TypePtr ret = builtin_type("void");
           const auto &plist = $3;
-          TypePtr fn = make_function_type_ex(ret, plist.types, plist.names, plist.variadic,
-                                             FunctionType::FunctionKind::CONSTRUCTOR,
-                                             parser_state.current_class_type);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::CONSTRUCTOR,
-        parser_state.current_class_type,
-        /*op*/ std::string{},
-        plist.types,
-        plist.variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+
+          TypePtr fn = make_function_type(ret, plist.types, plist.variadic, @1.begin.line, @1.begin.column);
+          FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $1,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
       }
   | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
           TypePtr ret = builtin_type("void");
-          std::vector<TypePtr> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr fn = make_function_type_ex(ret, params, names, variadic,
-                                             FunctionType::FunctionKind::CONSTRUCTOR,
-                                             parser_state.current_class_type);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::CONSTRUCTOR,
-        parser_state.current_class_type,
-        /*op*/ std::string{},
-        params,
-        variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
+          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @1.begin.column);
+          FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $1,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
       }
   | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $2;
           if (expected != got) {
             std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
           }
           TypePtr ret = builtin_type("void");
-          std::vector<TypePtr> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr fn = make_function_type_ex(ret, params, names, variadic,
-                                             FunctionType::FunctionKind::DESTRUCTOR,
-                                             parser_state.current_class_type);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::DESTRUCTOR,
-        parser_state.current_class_type,
-        /*op*/ std::string{},
-        params,
-        variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
+          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @2.begin.column);
+
+          FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $2,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type)
+            );
+
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
       }
   | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
       {
-		std::string expected = parser_state.current_class_type ? parser_state.current_class_type->name : std::string{};
+		std::string expected = parser_state.current_class_type ? parser_state.current_class_type->debug_name() : std::string{};
 		std::string got = std::string("class ") + $1;
 		if (expected != got) {
 		  std::cerr << "Warning: operator overload function name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
 		}
-		TypePtr ret = type_factory.lookup_type($1, symbol_table.get_scope_chain()).value_or(nullptr);
+		TypePtr ret = type_factory.lookup($1).value_or(nullptr);
         if (ret && !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           const auto &plist = $5;
           std::string opname = $3;
-          TypePtr fn = make_function_type_ex(ret, plist.types, plist.names, plist.variadic,
-                                             FunctionType::FunctionKind::OPERATOR_OVERLOAD,
-                                             parser_state.current_class_type,
-                                             opname);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::OPERATOR_OVERLOAD,
-        parser_state.current_class_type,
-        opname,
-        plist.types,
-        plist.variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-            // Also record in operator_overloads map (best-effort)
-            (*cls).add_operator_overload(opname, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+          TypePtr fn = make_function_type(ret, plist.types, plist.variadic, @1.begin.line, @1.begin.column);
+          FunctionMeta meta(FunctionKind::OPERATOR, plist.names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $1,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
         parser_state.reset_decl();
       }
     | /* constructor decl */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP SEMICOLON_OP
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
           const auto &plist = $3;
           TypePtr ret = builtin_type("void");
-          TypePtr fn = make_function_type_ex(ret, plist.types, plist.names, plist.variadic,
-                                             FunctionType::FunctionKind::CONSTRUCTOR,
-                                             parser_state.current_class_type);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::CONSTRUCTOR,
-        parser_state.current_class_type,
-        /*op*/ std::string{},
-        plist.types,
-        plist.variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+          TypePtr fn = make_function_type(ret, plist.types, plist.variadic, @1.begin.line, @1.begin.column);
+          FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $1,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
       }
     | /* constructor decl no params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
-          std::vector<TypePtr> params; std::vector<std::string> names; bool variadic = false;
+          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
           TypePtr ret = builtin_type("void");
-          TypePtr fn = make_function_type_ex(ret, params, names, variadic,
-                                             FunctionType::FunctionKind::CONSTRUCTOR,
-                                             parser_state.current_class_type);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::CONSTRUCTOR,
-        parser_state.current_class_type,
-        /*op*/ std::string{},
-        params,
-        variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @1.begin.column);
+          FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $1,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
       }
     | /* destructor decl */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $2;
           if (expected != got) {
             std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
           }
-          std::vector<TypePtr> params; std::vector<std::string> names; bool variadic = false;
+          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
           TypePtr ret = builtin_type("void");
-          TypePtr fn = make_function_type_ex(ret, params, names, variadic,
-                                             FunctionType::FunctionKind::DESTRUCTOR,
-                                             parser_state.current_class_type);
-      std::string mangled = mangle_special_function_name(
-        FunctionType::FunctionKind::DESTRUCTOR,
-        parser_state.current_class_type,
-        /*op*/ std::string{},
-        params,
-        variadic);
-          if (auto cls = std::get_if<ClassType>(&parser_state.current_class_type->info)) {
-            (*cls).methods[mangled] = type_access(parser_state.current_access, fn);
-          }
-          symbol_table.add_symbol(mangled, fn);
+
+          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @2.begin.column);
+
+          FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
+
+          std::string mangled = mangle_function_name(
+            $2,
+            *std::static_pointer_cast<FunctionType>(fn),
+            meta,
+            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+
+          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+          symbol_table.add_symbol(mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  parser_state.current_storage,
+                                  std::optional<FunctionMeta>{meta});
         }
       }
     ;
@@ -1405,9 +1590,9 @@ operator_token
     | EQ_OP           { $$ = "=="; }
     | NE_OP           { $$ = "!="; }
     | LT_OP           { $$ = "<"; }
-	| LE_OP           { $$ = "<="; }
-	| GT_OP           { $$ = ">"; }
-	| GE_OP           { $$ = ">="; }
+	  | LE_OP           { $$ = "<="; }
+	  | GT_OP           { $$ = ">"; }
+	  | GE_OP           { $$ = ">="; }
     | LSHIFT_OP       { $$ = "<<"; }
     | RSHIFT_OP       { $$ = ">>"; }
     | INCREMENT_OP    { $$ = "++"; }
@@ -1427,5 +1612,5 @@ operator_token
 %%
 
 void yy::Parser::error(const location_type& loc, const std::string& msg) {
-    std::cerr << "Parse error at " << loc << ": " << msg << '\n';
+    parser_add_error(loc.begin.line, loc.begin.column, msg);
 }

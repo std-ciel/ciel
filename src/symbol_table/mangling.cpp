@@ -1,4 +1,5 @@
 #include "symbol_table/mangling.hpp"
+#include <optional>
 #include <unordered_map>
 
 static const std::unordered_map<std::string, std::string>

@@ -32,25 +32,28 @@ void SymbolTable::exit_scope()
     current_scope_level--;
 }
 
-bool SymbolTable::add_symbol(const std::string &name,
-                             QualType type,
+Result<bool, SymbolTableError> SymbolTable::add_symbol(const std::string &name,
+                             QualifiedType type,
                              StorageClass storage_class,
                              std::optional<FunctionMeta> function_meta)
 {
     auto scope_iter = scopes.find(current_scope_id);
     if (scope_iter == scopes.end()) {
-        return false;
+        return SymbolTableError::INVALID_SCOPE;
     }
 
-    if (type.type->kind == TypeKind::Function) {
+    if (!type.type) {
+        return SymbolTableError::INVALID_TYPE;
+    }
+
+    if (type.type->kind == TypeKind::FUNCTION) {
         if (!function_meta.has_value()) {
-            // TODO: add error handling
-            return false;
+            return SymbolTableError::MISSING_FUNCTION_META;
         }
     }
     Scope &scope = scope_iter->second;
     if (scope.symbols.find(name) != scope.symbols.end()) {
-        return false;
+        return SymbolTableError::SYMBOL_ALREADY_EXISTS;
     }
 
     if (current_scope_id == GLOBAL_SCOPE_ID &&

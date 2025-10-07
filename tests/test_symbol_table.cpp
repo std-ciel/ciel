@@ -97,37 +97,36 @@ TEST_F(SymbolTableTest, ExitScopeAtRoot)
     EXPECT_EQ(scope_chain.size(), 1);
 }
 
-// Test symbol addition with QualType
-TEST_F(SymbolTableTest, AddSymbolWithQualType)
+// Test symbol addition with QualifiedType
+TEST_F(SymbolTableTest, AddSymbolWithQualifiedType)
 {
     auto int_type = type_factory->lookup("int");
     ASSERT_TRUE(int_type.has_value());
 
-    // Create a QualType from the TypePtr
-    QualType int_qual(int_type.value(), Qualifier::Q_NONE);
+    // Create a QualifiedType from the TypePtr
+    QualifiedType int_qual(int_type.value(), Qualifier::NONE);
 
     // Add a symbol
-    bool result = symbol_table->add_symbol("x", int_qual);
-    EXPECT_TRUE(result);
+    auto result = symbol_table->add_symbol("x", int_qual);
+    EXPECT_TRUE(result.is_ok());
 
     // Try to add the same symbol again (should fail)
     result = symbol_table->add_symbol("x", int_qual);
-    EXPECT_FALSE(result);
+    EXPECT_FALSE(result.is_ok());
 
     // Add a different symbol
     result = symbol_table->add_symbol("y", int_qual);
-    EXPECT_TRUE(result);
+    EXPECT_TRUE(result.is_ok());
 }
 
 // Test symbol addition with null type (empty TypePtr)
 TEST_F(SymbolTableTest, AddSymbolWithInvalidType)
 {
-    // Create an empty QualType with nullptr TypePtr
+    // Create an empty QualifiedType with nullptr TypePtr
     TypePtr null_type = nullptr;
-    QualType invalid_qual(null_type, Qualifier::Q_NONE);
-    bool result = symbol_table->add_symbol("invalid", invalid_qual);
-    // This might succeed depending on implementation - the API doesn't prevent
-    // null types Just test that it doesn't crash
+    QualifiedType invalid_qual(null_type, Qualifier::NONE);
+    auto result = symbol_table->add_symbol("invalid", invalid_qual);
+    ASSERT_FALSE(result.is_ok());
 }
 
 // Test symbol lookup
@@ -138,9 +137,9 @@ TEST_F(SymbolTableTest, SymbolLookup)
     ASSERT_TRUE(int_type.has_value());
     ASSERT_TRUE(float_type.has_value());
 
-    // Create QualTypes
-    QualType int_qual(int_type.value(), Qualifier::Q_NONE);
-    QualType float_qual(float_type.value(), Qualifier::Q_NONE);
+    // Create QualifiedTypes
+    QualifiedType int_qual(int_type.value(), Qualifier::NONE);
+    QualifiedType float_qual(float_type.value(), Qualifier::NONE);
 
     // Add symbols
     symbol_table->add_symbol("x", int_qual);
@@ -177,7 +176,7 @@ TEST_F(SymbolTableTest, SymbolLookupAcrossScopes)
     // Add symbol in root scope
     symbol_table->add_symbol(
         "global_var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
 
     // Enter new scope
     symbol_table->enter_scope();
@@ -185,7 +184,7 @@ TEST_F(SymbolTableTest, SymbolLookupAcrossScopes)
     // Add symbol in nested scope
     symbol_table->add_symbol(
         "local_var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
 
     // Should be able to find both symbols
     auto global_symbol = symbol_table->lookup_symbol("global_var");
@@ -220,7 +219,7 @@ TEST_F(SymbolTableTest, SymbolShadowing)
     // Add symbol in outer scope
     symbol_table->add_symbol(
         "var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
 
     // Enter new scope
     symbol_table->enter_scope();
@@ -228,7 +227,7 @@ TEST_F(SymbolTableTest, SymbolShadowing)
     // Add symbol with same name but different type
     symbol_table->add_symbol(
         "var",
-        type_factory->make_qualified(float_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(float_type.value(), Qualifier::NONE));
 
     // Should find the inner scope symbol (float)
     auto symbol = symbol_table->lookup_symbol("var");
@@ -252,7 +251,7 @@ TEST_F(SymbolTableTest, SymbolProperties)
 
     symbol_table->add_symbol(
         "test_var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
 
     auto symbol = symbol_table->lookup_symbol("test_var");
     ASSERT_TRUE(symbol.has_value());
@@ -262,8 +261,8 @@ TEST_F(SymbolTableTest, SymbolProperties)
     EXPECT_EQ(symbol.value()->get_type().type, int_type.value());
     EXPECT_EQ(symbol.value()->get_scope_id(),
               symbol_table->get_current_scope_id());
-    EXPECT_EQ(symbol.value()->get_storage_class(),
-              StorageClass::AUTO); // default
+    // Global symbols default to STATIC storage class
+    EXPECT_EQ(symbol.value()->get_storage_class(), StorageClass::STATIC);
 }
 
 // Test multiple symbols in different scopes
@@ -279,25 +278,25 @@ TEST_F(SymbolTableTest, MultipleSymbolsMultipleScopes)
     // Root scope symbols
     symbol_table->add_symbol(
         "a",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
     symbol_table->add_symbol(
         "b",
-        type_factory->make_qualified(float_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(float_type.value(), Qualifier::NONE));
 
     // Enter scope 1
     symbol_table->enter_scope();
     symbol_table->add_symbol(
         "c",
-        type_factory->make_qualified(char_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(char_type.value(), Qualifier::NONE));
     symbol_table->add_symbol(
         "d",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
 
     // Enter scope 2
     symbol_table->enter_scope();
     symbol_table->add_symbol(
         "e",
-        type_factory->make_qualified(float_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(float_type.value(), Qualifier::NONE));
 
     // All symbols should be accessible
     EXPECT_TRUE(symbol_table->lookup_symbol("a").has_value());
@@ -334,21 +333,21 @@ TEST_F(SymbolTableTest, ComplexTypeSymbols)
     ASSERT_TRUE(int_type.has_value());
 
     // Create pointer type
-    QualType int_qual(int_type.value(), Qualifier::Q_NONE);
+    QualifiedType int_qual(int_type.value(), Qualifier::NONE);
     auto int_ptr = type_factory->get_pointer(int_qual);
 
     // Create array type
     auto int_array = type_factory->get_array(int_qual, 10);
 
     // Add symbols with complex types
-    ASSERT_TRUE(int_ptr.has_value());
-    ASSERT_TRUE(int_array.has_value());
+    ASSERT_TRUE(int_ptr.is_ok());
+    ASSERT_TRUE(int_array.is_ok());
     symbol_table->add_symbol(
         "ptr_var",
-        type_factory->make_qualified(*int_ptr, Qualifier::Q_NONE));
+        type_factory->make_qualified(*int_ptr, Qualifier::NONE));
     symbol_table->add_symbol(
         "array_var",
-        type_factory->make_qualified(*int_array, Qualifier::Q_NONE));
+        type_factory->make_qualified(*int_array, Qualifier::NONE));
 
     // Look them up
     auto ptr_symbol = symbol_table->lookup_symbol("ptr_var");
@@ -357,8 +356,8 @@ TEST_F(SymbolTableTest, ComplexTypeSymbols)
     ASSERT_TRUE(ptr_symbol.has_value());
     ASSERT_TRUE(array_symbol.has_value());
 
-    EXPECT_EQ(ptr_symbol.value()->get_type().type->kind, TypeKind::Pointer);
-    EXPECT_EQ(array_symbol.value()->get_type().type->kind, TypeKind::Array);
+    EXPECT_EQ(ptr_symbol.value()->get_type().type->kind, TypeKind::POINTER);
+    EXPECT_EQ(array_symbol.value()->get_type().type->kind, TypeKind::ARRAY);
 }
 
 // Test edge cases with empty names
@@ -368,9 +367,9 @@ TEST_F(SymbolTableTest, EdgeCasesEmptyNames)
     ASSERT_TRUE(int_type.has_value());
 
     // Try to add symbol with empty name
-    bool result = symbol_table->add_symbol(
+    auto result = symbol_table->add_symbol(
         "",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
     // This might succeed or fail depending on implementation
     // The test documents the behavior
 
@@ -427,14 +426,25 @@ TEST_F(SymbolTableTest, StorageClassFunctionality)
     auto int_type = type_factory->lookup("int");
     ASSERT_TRUE(int_type.has_value());
 
+    // Test global scope: AUTO should become STATIC
     symbol_table->add_symbol(
-        "test_var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
-    auto symbol = symbol_table->lookup_symbol("test_var");
+        "global_var",
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
+    auto global_symbol = symbol_table->lookup_symbol("global_var");
+    ASSERT_TRUE(global_symbol.has_value());
+    // Global symbols with AUTO storage class default to STATIC
+    EXPECT_EQ(global_symbol.value()->get_storage_class(), StorageClass::STATIC);
 
-    ASSERT_TRUE(symbol.has_value());
-    // Default storage class should be AUTO
-    EXPECT_EQ(symbol.value()->get_storage_class(), StorageClass::AUTO);
+    // Test local scope: AUTO should remain AUTO
+    symbol_table->enter_scope();
+    symbol_table->add_symbol(
+        "local_var",
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
+    auto local_symbol = symbol_table->lookup_symbol("local_var");
+    ASSERT_TRUE(local_symbol.has_value());
+    // Local symbols should keep AUTO storage class
+    EXPECT_EQ(local_symbol.value()->get_storage_class(), StorageClass::AUTO);
+    symbol_table->exit_scope();
 }
 
 // Test parent scope relationships
@@ -448,7 +458,7 @@ TEST_F(SymbolTableTest, ParentScopeRelationships)
     // Add symbol to root
     symbol_table->add_symbol(
         "root_var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
     auto root_symbol = symbol_table->lookup_symbol("root_var");
     ASSERT_TRUE(root_symbol.has_value());
 
@@ -458,7 +468,7 @@ TEST_F(SymbolTableTest, ParentScopeRelationships)
 
     symbol_table->add_symbol(
         "child_var",
-        type_factory->make_qualified(int_type.value(), Qualifier::Q_NONE));
+        type_factory->make_qualified(int_type.value(), Qualifier::NONE));
     auto child_symbol = symbol_table->lookup_symbol("child_var");
     ASSERT_TRUE(child_symbol.has_value());
 

@@ -3,21 +3,21 @@
 std::string type_kind_to_string(TypeKind kind)
 {
     switch (kind) {
-    case TypeKind::Builtin:
+    case TypeKind::BUILTIN:
         return "Builtin";
-    case TypeKind::Pointer:
+    case TypeKind::POINTER:
         return "Pointer";
-    case TypeKind::Array:
+    case TypeKind::ARRAY:
         return "Array";
-    case TypeKind::Function:
+    case TypeKind::FUNCTION:
         return "Function";
-    case TypeKind::Record:
+    case TypeKind::RECORD:
         return "Record";
-    case TypeKind::Enum:
+    case TypeKind::ENUM:
         return "Enum";
-    case TypeKind::Class:
+    case TypeKind::CLASS:
         return "Class";
-    case TypeKind::Typedef:
+    case TypeKind::TYPEDEF:
         return "Typedef";
     default:
         return "Unknown";
