@@ -3,6 +3,7 @@
 
 #include "symbol_table/type.hpp"
 #include <memory>
+#include <optional>
 #include <string>
 
 using ScopeID = size_t;
@@ -31,7 +32,7 @@ struct FunctionMeta {
 class Symbol {
   public:
     Symbol(std::string name,
-           QualType type,
+           QualifiedType type,
            StorageClass storage_class,
            ScopeID scope_id,
            ScopeID parent_scope)
@@ -45,7 +46,7 @@ class Symbol {
     {
         return name;
     }
-    QualType get_type() const
+    QualifiedType get_type() const
     {
         return type;
     }
@@ -64,7 +65,7 @@ class Symbol {
 
   private:
     std::string name;
-    QualType type;
+    QualifiedType type;
     StorageClass storage_class = StorageClass::AUTO;
     ScopeID scope_id;
     ScopeID parent_scope;

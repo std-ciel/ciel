@@ -2,8 +2,8 @@ add_subdirectory(googletest)
 include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 
 # Add unit tests for symbol_table and type_factory
-add_executable(unit_tests 
-    test_type_factory.cpp 
+add_executable(unit_tests
+    test_type_factory.cpp
     test_symbol_table.cpp
     test_mangling.cpp
 )

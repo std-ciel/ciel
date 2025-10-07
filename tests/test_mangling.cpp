@@ -46,8 +46,8 @@ class ManglingTest : public ::testing::Test {
     }
 
     std::pair<FunctionType, FunctionMeta>
-    create_function_type(QualType return_type,
-                         std::vector<QualType> params = {},
+    create_function_type(QualifiedType return_type,
+                         std::vector<QualifiedType> params = {},
                          bool variadic = false,
                          FunctionKind kind = FunctionKind::NORMAL)
     {
@@ -56,9 +56,9 @@ class ManglingTest : public ::testing::Test {
         return {std::move(ftype), std::move(meta)};
     }
 
-    QualType qual(TypePtr type, Qualifier q = Qualifier::Q_NONE)
+    QualifiedType qual(TypePtr type, Qualifier q = Qualifier::NONE)
     {
-        return QualType{type, q};
+        return QualifiedType{type, q};
     }
 };
 
@@ -287,11 +287,11 @@ TEST_F(ManglingTest, ComplexParameterTypes)
 {
     // int*
     auto int_ptr = type_factory->make<PointerType>(qual(get_int_type()));
-    ASSERT_TRUE(int_ptr.has_value());
+    ASSERT_TRUE(int_ptr.is_ok());
 
     // int[10]
     auto int_array = type_factory->make<ArrayType>(qual(get_int_type()), 10);
-    ASSERT_TRUE(int_array.has_value());
+    ASSERT_TRUE(int_array.is_ok());
 
     auto [func_type, meta] =
         create_function_type(qual(get_void_type()),
@@ -420,7 +420,7 @@ TEST_F(ManglingTest, DifferentReturnTypes)
 
 TEST_F(ManglingTest, ManyParameters)
 {
-    std::vector<QualType> many_params;
+    std::vector<QualifiedType> many_params;
     std::string expected_params;
 
     for (int i = 0; i < 20; ++i) {
@@ -461,28 +461,28 @@ TEST_F(ManglingTest, ConstQualifiedBasicTypes)
 {
     auto [const_int_func, const_int_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(get_int_type(), Qualifier::Q_CONST)});
+                             {qual(get_int_type(), Qualifier::CONST)});
     std::string const_int_mangled =
         mangle_function_name("func", const_int_func, const_int_func_meta);
     EXPECT_EQ(const_int_mangled, "_Z4funcKi");
 
     auto [const_char_func, const_char_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(get_char_type(), Qualifier::Q_CONST)});
+                             {qual(get_char_type(), Qualifier::CONST)});
     std::string const_char_mangled =
         mangle_function_name("func", const_char_func, const_char_func_meta);
     EXPECT_EQ(const_char_mangled, "_Z4funcKc");
 
     auto [const_bool_func, const_bool_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(get_bool_type(), Qualifier::Q_CONST)});
+                             {qual(get_bool_type(), Qualifier::CONST)});
     std::string const_bool_mangled =
         mangle_function_name("func", const_bool_func, const_bool_func_meta);
     EXPECT_EQ(const_bool_mangled, "_Z4funcKb");
 
     auto [const_float_func, const_float_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(get_float_type(), Qualifier::Q_CONST)});
+                             {qual(get_float_type(), Qualifier::CONST)});
     std::string const_float_mangled =
         mangle_function_name("func", const_float_func, const_float_func_meta);
     EXPECT_EQ(const_float_mangled, "_Z4funcKf");
@@ -493,14 +493,14 @@ TEST_F(ManglingTest, VolatileQualifiedTypes)
 {
     auto [volatile_int_func, volatile_int_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(get_int_type(), Qualifier::Q_VOLATILE)});
+                             {qual(get_int_type(), Qualifier::VOLATILE)});
     std::string volatile_int_mangled =
         mangle_function_name("func", volatile_int_func, volatile_int_func_meta);
     EXPECT_EQ(volatile_int_mangled, "_Z4funcVi");
 
     auto [volatile_char_func, volatile_char_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(get_char_type(), Qualifier::Q_VOLATILE)});
+                             {qual(get_char_type(), Qualifier::VOLATILE)});
     std::string volatile_char_mangled =
         mangle_function_name("func",
                              volatile_char_func,
@@ -512,9 +512,8 @@ TEST_F(ManglingTest, VolatileQualifiedTypes)
 TEST_F(ManglingTest, ConstVolatileQualifiedTypes)
 {
     auto [const_volatile_int_func, const_volatile_int_func_meta] =
-        create_function_type(
-            qual(get_void_type()),
-            {qual(get_int_type(), Qualifier::Q_CONST_VOLATILE)});
+        create_function_type(qual(get_void_type()),
+                             {qual(get_int_type(), Qualifier::CONST_VOLATILE)});
     std::string const_volatile_int_mangled =
         mangle_function_name("func",
                              const_volatile_int_func,
@@ -524,7 +523,7 @@ TEST_F(ManglingTest, ConstVolatileQualifiedTypes)
     auto [const_volatile_char_func, const_volatile_char_func_meta] =
         create_function_type(
             qual(get_void_type()),
-            {qual(get_char_type(), Qualifier::Q_CONST_VOLATILE)});
+            {qual(get_char_type(), Qualifier::CONST_VOLATILE)});
     std::string const_volatile_char_mangled =
         mangle_function_name("func",
                              const_volatile_char_func,
@@ -536,9 +535,9 @@ TEST_F(ManglingTest, ConstVolatileQualifiedTypes)
 TEST_F(ManglingTest, ConstQualifiedArrays)
 {
     auto const_char_array =
-        type_factory->make<ArrayType>(qual(get_char_type(), Qualifier::Q_CONST),
+        type_factory->make<ArrayType>(qual(get_char_type(), Qualifier::CONST),
                                       10);
-    ASSERT_TRUE(const_char_array.has_value());
+    ASSERT_TRUE(const_char_array.is_ok());
 
     auto [const_char_array_func, const_char_array_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -550,9 +549,9 @@ TEST_F(ManglingTest, ConstQualifiedArrays)
     EXPECT_EQ(const_char_array_mangled, "_Z4funcA10_Kc");
 
     auto const_int_array =
-        type_factory->make<ArrayType>(qual(get_int_type(), Qualifier::Q_CONST),
+        type_factory->make<ArrayType>(qual(get_int_type(), Qualifier::CONST),
                                       5);
-    ASSERT_TRUE(const_int_array.has_value());
+    ASSERT_TRUE(const_int_array.is_ok());
 
     auto [const_int_array_func, const_int_array_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -564,9 +563,9 @@ TEST_F(ManglingTest, ConstQualifiedArrays)
     EXPECT_EQ(const_int_array_mangled, "_Z4funcA5_Ki");
 
     auto volatile_char_array = type_factory->make<ArrayType>(
-        qual(get_char_type(), Qualifier::Q_VOLATILE),
+        qual(get_char_type(), Qualifier::VOLATILE),
         7);
-    ASSERT_TRUE(volatile_char_array.has_value());
+    ASSERT_TRUE(volatile_char_array.is_ok());
 
     auto [volatile_char_array_func, volatile_char_array_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -581,9 +580,9 @@ TEST_F(ManglingTest, ConstQualifiedArrays)
 // const int*, const char*, volatile int*
 TEST_F(ManglingTest, PointerToConstTypes)
 {
-    auto const_int_ptr = type_factory->make<PointerType>(
-        qual(get_int_type(), Qualifier::Q_CONST));
-    ASSERT_TRUE(const_int_ptr.has_value());
+    auto const_int_ptr =
+        type_factory->make<PointerType>(qual(get_int_type(), Qualifier::CONST));
+    ASSERT_TRUE(const_int_ptr.is_ok());
 
     auto [const_int_ptr_func, const_int_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -595,8 +594,8 @@ TEST_F(ManglingTest, PointerToConstTypes)
     EXPECT_EQ(const_int_ptr_mangled, "_Z4funcPKi");
 
     auto const_char_ptr = type_factory->make<PointerType>(
-        qual(get_char_type(), Qualifier::Q_CONST));
-    ASSERT_TRUE(const_char_ptr.has_value());
+        qual(get_char_type(), Qualifier::CONST));
+    ASSERT_TRUE(const_char_ptr.is_ok());
 
     auto [const_char_ptr_func, const_char_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -608,8 +607,8 @@ TEST_F(ManglingTest, PointerToConstTypes)
     EXPECT_EQ(const_char_ptr_mangled, "_Z4funcPKc");
 
     auto volatile_int_ptr = type_factory->make<PointerType>(
-        qual(get_int_type(), Qualifier::Q_VOLATILE));
-    ASSERT_TRUE(volatile_int_ptr.has_value());
+        qual(get_int_type(), Qualifier::VOLATILE));
+    ASSERT_TRUE(volatile_int_ptr.is_ok());
 
     auto [volatile_int_ptr_func, volatile_int_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -625,11 +624,11 @@ TEST_F(ManglingTest, PointerToConstTypes)
 TEST_F(ManglingTest, ConstPointerTypes)
 {
     auto int_ptr = type_factory->make<PointerType>(qual(get_int_type()));
-    ASSERT_TRUE(int_ptr.has_value());
+    ASSERT_TRUE(int_ptr.is_ok());
 
     auto [const_int_ptr_func, const_int_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(int_ptr.value(), Qualifier::Q_CONST)});
+                             {qual(int_ptr.value(), Qualifier::CONST)});
     std::string const_int_ptr_mangled =
         mangle_function_name("func",
                              const_int_ptr_func,
@@ -637,11 +636,11 @@ TEST_F(ManglingTest, ConstPointerTypes)
     EXPECT_EQ(const_int_ptr_mangled, "_Z4funcKPi");
 
     auto char_ptr = type_factory->make<PointerType>(qual(get_char_type()));
-    ASSERT_TRUE(char_ptr.has_value());
+    ASSERT_TRUE(char_ptr.is_ok());
 
     auto [const_char_ptr_func, const_char_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
-                             {qual(char_ptr.value(), Qualifier::Q_CONST)});
+                             {qual(char_ptr.value(), Qualifier::CONST)});
     std::string const_char_ptr_mangled =
         mangle_function_name("func",
                              const_char_ptr_func,
@@ -653,26 +652,26 @@ TEST_F(ManglingTest, ConstPointerTypes)
 TEST_F(ManglingTest, ComplexMultiLevelPointers)
 {
     // const int
-    auto const_int = qual(get_int_type(), Qualifier::Q_CONST);
+    auto const_int = qual(get_int_type(), Qualifier::CONST);
 
     // const int* const
     auto const_int_ptr = type_factory->make<PointerType>(const_int);
-    ASSERT_TRUE(const_int_ptr.has_value());
-    auto const_int_ptr_const = qual(const_int_ptr.value(), Qualifier::Q_CONST);
+    ASSERT_TRUE(const_int_ptr.is_ok());
+    auto const_int_ptr_const = qual(const_int_ptr.value(), Qualifier::CONST);
 
     // const int* const * const
     auto const_int_ptr_const_ptr =
         type_factory->make<PointerType>(const_int_ptr_const);
-    ASSERT_TRUE(const_int_ptr_const_ptr.has_value());
+    ASSERT_TRUE(const_int_ptr_const_ptr.is_ok());
     auto const_int_ptr_const_ptr_const =
-        qual(const_int_ptr_const_ptr.value(), Qualifier::Q_CONST);
+        qual(const_int_ptr_const_ptr.value(), Qualifier::CONST);
 
     // const int* const * const * const
     auto const_int_ptr_const_ptr_const_ptr =
         type_factory->make<PointerType>(const_int_ptr_const_ptr_const);
-    ASSERT_TRUE(const_int_ptr_const_ptr_const_ptr.has_value());
+    ASSERT_TRUE(const_int_ptr_const_ptr_const_ptr.is_ok());
     auto const_int_ptr_const_ptr_const_ptr_const =
-        qual(const_int_ptr_const_ptr_const_ptr.value(), Qualifier::Q_CONST);
+        qual(const_int_ptr_const_ptr_const_ptr.value(), Qualifier::CONST);
 
     auto [complex_func, complex_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -686,13 +685,13 @@ TEST_F(ManglingTest, ComplexMultiLevelPointers)
 TEST_F(ManglingTest, MixedQualifierScenarios)
 {
     auto volatile_int_ptr = type_factory->make<PointerType>(
-        qual(get_int_type(), Qualifier::Q_VOLATILE));
-    ASSERT_TRUE(volatile_int_ptr.has_value());
+        qual(get_int_type(), Qualifier::VOLATILE));
+    ASSERT_TRUE(volatile_int_ptr.is_ok());
 
     auto [const_volatile_int_ptr_func, const_volatile_int_ptr_func_meta] =
         create_function_type(
             qual(get_void_type()),
-            {qual(volatile_int_ptr.value(), Qualifier::Q_CONST)});
+            {qual(volatile_int_ptr.value(), Qualifier::CONST)});
     std::string const_volatile_int_ptr_mangled =
         mangle_function_name("func",
                              const_volatile_int_ptr_func,
@@ -700,8 +699,8 @@ TEST_F(ManglingTest, MixedQualifierScenarios)
     EXPECT_EQ(const_volatile_int_ptr_mangled, "_Z4funcKPVi");
 
     auto const_volatile_int_ptr2 = type_factory->make<PointerType>(
-        qual(get_int_type(), Qualifier::Q_CONST_VOLATILE));
-    ASSERT_TRUE(const_volatile_int_ptr2.has_value());
+        qual(get_int_type(), Qualifier::CONST_VOLATILE));
+    ASSERT_TRUE(const_volatile_int_ptr2.is_ok());
 
     auto [const_volatile_int_ptr2_func, const_volatile_int_ptr2_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -717,13 +716,13 @@ TEST_F(ManglingTest, MixedQualifierScenarios)
 TEST_F(ManglingTest, ComplexArrayPointerCombinations)
 {
     auto const_char_array =
-        type_factory->make<ArrayType>(qual(get_char_type(), Qualifier::Q_CONST),
+        type_factory->make<ArrayType>(qual(get_char_type(), Qualifier::CONST),
                                       10);
-    ASSERT_TRUE(const_char_array.has_value());
+    ASSERT_TRUE(const_char_array.is_ok());
 
     auto ptr_to_const_char_array =
         type_factory->make<PointerType>(qual(const_char_array.value()));
-    ASSERT_TRUE(ptr_to_const_char_array.has_value());
+    ASSERT_TRUE(ptr_to_const_char_array.is_ok());
 
     auto [ptr_to_const_char_array_func, ptr_to_const_char_array_func_meta] =
         create_function_type(qual(get_void_type()),
@@ -735,19 +734,19 @@ TEST_F(ManglingTest, ComplexArrayPointerCombinations)
     EXPECT_EQ(ptr_to_const_char_array_mangled, "_Z4funcPA10_Kc");
 
     auto const_char_array2 =
-        type_factory->make<ArrayType>(qual(get_char_type(), Qualifier::Q_CONST),
+        type_factory->make<ArrayType>(qual(get_char_type(), Qualifier::CONST),
                                       5);
-    ASSERT_TRUE(const_char_array2.has_value());
+    ASSERT_TRUE(const_char_array2.is_ok());
 
     auto const_ptr_to_const_char_array =
         type_factory->make<PointerType>(qual(const_char_array2.value()));
-    ASSERT_TRUE(const_ptr_to_const_char_array.has_value());
+    ASSERT_TRUE(const_ptr_to_const_char_array.is_ok());
 
     auto [const_ptr_to_const_char_array_func,
           const_ptr_to_const_char_array_func_meta] =
         create_function_type(
             qual(get_void_type()),
-            {qual(const_ptr_to_const_char_array.value(), Qualifier::Q_CONST)});
+            {qual(const_ptr_to_const_char_array.value(), Qualifier::CONST)});
     std::string const_ptr_to_const_char_array_mangled =
         mangle_function_name("func",
                              const_ptr_to_const_char_array_func,
@@ -758,37 +757,37 @@ TEST_F(ManglingTest, ComplexArrayPointerCombinations)
 // const int*const *const*const, volatile char[20], const volatile float* const
 TEST_F(ManglingTest, ExtremeComplexityStressTest)
 {
-    std::vector<QualType> complex_params;
+    std::vector<QualifiedType> complex_params;
 
     // const int*const *const*const
-    auto const_int = qual(get_int_type(), Qualifier::Q_CONST);
+    auto const_int = qual(get_int_type(), Qualifier::CONST);
     auto const_int_ptr = type_factory->make<PointerType>(const_int);
-    ASSERT_TRUE(const_int_ptr.has_value());
-    auto const_int_ptr_const = qual(const_int_ptr.value(), Qualifier::Q_CONST);
+    ASSERT_TRUE(const_int_ptr.is_ok());
+    auto const_int_ptr_const = qual(const_int_ptr.value(), Qualifier::CONST);
     auto const_int_ptr_const_ptr =
         type_factory->make<PointerType>(const_int_ptr_const);
-    ASSERT_TRUE(const_int_ptr_const_ptr.has_value());
+    ASSERT_TRUE(const_int_ptr_const_ptr.is_ok());
     auto const_int_ptr_const_ptr_const =
-        qual(const_int_ptr_const_ptr.value(), Qualifier::Q_CONST);
+        qual(const_int_ptr_const_ptr.value(), Qualifier::CONST);
     auto const_int_ptr_const_ptr_const_ptr =
         type_factory->make<PointerType>(const_int_ptr_const_ptr_const);
-    ASSERT_TRUE(const_int_ptr_const_ptr_const_ptr.has_value());
+    ASSERT_TRUE(const_int_ptr_const_ptr_const_ptr.is_ok());
     auto param1 =
-        qual(const_int_ptr_const_ptr_const_ptr.value(), Qualifier::Q_CONST);
+        qual(const_int_ptr_const_ptr_const_ptr.value(), Qualifier::CONST);
     complex_params.push_back(param1);
 
     // volatile char[20]
     auto volatile_char_array = type_factory->make<ArrayType>(
-        qual(get_char_type(), Qualifier::Q_VOLATILE),
+        qual(get_char_type(), Qualifier::VOLATILE),
         20);
-    ASSERT_TRUE(volatile_char_array.has_value());
+    ASSERT_TRUE(volatile_char_array.is_ok());
     complex_params.push_back(qual(volatile_char_array.value()));
 
     // const volatile float* const
     auto const_volatile_float_ptr = type_factory->make<PointerType>(
-        qual(get_float_type(), Qualifier::Q_CONST_VOLATILE));
-    ASSERT_TRUE(const_volatile_float_ptr.has_value());
-    auto param3 = qual(const_volatile_float_ptr.value(), Qualifier::Q_CONST);
+        qual(get_float_type(), Qualifier::CONST_VOLATILE));
+    ASSERT_TRUE(const_volatile_float_ptr.is_ok());
+    auto param3 = qual(const_volatile_float_ptr.value(), Qualifier::CONST);
     complex_params.push_back(param3);
 
     auto [extreme_func, extreme_func_meta] =
