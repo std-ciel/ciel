@@ -50,22 +50,27 @@
   enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION };
 
   struct GlobalParserState {
-    std::vector<ContextKind> ctx_stack;
+    std::vector<ContextKind> ctx_stack = {ContextKind::GLOBAL};
     Access current_access = Access::PRIVATE;
-    TypePtr current_decl_base_type = nullptr;
+    QualifiedType current_decl_base_type;
     std::vector<Qualifier> current_decl_qualifiers;
 	  Access inherited_access = Access::PRIVATE;
 	  ClassTypePtr parent_class_type = nullptr;
     ClassTypePtr current_class_type = nullptr;
 
-    StorageClass current_storage;
+    StorageClass current_storage = StorageClass::STATIC;
 
-    void push_ctx(ContextKind k) { ctx_stack.push_back(k); }
+    void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
     void pop_ctx() { if (!ctx_stack.empty()) ctx_stack.pop_back(); }
 
     void reset_decl() {
-      current_decl_base_type = nullptr;
+      current_decl_base_type = QualifiedType{};
       current_decl_qualifiers.clear();
+      if (ctx_stack.back() == ContextKind::GLOBAL) {
+        current_storage = StorageClass::STATIC;
+      } else {
+        current_storage = StorageClass::AUTO;
+      }
     }
   };
 }
@@ -131,25 +136,28 @@
     for (const auto& p : in) { types.push_back(p.type); names.push_back(p.name); }
   }
 
-  static QualifiedType apply_ptr(TypePtr base, size_t ptr_levels, int line, int column) {
-    QualifiedType qualified_base(base, Qualifier::NONE);
+  static QualifiedType apply_ptr(QualifiedType base, size_t ptr_levels, int line, int column) {
+      if (ptr_levels == 0) {
+        return base;
+      }
 
-    auto result = type_factory.make_pointer_chain(qualified_base, parser_state.current_decl_qualifiers);
-    if (result.is_err()) {
-      parser_add_error(line, column, "Failed to create pointer chain");
-      return qualified_base;
-    }
-    return result.value();
+      // Create a vector of qualifiers for each pointer level
+      // For now, we don't have per-level qualifiers, so use NONE
+      std::vector<Qualifier> ptr_qualifiers(ptr_levels, Qualifier::NONE);
+      
+      auto result = type_factory.make_pointer_chain(base, ptr_qualifiers);
+      if (result.is_err()) {
+        parser_add_error(line, column, "Failed to create pointer chain");
+        return base;
+      }
+      return result.value();
   }
 
-  static QualifiedType apply_arrays(TypePtr base, const std::vector<size_t>& dims, int line, int column) {
-
-    QualifiedType qualified_base(base, Qualifier::NONE);
-
-    auto result = type_factory.make_array_chain(qualified_base, dims);
+  static QualifiedType apply_arrays(QualifiedType base, const std::vector<size_t>& dims, int line, int column) {
+    auto result = type_factory.make_array_chain(base, dims);
     if (result.is_err()) {
       parser_add_error(line, column, "Failed to create array chain");
-      return qualified_base;
+      return base;
     }
     return result.value();
   }
@@ -167,7 +175,7 @@
 
   static void add_symbol_if_valid(const DeclaratorInfo& di, QualifiedType type) {
     if (!di.name.empty()) {
-      (void)symbol_table.add_symbol(di.name, type);
+      (void)symbol_table.add_symbol(di.name, type, parser_state.current_storage);
     }
   }
 }
@@ -455,14 +463,14 @@ declaration
       }
     | declaration_specifiers init_declarator_list SEMICOLON_OP
       {
-    	  TypePtr base = $1;
+        QualifiedType base = parser_state.current_decl_base_type;
 
-        if (base) {
+        if (base.type) {
           for (const auto &di : $2) {
             if (di.is_function) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
-                TypePtr fn = make_function_type(base, di.param_types, di.is_variadic, @1.begin.line, @1.begin.column);
+                TypePtr fn = make_function_type(base.type, di.param_types, di.is_variadic, @1.begin.line, @1.begin.column);
 
                 FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
 
@@ -477,11 +485,14 @@ declaration
               }
             } else {
               QualifiedType final_t;
-              if(di.pointer_levels){
+              if(di.pointer_levels > 0) {
                 final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
               }
-              else{
+              else if(!di.array_dims.empty()) {
                 final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+              }
+              else {
+                final_t = base;
               }
               add_symbol_if_valid(di, final_t);
             }
@@ -494,7 +505,7 @@ declaration
         size_t ptrs = $3;
         TypePtr base = $2;
         if (base){
-          QualifiedType actual = apply_ptr(base, ptrs, @1.begin.line, @1.begin.column);
+          QualifiedType actual = apply_ptr(QualifiedType(base, Qualifier::NONE), ptrs, @1.begin.line, @1.begin.column);
           (void)unwrap_type_or_error(type_factory.make<TypedefType>($4, actual), "typedef", @1.begin.line, @1.begin.column);
         }
         parser_state.reset_decl();
@@ -502,12 +513,91 @@ declaration
     ;
 
 declaration_specifiers
-  : storage_class_specifier declaration_specifiers { $$ = $2; parser_state.current_decl_base_type=$$; }
+  : storage_class_specifier declaration_specifiers 
+    { 
+      $$ = $2; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
   | storage_class_specifier { $$ = nullptr; }
-  | type_specifier declaration_specifiers { $$ = $1 ? $1 : $2; parser_state.current_decl_base_type=$$; }
-  | type_specifier { $$ = $1; parser_state.current_decl_base_type=$$; }
-  | type_qualifier declaration_specifiers { $$ = $2; parser_state.current_decl_base_type=$$; }
-  | type_qualifier { $$ = nullptr; }
+  | type_specifier declaration_specifiers 
+    { 
+      $$ = $1 ? $1 : $2; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
+  | type_specifier 
+    { 
+      $$ = $1; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
+  | type_qualifier declaration_specifiers 
+    { 
+      $$ = $2; 
+      if ($$) {
+        // Apply qualifiers from the stack one by one
+        QualifiedType base($$, Qualifier::NONE);
+        size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
+        
+        for (const auto& q : parser_state.current_decl_qualifiers) {
+          base = QualifiedType(base.type, q);
+        }
+        
+        parser_state.current_decl_base_type = base;
+        
+        // Pop the qualifiers we just used
+        for (size_t i = 0; i < num_qualifiers; ++i) {
+          parser_state.current_decl_qualifiers.pop_back();
+        }
+      }
+    }
+  | type_qualifier 
+    { 
+      $$ = nullptr; 
+    }
   ;
 
 storage_class_specifier
@@ -529,15 +619,18 @@ init_declarator
       {
         $$ = $1;
         const DeclaratorInfo &di = $1;
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
           QualifiedType final_t;
 
-          if(di.pointer_levels){
+          if(di.pointer_levels > 0){
             final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
           }
-          else{
+          else if(!di.array_dims.empty()){
             final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+          }
+          else {
+            final_t = base;
           }
 
           add_symbol_if_valid(di, final_t);
@@ -554,15 +647,18 @@ init_declarator
       {
         $$ = $1;
         const DeclaratorInfo &di = $1;
-        TypePtr base = parser_state.current_decl_base_type;
+        QualifiedType base = parser_state.current_decl_base_type;
 
-        if (base) {
+        if (base.type) {
           QualifiedType final_t;
-          if(di.pointer_levels){
+          if(di.pointer_levels > 0){
             final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
           }
-          else{
+          else if(!di.array_dims.empty()){
             final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+          }
+          else {
+            final_t = base;
           }
 
           add_symbol_if_valid(di, final_t);
@@ -698,7 +794,7 @@ struct_declaration
     | specifier_qualifier_list struct_declarator_list SEMICOLON_OP
       {
         $$ = std::unordered_map<std::string, QualifiedType>{};
-        TypePtr base = $1;
+        auto base = $1;
         if (base) {
           for (const auto &di : $2) {
             if (!di.name.empty()) {
@@ -832,11 +928,11 @@ direct_declarator
         $$ = $1;
         $$.array_dims.push_back(0);
       }
-    | direct_declarator OPEN_BRACKET_OP constant_expression CLOSE_BRACKET_OP
+    | direct_declarator OPEN_BRACKET_OP INT_LITERAL CLOSE_BRACKET_OP
       {
         $$ = $1;
-        // For now, we don't evaluate constant_expression; use 0 placeholder.
-        $$.array_dims.push_back(0);
+        // TODO: add support for constant expressions (low-priority)
+        $$.array_dims.push_back($3);
       }
     | direct_declarator OPEN_PAREN_OP CLOSE_PAREN_OP
       {
@@ -901,15 +997,18 @@ parameter_declaration
     : declaration_specifiers declarator
       {
         $$ = ParamDeclInfo{};
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
           QualifiedType t;
 
           if($2.pointer_levels){
             t = apply_ptr(base, $2.pointer_levels, @1.begin.line, @2.begin.column);
           }
-          else{
+          else if(!$2.array_dims.empty()){
             t = apply_arrays(base, $2.array_dims, @1.begin.line, @2.begin.column);
+          }
+          else {
+            t = base;
           }
 
           $$.type = t;
@@ -920,9 +1019,9 @@ parameter_declaration
     | declaration_specifiers abstract_declarator
       {
         $$ = ParamDeclInfo{};
-        TypePtr base = parser_state.current_decl_base_type;
-        if (base) {
-          $$.type = QualifiedType(base, Qualifier::NONE);
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
+          $$.type = base;
         }
         $$.name = std::string{};
         parser_state.reset_decl();
@@ -930,7 +1029,7 @@ parameter_declaration
     | declaration_specifiers
       {
         $$ = ParamDeclInfo{};
-        $$.type = QualifiedType(parser_state.current_decl_base_type, Qualifier::NONE);
+        $$.type = parser_state.current_decl_base_type;
         $$.name = std::string{};
         parser_state.reset_decl();
       }
@@ -1064,7 +1163,7 @@ external_declaration
 
 function_definition
     : declaration_specifiers declarator compound_statement {
-		TypePtr base = $1;
+		auto base = $1;
 		if (base) {
 		  const DeclaratorInfo &di = $2;
 			if (di.is_function && !di.name.empty()) {
@@ -1229,7 +1328,7 @@ function_declaration_or_definition
               final_t = apply_ptr(ret, di.pointer_levels, @1.begin.line, @2.begin.column);
             }
             else{
-              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @2.begin.column);
+              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @1.begin.column);
             }
 
             // TODO error handling
@@ -1266,7 +1365,7 @@ function_declaration_or_definition
               final_t = apply_ptr(ret, di.pointer_levels, @1.begin.line, @2.begin.column);
             }
             else{
-              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @2.begin.column);
+              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @1.begin.column);
             }
 
             // TODO error handling
@@ -1281,7 +1380,7 @@ function_declaration_or_definition
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           // Optional check: name matches class
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
@@ -1310,7 +1409,7 @@ function_declaration_or_definition
   | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
@@ -1336,7 +1435,7 @@ function_declaration_or_definition
   | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $2;
           if (expected != got) {
             std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
@@ -1365,7 +1464,7 @@ function_declaration_or_definition
       }
   | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
       {
-		std::string expected = parser_state.current_class_type ? parser_state.current_class_type->name : std::string{};
+		std::string expected = parser_state.current_class_type ? parser_state.current_class_type->debug_name() : std::string{};
 		std::string got = std::string("class ") + $1;
 		if (expected != got) {
 		  std::cerr << "Warning: operator overload function name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
@@ -1396,7 +1495,7 @@ function_declaration_or_definition
     | /* constructor decl */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP SEMICOLON_OP
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
@@ -1423,7 +1522,7 @@ function_declaration_or_definition
     | /* constructor decl no params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $1;
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
@@ -1451,7 +1550,7 @@ function_declaration_or_definition
     | /* destructor decl */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->name;
+          std::string expected = parser_state.current_class_type->debug_name();
           std::string got = std::string("class ") + $2;
           if (expected != got) {
             std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
