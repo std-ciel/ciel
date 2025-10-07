@@ -5,6 +5,7 @@
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
 #include "parser.hpp"
+#include "parser/parser_errors.hpp"
 #include "print_tokens.hpp"
 #include "tokens.hpp"
 
@@ -126,6 +127,22 @@ int main(int argc, char *argv[])
     if (lexer_only) {
         lexer_clear_tokens();
         return 0;
+    }
+
+    if (parser_had_errors()) {
+        auto errors = parser_get_errors();
+        std::cerr << "\n┌─────────────────────────┐\n";
+        std::cerr << "│   PARSING ERRORS        │\n";
+        std::cerr << "└─────────────────────────┘\n";
+        for (const auto &e : errors) {
+            std::cerr << "Parser Error: " << e.message << " at line " << e.line;
+            if (e.column > 0) {
+                std::cerr << ":" << e.column;
+            }
+            std::cerr << "\n";
+        }
+        parser_clear_errors();
+        return 1;
     }
 
     if (parser_only || debug_mode || (!lexer_only && !parser_only)) {

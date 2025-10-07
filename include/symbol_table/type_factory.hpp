@@ -1,8 +1,38 @@
 #ifndef TYPE_FACTORY_HPP
 #define TYPE_FACTORY_HPP
 
+#include "symbol_table/result.hpp"
+#include "symbol_table/symbol.hpp"
 #include "symbol_table/type.hpp"
 #include <optional>
+
+// Error types for TypeFactory operations
+enum class TypeFactoryError {
+    TYPE_ALREADY_DEFINED,
+    TYPE_NOT_FOUND,
+    INVALID_TYPE,
+    POINTER_CREATION_FAILED,
+    ARRAY_CREATION_FAILED,
+};
+
+// Convert error enums to strings
+inline const char *type_factory_error_to_string(TypeFactoryError error)
+{
+    switch (error) {
+    case TypeFactoryError::TYPE_ALREADY_DEFINED:
+        return "Type already defined";
+    case TypeFactoryError::TYPE_NOT_FOUND:
+        return "Type not found";
+    case TypeFactoryError::INVALID_TYPE:
+        return "Invalid type";
+    case TypeFactoryError::POINTER_CREATION_FAILED:
+        return "Failed to create pointer type";
+    case TypeFactoryError::ARRAY_CREATION_FAILED:
+        return "Failed to create array type";
+    default:
+        return "Unknown error";
+    }
+}
 
 class TypeFactory {
   private:
@@ -24,7 +54,7 @@ class TypeFactory {
 
   public:
     template <typename T, typename... Args>
-    std::optional<TypePtr> make(Args &&...args)
+    Result<TypePtr, TypeFactoryError> make(Args &&...args)
     {
         auto type = std::make_shared<T>(std::forward<Args>(args)...);
         std::string name = type->debug_name();
@@ -36,38 +66,38 @@ class TypeFactory {
 
             // For custom types (record, class, enum), check is_defined flag
             switch (type->kind) {
-            case TypeKind::Record: {
+            case TypeKind::RECORD: {
                 auto record_type =
                     std::static_pointer_cast<RecordType>(existing_type);
                 if (!record_type->is_defined) {
-                    return existing_type;
+                    return Result<TypePtr, TypeFactoryError>(existing_type);
                 } else {
-                    // TODO: add proper error handling
-                    return std::nullopt; // Type already defined
+                    return Result<TypePtr, TypeFactoryError>(
+                        TypeFactoryError::TYPE_ALREADY_DEFINED);
                 }
             }
-            case TypeKind::Class: {
+            case TypeKind::CLASS: {
                 auto class_type =
                     std::static_pointer_cast<ClassType>(existing_type);
                 if (!class_type->is_defined) {
-                    return existing_type;
+                    return Result<TypePtr, TypeFactoryError>(existing_type);
                 } else {
-                    // TODO: add proper error handling
-                    return std::nullopt; // Type already defined
+                    return Result<TypePtr, TypeFactoryError>(
+                        TypeFactoryError::TYPE_ALREADY_DEFINED);
                 }
             }
-            case TypeKind::Enum: {
+            case TypeKind::ENUM: {
                 auto enum_type =
                     std::static_pointer_cast<EnumType>(existing_type);
                 if (!enum_type->is_defined) {
-                    return existing_type;
+                    return Result<TypePtr, TypeFactoryError>(existing_type);
                 } else {
-                    // TODO: add proper error handling
-                    return std::nullopt; // Type already defined
+                    return Result<TypePtr, TypeFactoryError>(
+                        TypeFactoryError::TYPE_ALREADY_DEFINED);
                 }
             }
             default:
-                return existing_type;
+                return Result<TypePtr, TypeFactoryError>(existing_type);
             }
         }
 
@@ -76,53 +106,53 @@ class TypeFactory {
         types[id] = type;
         name_to_id[name] = id;
         id_to_name[id] = name;
-        return type;
+        return Result<TypePtr, TypeFactoryError>(type);
     }
 
     // Overloaded version for custom types with scope chain lookup
     template <typename T, typename... Args>
-    std::optional<TypePtr> make(const std::vector<size_t> &scope_chain,
+    Result<TypePtr, TypeFactoryError> make(const std::vector<size_t> &scope_chain,
                                 Args &&...args)
     {
         auto type = std::make_shared<T>(std::forward<Args>(args)...);
         std::string name = type->debug_name();
 
         // For custom types, do scope chain lookup first
-        if (type->kind == TypeKind::Record || type->kind == TypeKind::Class ||
-            type->kind == TypeKind::Enum) {
+        if (type->kind == TypeKind::RECORD || type->kind == TypeKind::CLASS ||
+            type->kind == TypeKind::ENUM) {
             auto existing_in_scope = lookup_by_scope(name, scope_chain);
             if (existing_in_scope) {
                 auto existing_type = *existing_in_scope;
 
                 switch (type->kind) {
-                case TypeKind::Record: {
+                case TypeKind::RECORD: {
                     auto record_type =
                         std::static_pointer_cast<RecordType>(existing_type);
                     if (!record_type->is_defined) {
-                        return existing_type;
+                        return Result<TypePtr, TypeFactoryError>(existing_type);
                     } else {
-                        // TODO: add proper error handling
-                        return std::nullopt; // Type already defined in scope
+                        return Result<TypePtr, TypeFactoryError>(
+                            TypeFactoryError::TYPE_ALREADY_DEFINED);
                     }
                 }
-                case TypeKind::Class: {
+                case TypeKind::CLASS: {
                     auto class_type =
                         std::static_pointer_cast<ClassType>(existing_type);
                     if (!class_type->is_defined) {
-                        return existing_type;
+                        return Result<TypePtr, TypeFactoryError>(existing_type);
                     } else {
-                        // TODO: add proper error handling
-                        return std::nullopt; // Type already defined in scope
+                        return Result<TypePtr, TypeFactoryError>(
+                            TypeFactoryError::TYPE_ALREADY_DEFINED);
                     }
                 }
-                case TypeKind::Enum: {
+                case TypeKind::ENUM: {
                     auto enum_type =
                         std::static_pointer_cast<EnumType>(existing_type);
                     if (!enum_type->is_defined) {
-                        return existing_type;
+                        return Result<TypePtr, TypeFactoryError>(existing_type);
                     } else {
-                        // TODO: add proper error handling
-                        return std::nullopt; // Type already defined in scope
+                        return Result<TypePtr, TypeFactoryError>(
+                            TypeFactoryError::TYPE_ALREADY_DEFINED);
                     }
                 }
                 }
@@ -141,7 +171,7 @@ class TypeFactory {
             scope_defined_types[current_scope].push_back(id);
         }
 
-        return type;
+        return Result<TypePtr, TypeFactoryError>(type);
     }
     TypeFactory();
     // lookup_type by type id and scope chain
@@ -163,36 +193,35 @@ class TypeFactory {
     }
     std::optional<TypePtr>
     lookup_by_scope(const std::string &name,
-                    const std::vector<size_t> &scope_chain) const;
+                    const std::vector<ScopeID> &scope_chain) const;
 
     std::optional<TypePtr>
-    lookup_by_scope(TypeId id, const std::vector<size_t> &scope_chain) const;
+    lookup_by_scope(TypeId id, const std::vector<ScopeID> &scope_chain) const;
 
-    std::optional<TypePtr> get_pointer(QualType pointee)
+    Result<TypePtr, TypeFactoryError> get_pointer(QualifiedType pointee)
     {
         return make<PointerType>(std::move(pointee));
     }
 
-    std::optional<TypePtr> get_array(QualType element_type,
-                                     std::optional<size_t> size)
+    Result<TypePtr, TypeFactoryError> get_array(QualifiedType element_type, size_t size)
     {
         return make<ArrayType>(std::move(element_type), size);
     }
 
-    std::optional<QualType>
-    make_pointer_chain(QualType base, const std::vector<Qualifier> &qualifiers);
+    Result<QualifiedType, TypeFactoryError>
+    make_pointer_chain(QualifiedType base,
+                       const std::vector<Qualifier> &qualifiers);
 
-    std::optional<QualType>
-    make_array_chain(QualType base,
-                     const std::vector<std::optional<size_t>> &sizes);
+    Result<QualifiedType, TypeFactoryError>
+    make_array_chain(QualifiedType base, const std::vector<size_t> &sizes);
 
     std::vector<std::pair<TypeId, TypePtr>> get_custom_types() const;
 
     void print_custom_types() const;
 
-    QualType make_qualified(TypePtr base, Qualifier qualifier)
+    QualifiedType make_qualified(TypePtr base, Qualifier qualifier)
     {
-        return QualType(base, qualifier);
+        return QualifiedType(base, qualifier);
     }
 };
 

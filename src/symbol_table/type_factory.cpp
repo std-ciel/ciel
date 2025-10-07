@@ -42,43 +42,40 @@ TypeFactory::lookup_by_scope(TypeId id,
     return std::nullopt;
 }
 
-std::optional<QualType>
-TypeFactory::make_pointer_chain(QualType base,
+Result<QualifiedType, TypeFactoryError>
+TypeFactory::make_pointer_chain(QualifiedType base,
                                 const std::vector<Qualifier> &qualifiers)
 {
     for (const auto &qual : qualifiers) {
         auto pointer_type = get_pointer(base);
-        if (!pointer_type.has_value()) {
-            return std::nullopt; // Return failure immediately
+        if (pointer_type.is_err()) {
+            return Result<QualifiedType, TypeFactoryError>(pointer_type.error());
         }
-        base = QualType(pointer_type.value(), qual);
+        base = QualifiedType(pointer_type.value(), qual);
     }
-    return base;
+    return Result<QualifiedType, TypeFactoryError>(base);
 }
 
-std::optional<QualType>
-TypeFactory::make_array_chain(QualType base,
-                              const std::vector<std::optional<size_t>> &sizes)
+Result<QualifiedType, TypeFactoryError>
+TypeFactory::make_array_chain(QualifiedType base,
+                              const std::vector<size_t> &sizes)
 {
     for (auto size : sizes) {
-        if (size.has_value() && size.value() == 0) {
-            // TODO: generate error
-        }
         auto array_type = get_array(base, size);
-        if (!array_type.has_value()) {
-            return std::nullopt; // Return failure immediately
+        if (array_type.is_err()) {
+            return Result<QualifiedType, TypeFactoryError>(array_type.error());
         }
-        base = QualType(array_type.value(), Qualifier::Q_NONE);
+        base = QualifiedType(array_type.value(), Qualifier::NONE);
     }
-    return base;
+    return Result<QualifiedType, TypeFactoryError>(base);
 }
 
 std::vector<std::pair<TypeId, TypePtr>> TypeFactory::get_custom_types() const
 {
     std::vector<std::pair<TypeId, TypePtr>> result;
     for (const auto &[id, type] : types) {
-        if (type->kind == TypeKind::Record || type->kind == TypeKind::Enum ||
-            type->kind == TypeKind::Class || type->kind == TypeKind::Typedef) {
+        if (type->kind == TypeKind::RECORD || type->kind == TypeKind::ENUM ||
+            type->kind == TypeKind::CLASS || type->kind == TypeKind::TYPEDEF) {
             result.emplace_back(id, type);
         }
     }
@@ -130,8 +127,8 @@ void TypeFactory::print_custom_types() const
     for (const auto &type_pair : get_custom_types()) {
         const TypePtr &type = type_pair.second;
         auto kind = type->kind;
-        if (kind == TypeKind::Record || kind == TypeKind::Enum ||
-            kind == TypeKind::Class || kind == TypeKind::Typedef)
+        if (kind == TypeKind::RECORD || kind == TypeKind::ENUM ||
+            kind == TypeKind::CLASS || kind == TypeKind::TYPEDEF)
             std::cout << '|' << ' ' << std::left << std::setw(w_id)
                       << type_pair.first << ' ' << '|' << ' ' << std::left
                       << std::setw(w_name) << type->debug_name() << ' ' << '|'

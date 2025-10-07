@@ -37,6 +37,7 @@ add_library(ciel_lexer STATIC
     src/token/token_type.cpp
     src/lexer/print_tokens.cpp
     src/parser/token_converter.cpp
+    src/parser/parser_errors.cpp
     src/symbol_table/symbol_table.cpp
     src/symbol_table/symbol.cpp
     src/symbol_table/type.cpp

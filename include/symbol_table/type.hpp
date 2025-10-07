@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -12,22 +11,18 @@ struct Type;
 using TypePtr = std::shared_ptr<Type>;
 
 enum class TypeKind {
-    Builtin,
-    Pointer,
-    Array,
-    Function,
-    Record,
-    Enum,
-    Class,
-    Typedef
+    BUILTIN,
+    POINTER,
+    ARRAY,
+    FUNCTION,
+    RECORD,
+    ENUM,
+    CLASS,
+    TYPEDEF
 };
 
-enum class Qualifier {
-    Q_NONE = 0,
-    Q_CONST = 1,
-    Q_VOLATILE = 2,
-    Q_CONST_VOLATILE = 3
-};
+enum class Qualifier { NONE = 0, CONST = 1, VOLATILE = 2, CONST_VOLATILE = 3 };
+
 enum class BuiltinTypeKind {
     VOID,
     BOOL,
@@ -62,32 +57,38 @@ struct Type {
     virtual std::string mangled_name() const = 0;
 };
 
-struct QualType {
+struct QualifiedType {
     TypePtr type;
     Qualifier qualifier;
 
     // Default constructor (needed for std::unordered_map)
-    QualType() : type(nullptr), qualifier(Qualifier::Q_NONE) {}
+    QualifiedType() : type(nullptr), qualifier(Qualifier::NONE) {}
 
-    QualType(TypePtr type, Qualifier qualifier)
+    QualifiedType(TypePtr type)
+        : type(std::move(type)), qualifier(Qualifier::NONE)
+    {
+    }
+
+    QualifiedType(TypePtr type, Qualifier qualifier)
         : type(std::move(type)), qualifier(qualifier)
     {
     }
 
-    bool operator==(const QualType &other) const
+    bool operator==(const QualifiedType &other) const
     {
         return type == other.type && qualifier == other.qualifier;
     }
+    
     std::string debug_name() const
     {
         if (!type)
             return "invalid";
         std::string q;
-        if (qualifier == Qualifier::Q_CONST)
+        if (qualifier == Qualifier::CONST)
             q = " const";
-        else if (qualifier == Qualifier::Q_VOLATILE)
+        else if (qualifier == Qualifier::VOLATILE)
             q = " volatile";
-        else if (qualifier == Qualifier::Q_CONST_VOLATILE)
+        else if (qualifier == Qualifier::CONST_VOLATILE)
             q = " const volatile";
         return type->debug_name() + q;
     }
@@ -100,11 +101,11 @@ struct QualType {
         std::string base = type->mangled_name();
 
         // Apply CV-qualifiers according to Itanium ABI
-        if (qualifier == Qualifier::Q_CONST)
+        if (qualifier == Qualifier::CONST)
             return "K" + base;
-        else if (qualifier == Qualifier::Q_VOLATILE)
+        else if (qualifier == Qualifier::VOLATILE)
             return "V" + base;
-        else if (qualifier == Qualifier::Q_CONST_VOLATILE)
+        else if (qualifier == Qualifier::CONST_VOLATILE)
             return "VK" + base; // volatile const (order matters)
 
         return base;
@@ -112,14 +113,14 @@ struct QualType {
 };
 
 struct MemberInfo {
-    QualType type;
+    QualifiedType type;
     Access access;
     bool is_static;
 
     // Default constructor (needed for std::unordered_map)
     MemberInfo() : type(), access(Access::PRIVATE), is_static(false) {}
 
-    MemberInfo(QualType type, Access access, bool is_static)
+    MemberInfo(QualifiedType type, Access access, bool is_static)
         : type(std::move(type)), access(access), is_static(is_static)
     {
     }
@@ -129,7 +130,7 @@ struct BuiltinType : public Type {
     BuiltinTypeKind builtin_kind;
 
     explicit BuiltinType(BuiltinTypeKind kind)
-        : Type(TypeKind::Builtin), builtin_kind(kind)
+        : Type(TypeKind::BUILTIN), builtin_kind(kind)
     {
     }
 
@@ -181,10 +182,10 @@ struct BuiltinType : public Type {
 };
 
 struct PointerType : public Type {
-    QualType pointee;
+    QualifiedType pointee;
 
-    explicit PointerType(QualType pointee)
-        : Type(TypeKind::Pointer), pointee(std::move(pointee))
+    explicit PointerType(QualifiedType pointee)
+        : Type(TypeKind::POINTER), pointee(std::move(pointee))
     {
     }
 
@@ -200,11 +201,11 @@ struct PointerType : public Type {
 };
 
 struct ArrayType : public Type {
-    QualType element_type;
-    std::optional<size_t> size;
+    QualifiedType element_type;
+    size_t size;
 
-    ArrayType(QualType element_type, std::optional<size_t> size)
-        : Type(TypeKind::Array), element_type(std::move(element_type)),
+    ArrayType(QualifiedType element_type, size_t size)
+        : Type(TypeKind::ARRAY), element_type(std::move(element_type)),
           size(size)
     {
     }
@@ -212,14 +213,14 @@ struct ArrayType : public Type {
     std::string debug_name() const override
     {
         return element_type.debug_name() + "[" +
-               (size ? std::to_string(*size) : "") + "]";
+               (size ? std::to_string(size) : "") + "]";
     }
 
     std::string mangled_name() const override
     {
         if (size) {
             // Array with known size: A<size>_<element-type>
-            return "A" + std::to_string(*size) + "_" +
+            return "A" + std::to_string(size) + "_" +
                    element_type.mangled_name();
         } else {
             // Array with unknown size: A_<element-type>
@@ -229,14 +230,14 @@ struct ArrayType : public Type {
 };
 
 struct FunctionType : public Type {
-    QualType return_type;
-    std::vector<QualType> param_types;
+    QualifiedType return_type;
+    std::vector<QualifiedType> param_types;
     bool is_variadic;
 
-    FunctionType(QualType return_type,
-                 std::vector<QualType> param_types,
+    FunctionType(QualifiedType return_type,
+                 std::vector<QualifiedType> param_types,
                  bool is_variadic = false)
-        : Type(TypeKind::Function), return_type(std::move(return_type)),
+        : Type(TypeKind::FUNCTION), return_type(std::move(return_type)),
           param_types(std::move(param_types)), is_variadic(is_variadic)
     {
     }
@@ -268,15 +269,15 @@ struct FunctionType : public Type {
 
 struct RecordType : public Type {
     std::string tag;
-    std::unordered_map<std::string, QualType> fields;
+    std::unordered_map<std::string, QualifiedType> fields;
     bool is_union;
     bool is_defined;
     RecordType(std::string tag, bool is_union = false, bool is_defined = false)
-        : Type(TypeKind::Record), tag(std::move(tag)), is_union(is_union),
+        : Type(TypeKind::RECORD), tag(std::move(tag)), is_union(is_union),
           is_defined(is_defined)
     {
     }
-    void add_field(const std::string &name, QualType type)
+    void add_field(const std::string &name, QualifiedType type)
     {
         fields[name] = std::move(type);
     }
@@ -298,7 +299,7 @@ struct EnumType : public Type {
     bool is_defined;
 
     EnumType(std::string tag, bool is_defined = false)
-        : Type(TypeKind::Enum), tag(std::move(tag)), is_defined(is_defined)
+        : Type(TypeKind::ENUM), tag(std::move(tag)), is_defined(is_defined)
     {
     }
     void add_enumerator(const std::string &name, int64_t value)
@@ -327,7 +328,7 @@ struct ClassType : public Type {
               TypePtr base_type,
               Access base_access,
               bool is_defined = false)
-        : Type(TypeKind::Class), name(std::move(name)),
+        : Type(TypeKind::CLASS), name(std::move(name)),
           base(base_type, base_access), is_defined(is_defined)
     {
     }
@@ -351,10 +352,10 @@ struct ClassType : public Type {
 
 struct TypedefType : public Type {
     std::string name;
-    QualType underlying_type;
+    QualifiedType underlying_type;
 
-    TypedefType(std::string name, QualType underlying_type)
-        : Type(TypeKind::Typedef), name(std::move(name)),
+    TypedefType(std::string name, QualifiedType underlying_type)
+        : Type(TypeKind::TYPEDEF), name(std::move(name)),
           underlying_type(std::move(underlying_type))
     {
     }
@@ -374,5 +375,14 @@ struct TypedefType : public Type {
 std::string type_kind_to_string(TypeKind kind);
 
 using TypeId = size_t;
+
+using BuiltinTypePtr = std::shared_ptr<BuiltinType>;
+using PointerTypePtr = std::shared_ptr<PointerType>;
+using ArrayTypePtr = std::shared_ptr<ArrayType>;
+using FunctionTypePtr = std::shared_ptr<FunctionType>;
+using RecordTypePtr = std::shared_ptr<RecordType>;
+using EnumTypePtr = std::shared_ptr<EnumType>;
+using ClassTypePtr = std::shared_ptr<ClassType>;
+using TypedefTypePtr = std::shared_ptr<TypedefType>;
 
 #endif // TYPE_HPP
