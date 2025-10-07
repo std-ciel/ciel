@@ -86,23 +86,27 @@ void TypeFactory::print_custom_types() const
 {
     std::size_t w_id = std::string("Type ID").size();
     std::size_t w_name = std::string("Type Name").size();
+    std::size_t w_mangled_name = std::string("Mangled Name").size();
     std::size_t w_kind = std::string("Kind").size();
     bool is_empty = true;
     for (const auto &type_pair : get_custom_types()) {
         const TypePtr &type = type_pair.second;
         w_id = std::max(w_id, std::to_string(type_pair.first).size());
         w_name = std::max(w_name, type->debug_name().size());
+        w_mangled_name = std::max(w_mangled_name, type->mangled_name().size());
         w_kind = std::max(w_kind, type_kind_to_string(type->kind).size());
         is_empty = false;
     }
 
     auto make_sep = [&](char fill = '-') {
         std::string s;
-        s.reserve(w_id + w_name + w_kind + 16);
+        s.reserve(w_id + w_name + w_mangled_name + w_kind + 10);
         s.push_back('+');
         s.append(w_id + 2, fill);
         s.push_back('+');
         s.append(w_name + 2, fill);
+        s.push_back('+');
+        s.append(w_mangled_name + 2, fill);
         s.push_back('+');
         s.append(w_kind + 2, fill);
         s.push_back('+');
@@ -119,7 +123,9 @@ void TypeFactory::print_custom_types() const
     std::cout << sep << '\n'
               << '|' << ' ' << std::left << std::setw(w_id) << "Type ID" << ' '
               << '|' << ' ' << std::left << std::setw(w_name) << "Type Name"
-              << ' ' << '|' << ' ' << std::left << std::setw(w_kind) << "Kind"
+              << ' ' << '|' << ' ' << std::left << std::setw(w_mangled_name)
+              << "Mangled Name" << ' ' << '|' << ' ' 
+               << std::left << std::setw(w_kind) << "Kind"
               << ' ' << '|' << '\n'
               << sep << '\n';
 
@@ -132,6 +138,8 @@ void TypeFactory::print_custom_types() const
             std::cout << '|' << ' ' << std::left << std::setw(w_id)
                       << type_pair.first << ' ' << '|' << ' ' << std::left
                       << std::setw(w_name) << type->debug_name() << ' ' << '|'
+                        << ' ' << std::left << std::setw(w_mangled_name)
+                        << type->mangled_name() << ' ' << '|'
                       << ' ' << std::left << std::setw(w_kind)
                       << type_kind_to_string(type->kind) << ' ' << '|' << '\n';
     }
