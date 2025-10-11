@@ -9,7 +9,7 @@ add_executable(unit_tests
 )
 
 # Link with GoogleTest and the project libraries
-target_link_libraries(unit_tests gtest gtest_main ciel_lexer)
+target_link_libraries(unit_tests gtest gtest_main ciel_parser)
 
 # Include project directories
 target_include_directories(unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)

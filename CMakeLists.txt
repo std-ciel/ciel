@@ -29,9 +29,10 @@ BISON_TARGET(CielParser src/parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.c
     DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/parser.hpp
 )
 FLEX_TARGET(CielLexer src/lexer/lex.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cc)
+
 ADD_FLEX_BISON_DEPENDENCY(CielLexer CielParser)
 
-add_library(ciel_lexer STATIC
+add_library(ciel_parser STATIC
     ${FLEX_CielLexer_OUTPUTS}
     ${BISON_CielParser_OUTPUTS}
     src/token/token_type.cpp
@@ -44,15 +45,16 @@ add_library(ciel_lexer STATIC
     src/symbol_table/type_factory.cpp
     src/symbol_table/mangling.cpp
 )
-target_include_directories(ciel_lexer PUBLIC
+
+target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/token
     ${CMAKE_SOURCE_DIR}/include/lexer
     ${CMAKE_SOURCE_DIR}/include/parser
     ${CMAKE_CURRENT_BINARY_DIR})
-target_compile_definitions(ciel_lexer PUBLIC )
+target_compile_definitions(ciel_parser PUBLIC )
 
 add_executable(cielc src/main.cpp)
-target_link_libraries(cielc PRIVATE ciel_lexer argparse)
+target_link_libraries(cielc PRIVATE ciel_parser argparse)
 
 if(UNIT_TESTING)
   enable_testing()
