@@ -18,6 +18,7 @@
   #include <optional>
   #include <variant>
 
+  #include "ast/ast_node.hpp"
   #include "symbol_table/type.hpp"
   #include "symbol_table/symbol.hpp"
   #include "symbol_table/mangling.hpp"
@@ -91,8 +92,7 @@
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
 
-  // Counter to uniquely name anonymous enums in a scope-stable way
-  static size_t anon_enum_counter = 0;
+  // Counters to uniquely name anonymous aggregates (struct/union/class) in a scope-stable way
   static size_t anon_struct_counter = 0;
   static size_t anon_union_counter = 0;
   static size_t anon_class_counter = 0;
@@ -853,15 +853,14 @@ enum_specifier
       }
     | ENUM OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
-        std::ostringstream os;
-        os << "<anon-enum@" << symbol_table.get_current_scope_id() << ":" << (anon_enum_counter++) << ">";
-        TypePtr t = unwrap_type_or_error(type_factory.make<EnumType>(os.str(), true), "anonymous enum", @1.begin.line, @1.begin.column);
-        int64_t v = 0;
-        for (const auto& nm : $3) {
-          std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
-          v++;
-        }
-        $$ = t;
+        parser_add_error(
+          @1.begin.line,
+          @1.begin.column,
+          "anonymous enums are not supported in favour of strongly typed enums by default;\n"
+          "Only named enums are allowed as we disagree with C's weakly typed enums.\n"
+          "Please remove the anonymous enum"
+        );
+        $$ = nullptr;
       }
     | ENUM IDENTIFIER
       {
