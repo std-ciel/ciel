@@ -339,6 +339,23 @@ postfix_expression
     | postfix_expression OPEN_PAREN_OP CLOSE_PAREN_OP
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
     | postfix_expression DOT_OP IDENTIFIER
+    {
+        auto type = $1->type;
+        if (type == ASTNodeType::IDENTIFIER_EXPR) {
+          std::string enum_name = std::string("enum ") + std::static_pointer_cast<IdentifierExpr>($1)->name;
+          auto type_ptr_opt = type_factory.lookup(enum_name);
+          if (type_ptr_opt.has_value() && type_ptr_opt.value()->kind() == TypeKind::ENUM) {
+            auto enum_type_ptr = std::static_pointer_cast<EnumTypePtr>(type_ptr_opt.value());
+            if (enum_type_ptr->enumerators.find($3) == enum_type_ptr->enumerators.end()) {
+              parser_add_error(@2.begin.line, @2.begin.column, "enumerator '" + $3 + "' not found in enum '" + enum_name + "'");
+            } else {
+                // TODO: propagate value
+            }
+          }else {
+            // TODO: handle other types with member access
+          }
+        }
+    }
     | postfix_expression ARROW_OP IDENTIFIER
     | postfix_expression INCREMENT_OP
     | postfix_expression DECREMENT_OP
