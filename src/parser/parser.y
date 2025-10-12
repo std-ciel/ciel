@@ -18,6 +18,7 @@
   #include <optional>
   #include <variant>
 
+  #include "ast/ast_node.hpp"
   #include "symbol_table/type.hpp"
   #include "symbol_table/symbol.hpp"
   #include "symbol_table/mangling.hpp"
@@ -91,8 +92,7 @@
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
 
-  // Counter to uniquely name anonymous enums in a scope-stable way
-  static size_t anon_enum_counter = 0;
+  // Counters to uniquely name anonymous aggregates (struct/union/class) in a scope-stable way
   static size_t anon_struct_counter = 0;
   static size_t anon_union_counter = 0;
   static size_t anon_class_counter = 0;
@@ -339,6 +339,23 @@ postfix_expression
     | postfix_expression OPEN_PAREN_OP CLOSE_PAREN_OP
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
     | postfix_expression DOT_OP IDENTIFIER
+    {
+        auto type = $1->type;
+        if (type == ASTNodeType::IDENTIFIER_EXPR) {
+          std::string enum_name = std::string("enum ") + std::static_pointer_cast<IdentifierExpr>($1)->symbol->get_name();
+          auto type_ptr_opt = type_factory.lookup(enum_name);
+          if (type_ptr_opt.has_value() && type_ptr_opt.value()->kind == TypeKind::ENUM) {
+            auto enum_type_ptr = std::static_pointer_cast<EnumType>(type_ptr_opt.value());
+            if (enum_type_ptr->enumerators.find($3) == enum_type_ptr->enumerators.end()) {
+              parser_add_error(@2.begin.line, @2.begin.column, "enumerator '" + $3 + "' not found in enum '" + enum_name + "'");
+            } else {
+                // TODO: propagate value
+            }
+          }else {
+            // TODO: handle other types with member access
+          }
+        }
+    }
     | postfix_expression ARROW_OP IDENTIFIER
     | postfix_expression INCREMENT_OP
     | postfix_expression DECREMENT_OP
@@ -853,15 +870,14 @@ enum_specifier
       }
     | ENUM OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
-        std::ostringstream os;
-        os << "<anon-enum@" << symbol_table.get_current_scope_id() << ":" << (anon_enum_counter++) << ">";
-        TypePtr t = unwrap_type_or_error(type_factory.make<EnumType>(os.str(), true), "anonymous enum", @1.begin.line, @1.begin.column);
-        int64_t v = 0;
-        for (const auto& nm : $3) {
-          std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
-          v++;
-        }
-        $$ = t;
+        parser_add_error(
+          @1.begin.line,
+          @1.begin.column,
+          "anonymous enums are not supported in favour of strongly typed enums by default;\n"
+          "Only named enums are allowed as we disagree with C's weakly typed enums.\n"
+          "Please remove the anonymous enum"
+        );
+        $$ = nullptr;
       }
     | ENUM IDENTIFIER
       {
