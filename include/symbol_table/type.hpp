@@ -78,7 +78,7 @@ struct QualifiedType {
     {
         return type == other.type && qualifier == other.qualifier;
     }
-    
+
     std::string debug_name() const
     {
         if (!type)
@@ -373,6 +373,14 @@ struct TypedefType : public Type {
 };
 
 std::string type_kind_to_string(TypeKind kind);
+
+TypePtr strip_typedefs(TypePtr type);
+bool is_pointer_type(TypePtr type);
+bool is_integral_type(TypePtr type);
+bool is_floating_type(TypePtr type);
+bool is_arithmetic_type(TypePtr type);
+bool is_scalar_type(TypePtr type);
+bool is_class_type(TypePtr type);
 
 using TypeId = size_t;
 
