@@ -92,6 +92,7 @@
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
 
+
   // Counters to uniquely name anonymous aggregates (struct/union/class) in a scope-stable way
   static size_t anon_struct_counter = 0;
   static size_t anon_union_counter = 0;
@@ -105,26 +106,10 @@
 	  symbol_table.print_symbols();
   }
 
-  static TypePtr builtin_type(const std::string& n) {
-    auto opt = type_factory.lookup(n);
-    return opt.has_value() ? opt.value() : nullptr;
-  }
-
-  static TypePtr make_function_type(TypePtr ret,
-                                    const std::vector<QualifiedType>& params,
-                                    bool variadic,
-                                    int line,
-                                    int column) {
-    QualifiedType qualified_ret(ret, Qualifier::NONE);
-
-    auto result = type_factory.make<FunctionType>(qualified_ret, params, variadic);
-    if (result.is_err()) {
-      parser_add_error(line, column, "Failed to create function type");
-      // Return a dummy function type to allow parsing to continue
-      return std::make_shared<FunctionType>(qualified_ret, params, variadic);
-    }
-    return result.value();
-  }
+  static TypePtr unwrap_type_or_error(Result<TypePtr, TypeFactoryError> result,
+                                      const std::string& context,
+                                      int line,
+                                      int column);
 
   static void params_to_vectors(const std::vector<ParamDeclInfo>& in,
                                 std::vector<QualifiedType>& types,
@@ -136,47 +121,173 @@
     for (const auto& p : in) { types.push_back(p.type); names.push_back(p.name); }
   }
 
-  static QualifiedType apply_ptr(QualifiedType base, size_t ptr_levels, int line, int column) {
-      if (ptr_levels == 0) {
-        return base;
-      }
+  static TypePtr pointer_from(TypePtr base, const yy::location& loc)
+  {
+    if (!base) {
+      return nullptr;
+    }
 
-      // Create a vector of qualifiers for each pointer level
-      // For now, we don't have per-level qualifiers, so use NONE
-      std::vector<Qualifier> ptr_qualifiers(ptr_levels, Qualifier::NONE);
-      
-      auto result = type_factory.make_pointer_chain(base, ptr_qualifiers);
-      if (result.is_err()) {
-        parser_add_error(line, column, "Failed to create pointer chain");
-        return base;
-      }
-      return result.value();
+    auto result = type_factory.pointer_from(base);
+    return unwrap_type_or_error(result, "pointer creation", loc.begin.line, loc.begin.column);
   }
 
-  static QualifiedType apply_arrays(QualifiedType base, const std::vector<size_t>& dims, int line, int column) {
-    auto result = type_factory.make_array_chain(base, dims);
-    if (result.is_err()) {
-      parser_add_error(line, column, "Failed to create array chain");
-      return base;
+  static TypePtr dereference_pointer(TypePtr pointer_type, const yy::location& loc, const std::string& context)
+  {
+    if (!pointer_type) {
+      return nullptr;
     }
+
+    auto result = type_factory.dereference_pointer(pointer_type);
+    if (result.is_err()) {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       context + ": " + type_factory_error_to_string(result.error()));
+      return nullptr;
+    }
+
     return result.value();
   }
 
-  // Helper to safely extract Result<TypePtr, TypeFactoryError> with error reporting
   static TypePtr unwrap_type_or_error(Result<TypePtr, TypeFactoryError> result, const std::string& context, int line, int column) {
     if (result.is_err()) {
       std::string error_msg = context + ": " + type_factory_error_to_string(result.error());
       parser_add_error(line, column, error_msg);
-      // Return nullptr as a fallback
+
       return nullptr;
     }
+
     return result.value();
+  }
+
+  static QualifiedType unwrap_qualified_or_error(
+      Result<QualifiedType, TypeFactoryError> result,
+      const std::string& context,
+      int line,
+      int column,
+      QualifiedType fallback)
+  {
+    if (result.is_err()) {
+      std::string error_msg = context + ": " + type_factory_error_to_string(result.error());
+      parser_add_error(line, column, error_msg);
+      return fallback;
+    }
+
+    return result.value();
+  }
+
+  static TypePtr require_builtin(const std::string& name,
+                                 const yy::location& loc,
+                                 const std::string& context = "type lookup")
+  {
+    auto builtin = type_factory.get_builtin_type(name);
+    if (!builtin.has_value()) {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       context + ": builtin type '" + name + "' is not defined");
+      return nullptr;
+    }
+
+    return builtin.value();
+  }
+
+  static TypePtr make_function_type_or_error(TypePtr ret,
+                                             const std::vector<QualifiedType>& params,
+                                             bool variadic,
+                                             const std::string& context,
+                                             int line,
+                                             int column)
+  {
+    auto result = type_factory.make_function_type(ret, params, variadic);
+    if (result.is_err()) {
+      parser_add_error(line,
+                       column,
+                       context + ": " + type_factory_error_to_string(result.error()));
+      QualifiedType qualified_ret(ret, Qualifier::NONE);
+      return std::make_shared<FunctionType>(qualified_ret, params, variadic);
+    }
+
+    return result.value();
+  }
+
+  static QualifiedType apply_pointer_levels_or_error(QualifiedType base,
+                                                     size_t ptr_levels,
+                                                     const std::string& context,
+                                                     int line,
+                                                     int column)
+  {
+    auto result = type_factory.apply_pointer_levels(base, ptr_levels);
+    return unwrap_qualified_or_error(result, context, line, column, base);
+  }
+
+  static QualifiedType apply_array_dimensions_or_error(
+      QualifiedType base,
+      const std::vector<size_t>& dims,
+      const std::string& context,
+      int line,
+      int column)
+  {
+    auto result = type_factory.apply_array_dimensions(base, dims);
+    return unwrap_qualified_or_error(result, context, line, column, base);
   }
 
   static void add_symbol_if_valid(const DeclaratorInfo& di, QualifiedType type) {
     if (!di.name.empty()) {
       (void)symbol_table.add_symbol(di.name, type, parser_state.current_storage);
     }
+  }
+
+  static TypePtr make_string_literal_type(const yy::location& loc) {
+    auto char_type = require_builtin("char", loc, "string literal");
+    if (!char_type) {
+      return nullptr;
+    }
+
+    QualifiedType qualified_char(char_type, Qualifier::CONST);
+    std::vector<Qualifier> pointer_levels = {Qualifier::NONE};
+
+    auto pointer_result = type_factory.make_pointer_chain(qualified_char, pointer_levels);
+
+    if (pointer_result.is_err()) {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       std::string("failed to create pointer type for string literal: ") +
+                           type_factory_error_to_string(pointer_result.error()));
+      return char_type;
+    }
+
+    return pointer_result.value().type;
+  }
+
+  static TypePtr get_expression_type(const ASTNodePtr& node,
+                                         const yy::location& loc,
+                                         const std::string& context)
+  {
+    if (!node) {
+      parser_add_error(loc.begin.line,
+                        loc.begin.column,
+                        context + ": expression is null");
+      return nullptr;
+    }
+
+    auto type_result = get_expression_type(node);
+    if (type_result.is_ok()) {
+      return type_result.value();
+    }
+
+    switch (type_result.error()) {
+    case ExpressionTypeError::NullNode:
+      parser_add_error(loc.begin.line,
+                        loc.begin.column,
+                        context + ": expression is null");
+      break;
+    case ExpressionTypeError::NotExpression:
+      parser_add_error(loc.begin.line,
+                        loc.begin.column,
+                        context + ": AST node does not model an expression");
+      break;
+    }
+
+    return nullptr;
   }
 }
 
@@ -267,7 +378,6 @@
 %type <std::vector<std::string>> enumerator_list
 %type <std::string> enumerator
 
-
 %type <std::string> struct_or_union
 %type <Access> access_specifier
 %type <TypePtr> class_specifier_tail
@@ -298,7 +408,7 @@
 %left PLUS_OP MINUS_OP
 %left STAR_OP DIVIDE_OP MOD_OP
 
-%right UNARY /* unary + - ! ~ * & sizeof (sizeof removed) - mark unary precedence */
+%right UNARY /* unary + - ! ~ * & - mark unary precedence */
 // %nonassoc POSTFIX_PREC  /* postfix ++ --, call, indexing has highest precedence */
 // %right CAST_PREC
 
@@ -487,7 +597,12 @@ declaration
             if (di.is_function) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
-                TypePtr fn = make_function_type(base.type, di.param_types, di.is_variadic, @1.begin.line, @1.begin.column);
+                TypePtr fn = make_function_type_or_error(base.type,
+                                                         di.param_types,
+                                                         di.is_variadic,
+                                                         "function declarator",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
 
                 FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
 
@@ -503,10 +618,18 @@ declaration
             } else {
               QualifiedType final_t;
               if(di.pointer_levels > 0) {
-                final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+                final_t = apply_pointer_levels_or_error(base,
+                                                       di.pointer_levels,
+                                                       "pointer declarator",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
               }
               else if(!di.array_dims.empty()) {
-                final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+                final_t = apply_array_dimensions_or_error(base,
+                                                         di.array_dims,
+                                                         "array declarator",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
               }
               else {
                 final_t = base;
@@ -522,7 +645,11 @@ declaration
         size_t ptrs = $3;
         TypePtr base = $2;
         if (base){
-          QualifiedType actual = apply_ptr(QualifiedType(base, Qualifier::NONE), ptrs, @1.begin.line, @1.begin.column);
+          QualifiedType actual = apply_pointer_levels_or_error(QualifiedType(base, Qualifier::NONE),
+                                                               ptrs,
+                                                               "typedef pointer",
+                                                               @1.begin.line,
+                                                               @1.begin.column);
           (void)unwrap_type_or_error(type_factory.make<TypedefType>($4, actual), "typedef", @1.begin.line, @1.begin.column);
         }
         parser_state.reset_decl();
@@ -530,20 +657,20 @@ declaration
     ;
 
 declaration_specifiers
-  : storage_class_specifier declaration_specifiers 
-    { 
-      $$ = $2; 
+  : storage_class_specifier declaration_specifiers
+    {
+      $$ = $2;
       if ($$) {
         // Apply qualifiers from the stack one by one
         QualifiedType base($$, Qualifier::NONE);
         size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
-        
+
         for (const auto& q : parser_state.current_decl_qualifiers) {
           base = QualifiedType(base.type, q);
         }
-        
+
         parser_state.current_decl_base_type = base;
-        
+
         // Pop the qualifiers we just used
         for (size_t i = 0; i < num_qualifiers; ++i) {
           parser_state.current_decl_qualifiers.pop_back();
@@ -551,69 +678,69 @@ declaration_specifiers
       }
     }
   | storage_class_specifier { $$ = nullptr; }
-  | type_specifier declaration_specifiers 
-    { 
-      $$ = $1 ? $1 : $2; 
+  | type_specifier declaration_specifiers
+    {
+      $$ = $1 ? $1 : $2;
       if ($$) {
         // Apply qualifiers from the stack one by one
         QualifiedType base($$, Qualifier::NONE);
         size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
-        
+
         for (const auto& q : parser_state.current_decl_qualifiers) {
           base = QualifiedType(base.type, q);
         }
-        
+
         parser_state.current_decl_base_type = base;
-        
+
         // Pop the qualifiers we just used
         for (size_t i = 0; i < num_qualifiers; ++i) {
           parser_state.current_decl_qualifiers.pop_back();
         }
       }
     }
-  | type_specifier 
-    { 
-      $$ = $1; 
+  | type_specifier
+    {
+      $$ = $1;
       if ($$) {
         // Apply qualifiers from the stack one by one
         QualifiedType base($$, Qualifier::NONE);
         size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
-        
+
         for (const auto& q : parser_state.current_decl_qualifiers) {
           base = QualifiedType(base.type, q);
         }
-        
+
         parser_state.current_decl_base_type = base;
-        
+
         // Pop the qualifiers we just used
         for (size_t i = 0; i < num_qualifiers; ++i) {
           parser_state.current_decl_qualifiers.pop_back();
         }
       }
     }
-  | type_qualifier declaration_specifiers 
-    { 
-      $$ = $2; 
+  | type_qualifier declaration_specifiers
+    {
+      $$ = $2;
       if ($$) {
         // Apply qualifiers from the stack one by one
         QualifiedType base($$, Qualifier::NONE);
         size_t num_qualifiers = parser_state.current_decl_qualifiers.size();
-        
+
         for (const auto& q : parser_state.current_decl_qualifiers) {
           base = QualifiedType(base.type, q);
         }
-        
+
         parser_state.current_decl_base_type = base;
-        
+
         // Pop the qualifiers we just used
         for (size_t i = 0; i < num_qualifiers; ++i) {
           parser_state.current_decl_qualifiers.pop_back();
         }
       }
     }
-  | type_qualifier 
-    { 
-      $$ = nullptr; 
+  | type_qualifier
+    {
+      $$ = nullptr;
     }
   ;
 
@@ -641,10 +768,18 @@ init_declarator
           QualifiedType final_t;
 
           if(di.pointer_levels > 0){
-            final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+            final_t = apply_pointer_levels_or_error(base,
+                                                   di.pointer_levels,
+                                                   "initializer pointer declarator",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           }
           else if(!di.array_dims.empty()){
-            final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+            final_t = apply_array_dimensions_or_error(base,
+                                                     di.array_dims,
+                                                     "initializer array declarator",
+                                                     @1.begin.line,
+                                                     @1.begin.column);
           }
           else {
             final_t = base;
@@ -669,10 +804,18 @@ init_declarator
         if (base.type) {
           QualifiedType final_t;
           if(di.pointer_levels > 0){
-            final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+            final_t = apply_pointer_levels_or_error(base,
+                                                   di.pointer_levels,
+                                                   "declarator pointer",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           }
           else if(!di.array_dims.empty()){
-            final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+            final_t = apply_array_dimensions_or_error(base,
+                                                     di.array_dims,
+                                                     "declarator array",
+                                                     @1.begin.line,
+                                                     @1.begin.column);
           }
           else {
             final_t = base;
@@ -691,13 +834,13 @@ init_declarator
     ;
 
 type_specifier
-    : VOID     { $$ = builtin_type("void");     parser_state.current_decl_base_type = $$;  }
-    | CHAR     { $$ = builtin_type("char");     parser_state.current_decl_base_type = $$; }
-    | INT      { $$ = builtin_type("int");      parser_state.current_decl_base_type = $$; }
-    | SIGNED   { $$ = builtin_type("signed");   parser_state.current_decl_base_type = $$; }
-    | UNSIGNED { $$ = builtin_type("unsigned"); parser_state.current_decl_base_type = $$; }
-    | BOOL     { $$ = builtin_type("bool");     parser_state.current_decl_base_type = $$; }
-    | FLOAT    { $$ = builtin_type("float");    parser_state.current_decl_base_type = $$; }
+  : VOID     { $$ = require_builtin("void", @1, "type specifier");     parser_state.current_decl_base_type = $$;  }
+  | CHAR     { $$ = require_builtin("char", @1, "type specifier");     parser_state.current_decl_base_type = $$; }
+  | INT      { $$ = require_builtin("int", @1, "type specifier");      parser_state.current_decl_base_type = $$; }
+  | SIGNED   { $$ = require_builtin("signed", @1, "type specifier");   parser_state.current_decl_base_type = $$; }
+  | UNSIGNED { $$ = require_builtin("unsigned", @1, "type specifier"); parser_state.current_decl_base_type = $$; }
+  | BOOL     { $$ = require_builtin("bool", @1, "type specifier");     parser_state.current_decl_base_type = $$; }
+  | FLOAT    { $$ = require_builtin("float", @1, "type specifier");    parser_state.current_decl_base_type = $$; }
   	| struct_or_union_specifier { $$ = $1; parser_state.current_decl_base_type = $$; }
     | enum_specifier { $$ = $1; parser_state.current_decl_base_type = $$; }
     | CLASS class_specifier_tail
@@ -818,10 +961,18 @@ struct_declaration
               QualifiedType final_t;
 
               if(di.pointer_levels){
-                final_t = apply_ptr(base, di.pointer_levels, @1.begin.line, @1.begin.column);
+                final_t = apply_pointer_levels_or_error(base,
+                                                       di.pointer_levels,
+                                                       "struct field pointer",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
               }
               else{
-                final_t = apply_arrays(base, di.array_dims, @1.begin.line, @1.begin.column);
+                final_t = apply_array_dimensions_or_error(base,
+                                                         di.array_dims,
+                                                         "struct field array",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
               }
 
               // TODO handle errors
@@ -1018,10 +1169,18 @@ parameter_declaration
           QualifiedType t;
 
           if($2.pointer_levels){
-            t = apply_ptr(base, $2.pointer_levels, @1.begin.line, @2.begin.column);
+            t = apply_pointer_levels_or_error(base,
+                                              $2.pointer_levels,
+                                              "parameter pointer",
+                                              @1.begin.line,
+                                              @2.begin.column);
           }
           else if(!$2.array_dims.empty()){
-            t = apply_arrays(base, $2.array_dims, @1.begin.line, @2.begin.column);
+            t = apply_array_dimensions_or_error(base,
+                                                $2.array_dims,
+                                                "parameter array",
+                                                @1.begin.line,
+                                                @2.begin.column);
           }
           else {
             t = base;
@@ -1183,7 +1342,12 @@ function_definition
 		if (base) {
 		  const DeclaratorInfo &di = $2;
 			if (di.is_function && !di.name.empty()) {
-            TypePtr fn = make_function_type(base, di.param_types, di.is_variadic, @1.begin.line, @2.begin.column);
+      TypePtr fn = make_function_type_or_error(base,
+                       di.param_types,
+                       di.is_variadic,
+                       "function definition",
+                       @1.begin.line,
+                       @2.begin.column);
             FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
             std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta , std::nullopt);
             (void)symbol_table.add_symbol(mangled,
@@ -1326,7 +1490,12 @@ function_declaration_or_definition
   		TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
-            TypePtr fn = make_function_type(ret, di.param_types, di.is_variadic, @1.begin.line, @2.begin.column);
+            TypePtr fn = make_function_type_or_error(ret,
+                                                     di.param_types,
+                                                     di.is_variadic,
+                                                     "member function declarator",
+                                                     @1.begin.line,
+                                                     @2.begin.column);
             FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
 
             std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
@@ -1341,10 +1510,18 @@ function_declaration_or_definition
           } else {
             QualifiedType final_t;
             if(di.pointer_levels){
-              final_t = apply_ptr(ret, di.pointer_levels, @1.begin.line, @2.begin.column);
+              final_t = apply_pointer_levels_or_error(ret,
+                                                     di.pointer_levels,
+                                                     "member pointer declarator",
+                                                     @1.begin.line,
+                                                     @2.begin.column);
             }
             else{
-              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @1.begin.column);
+              final_t = apply_array_dimensions_or_error(ret,
+                                                       di.array_dims,
+                                                       "member array declarator",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
             }
 
             // TODO error handling
@@ -1362,7 +1539,12 @@ function_declaration_or_definition
   		TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
-            TypePtr fn = make_function_type(ret, di.param_types, di.is_variadic, @1.begin.line, @2.begin.column);
+            TypePtr fn = make_function_type_or_error(ret,
+                                                     di.param_types,
+                                                     di.is_variadic,
+                                                     "member function definition",
+                                                     @1.begin.line,
+                                                     @2.begin.column);
 
             FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
 
@@ -1378,10 +1560,18 @@ function_declaration_or_definition
           } else {
             QualifiedType final_t;
             if(di.pointer_levels){
-              final_t = apply_ptr(ret, di.pointer_levels, @1.begin.line, @2.begin.column);
+              final_t = apply_pointer_levels_or_error(ret,
+                                                     di.pointer_levels,
+                                                     "member pointer definition",
+                                                     @1.begin.line,
+                                                     @2.begin.column);
             }
             else{
-              final_t = apply_arrays(ret, di.array_dims, @1.begin.line, @1.begin.column);
+              final_t = apply_array_dimensions_or_error(ret,
+                                                       di.array_dims,
+                                                       "member array definition",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
             }
 
             // TODO error handling
@@ -1401,10 +1591,15 @@ function_declaration_or_definition
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
-          TypePtr ret = builtin_type("void");
+          TypePtr ret = require_builtin("void", @1, "constructor return type");
           const auto &plist = $3;
 
-          TypePtr fn = make_function_type(ret, plist.types, plist.variadic, @1.begin.line, @1.begin.column);
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   plist.types,
+                                                   plist.variadic,
+                                                   "constructor definition",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
 
           std::string mangled = mangle_function_name(
@@ -1430,9 +1625,14 @@ function_declaration_or_definition
           if (expected != got) {
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
-          TypePtr ret = builtin_type("void");
+          TypePtr ret = require_builtin("void", @1, "constructor return type");
           std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @1.begin.column);
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   params,
+                                                   variadic,
+                                                   "constructor definition",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
 
           std::string mangled = mangle_function_name(
@@ -1456,9 +1656,14 @@ function_declaration_or_definition
           if (expected != got) {
             std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
           }
-          TypePtr ret = builtin_type("void");
+          TypePtr ret = require_builtin("void", @1, "destructor return type");
           std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @2.begin.column);
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   params,
+                                                   variadic,
+                                                   "destructor definition",
+                                                   @1.begin.line,
+                                                   @2.begin.column);
 
           FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
 
@@ -1489,7 +1694,12 @@ function_declaration_or_definition
         if (ret && !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           const auto &plist = $5;
           std::string opname = $3;
-          TypePtr fn = make_function_type(ret, plist.types, plist.variadic, @1.begin.line, @1.begin.column);
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   plist.types,
+                                                   plist.variadic,
+                                                   "operator definition",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           FunctionMeta meta(FunctionKind::OPERATOR, plist.names, parser_state.current_class_type);
 
           std::string mangled = mangle_function_name(
@@ -1517,8 +1727,13 @@ function_declaration_or_definition
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
           const auto &plist = $3;
-          TypePtr ret = builtin_type("void");
-          TypePtr fn = make_function_type(ret, plist.types, plist.variadic, @1.begin.line, @1.begin.column);
+          TypePtr ret = require_builtin("void", @1, "constructor return type");
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   plist.types,
+                                                   plist.variadic,
+                                                   "constructor declaration",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
 
           std::string mangled = mangle_function_name(
@@ -1544,8 +1759,13 @@ function_declaration_or_definition
             std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
           }
           std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr ret = builtin_type("void");
-          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @1.begin.column);
+          TypePtr ret = require_builtin("void", @1, "constructor return type");
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   params,
+                                                   variadic,
+                                                   "constructor declaration",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
 
           std::string mangled = mangle_function_name(
@@ -1572,9 +1792,14 @@ function_declaration_or_definition
             std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
           }
           std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr ret = builtin_type("void");
+          TypePtr ret = require_builtin("void", @1, "destructor return type");
 
-          TypePtr fn = make_function_type(ret, params, variadic, @1.begin.line, @2.begin.column);
+          TypePtr fn = make_function_type_or_error(ret,
+                                                   params,
+                                                   variadic,
+                                                   "destructor declaration",
+                                                   @1.begin.line,
+                                                   @2.begin.column);
 
           FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
 

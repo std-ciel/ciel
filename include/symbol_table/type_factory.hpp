@@ -4,7 +4,11 @@
 #include "symbol_table/result.hpp"
 #include "symbol_table/symbol.hpp"
 #include "symbol_table/type.hpp"
+#include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 // Error types for TypeFactory operations
 enum class TypeFactoryError {
@@ -111,8 +115,8 @@ class TypeFactory {
 
     // Overloaded version for custom types with scope chain lookup
     template <typename T, typename... Args>
-    Result<TypePtr, TypeFactoryError> make(const std::vector<size_t> &scope_chain,
-                                Args &&...args)
+    Result<TypePtr, TypeFactoryError>
+    make(const std::vector<size_t> &scope_chain, Args &&...args)
     {
         auto type = std::make_shared<T>(std::forward<Args>(args)...);
         std::string name = type->debug_name();
@@ -203,7 +207,8 @@ class TypeFactory {
         return make<PointerType>(std::move(pointee));
     }
 
-    Result<TypePtr, TypeFactoryError> get_array(QualifiedType element_type, size_t size)
+    Result<TypePtr, TypeFactoryError> get_array(QualifiedType element_type,
+                                                size_t size)
     {
         return make<ArrayType>(std::move(element_type), size);
     }
@@ -223,6 +228,24 @@ class TypeFactory {
     {
         return QualifiedType(base, qualifier);
     }
+
+    std::optional<TypePtr> get_builtin_type(const std::string &name) const;
+
+    Result<TypePtr, TypeFactoryError>
+    make_function_type(TypePtr ret,
+                       const std::vector<QualifiedType> &params,
+                       bool variadic);
+
+    Result<QualifiedType, TypeFactoryError>
+    apply_pointer_levels(QualifiedType base, size_t pointer_levels);
+
+    Result<QualifiedType, TypeFactoryError>
+    apply_array_dimensions(QualifiedType base,
+                           const std::vector<size_t> &sizes);
+
+    Result<TypePtr, TypeFactoryError> pointer_from(TypePtr base);
+
+    Result<TypePtr, TypeFactoryError> dereference_pointer(TypePtr pointer_type);
 };
 
 #endif // TYPE_FACTORY_HPP

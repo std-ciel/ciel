@@ -49,7 +49,8 @@ TypeFactory::make_pointer_chain(QualifiedType base,
     for (const auto &qual : qualifiers) {
         auto pointer_type = get_pointer(base);
         if (pointer_type.is_err()) {
-            return Result<QualifiedType, TypeFactoryError>(pointer_type.error());
+            return Result<QualifiedType, TypeFactoryError>(
+                pointer_type.error());
         }
         base = QualifiedType(pointer_type.value(), qual);
     }
@@ -124,9 +125,8 @@ void TypeFactory::print_custom_types() const
               << '|' << ' ' << std::left << std::setw(w_id) << "Type ID" << ' '
               << '|' << ' ' << std::left << std::setw(w_name) << "Type Name"
               << ' ' << '|' << ' ' << std::left << std::setw(w_mangled_name)
-              << "Mangled Name" << ' ' << '|' << ' ' 
-               << std::left << std::setw(w_kind) << "Kind"
-              << ' ' << '|' << '\n'
+              << "Mangled Name" << ' ' << '|' << ' ' << std::left
+              << std::setw(w_kind) << "Kind" << ' ' << '|' << '\n'
               << sep << '\n';
 
     // Rows
@@ -138,11 +138,104 @@ void TypeFactory::print_custom_types() const
             std::cout << '|' << ' ' << std::left << std::setw(w_id)
                       << type_pair.first << ' ' << '|' << ' ' << std::left
                       << std::setw(w_name) << type->debug_name() << ' ' << '|'
-                        << ' ' << std::left << std::setw(w_mangled_name)
-                        << type->mangled_name() << ' ' << '|'
-                      << ' ' << std::left << std::setw(w_kind)
-                      << type_kind_to_string(type->kind) << ' ' << '|' << '\n';
+                      << ' ' << std::left << std::setw(w_mangled_name)
+                      << type->mangled_name() << ' ' << '|' << ' ' << std::left
+                      << std::setw(w_kind) << type_kind_to_string(type->kind)
+                      << ' ' << '|' << '\n';
     }
 
     std::cout << sep << '\n';
+}
+
+std::optional<TypePtr>
+TypeFactory::get_builtin_type(const std::string &name) const
+{
+    auto type_opt = lookup(name);
+    if (!type_opt.has_value()) {
+        return std::nullopt;
+    }
+    if (type_opt.value()->kind != TypeKind::BUILTIN) {
+        return std::nullopt;
+    }
+    return type_opt;
+}
+
+Result<TypePtr, TypeFactoryError>
+TypeFactory::make_function_type(TypePtr ret,
+                                const std::vector<QualifiedType> &params,
+                                bool variadic)
+{
+    if (!ret) {
+        return Result<TypePtr, TypeFactoryError>(
+            TypeFactoryError::INVALID_TYPE);
+    }
+
+    QualifiedType qualified_ret(ret, Qualifier::NONE);
+    auto result = make<FunctionType>(qualified_ret, params, variadic);
+    if (result.is_err()) {
+        return Result<TypePtr, TypeFactoryError>(result.error());
+    }
+    return Result<TypePtr, TypeFactoryError>(result.value());
+}
+
+Result<QualifiedType, TypeFactoryError>
+TypeFactory::apply_pointer_levels(QualifiedType base, size_t pointer_levels)
+{
+    if (pointer_levels == 0) {
+        return Result<QualifiedType, TypeFactoryError>(base);
+    }
+
+    std::vector<Qualifier> qualifiers(pointer_levels, Qualifier::NONE);
+    auto chain_result = make_pointer_chain(base, qualifiers);
+    if (chain_result.is_err()) {
+        return Result<QualifiedType, TypeFactoryError>(chain_result.error());
+    }
+    return Result<QualifiedType, TypeFactoryError>(chain_result.value());
+}
+
+Result<QualifiedType, TypeFactoryError>
+TypeFactory::apply_array_dimensions(QualifiedType base,
+                                    const std::vector<size_t> &sizes)
+{
+    if (sizes.empty()) {
+        return Result<QualifiedType, TypeFactoryError>(base);
+    }
+
+    auto chain_result = make_array_chain(base, sizes);
+    if (chain_result.is_err()) {
+        return Result<QualifiedType, TypeFactoryError>(chain_result.error());
+    }
+    return Result<QualifiedType, TypeFactoryError>(chain_result.value());
+}
+
+Result<TypePtr, TypeFactoryError> TypeFactory::pointer_from(TypePtr base)
+{
+    if (!base) {
+        return Result<TypePtr, TypeFactoryError>(
+            TypeFactoryError::INVALID_TYPE);
+    }
+
+    QualifiedType qualified(base, Qualifier::NONE);
+    auto pointer_result = apply_pointer_levels(qualified, 1);
+    if (pointer_result.is_err()) {
+        return Result<TypePtr, TypeFactoryError>(pointer_result.error());
+    }
+    return Result<TypePtr, TypeFactoryError>(pointer_result.value().type);
+}
+
+Result<TypePtr, TypeFactoryError>
+TypeFactory::dereference_pointer(TypePtr pointer_type)
+{
+    if (!pointer_type) {
+        return Result<TypePtr, TypeFactoryError>(
+            TypeFactoryError::INVALID_TYPE);
+    }
+
+    if (pointer_type->kind != TypeKind::POINTER) {
+        return Result<TypePtr, TypeFactoryError>(
+            TypeFactoryError::INVALID_TYPE);
+    }
+
+    auto ptr_type = std::static_pointer_cast<PointerType>(pointer_type);
+    return Result<TypePtr, TypeFactoryError>(ptr_type->pointee.type);
 }
