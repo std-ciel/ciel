@@ -230,9 +230,17 @@
     return unwrap_qualified_or_error(result, context, line, column, base);
   }
 
-  static void add_symbol_if_valid(const DeclaratorInfo& di, QualifiedType type) {
-    if (!di.name.empty()) {
-      (void)symbol_table.add_symbol(di.name, type, parser_state.current_storage);
+  static void add_symbol_if_valid(const std::string& name,
+                                  QualifiedType type,
+                                  const yy::location& loc,
+                                  std::optional<FunctionMeta> function_meta = std::nullopt) {
+    if (!name.empty()) {
+      auto result = symbol_table.add_symbol(name, type, parser_state.current_storage, function_meta);
+      if (result.is_err()) {
+        parser_add_error(loc.begin.line,
+                         loc.begin.column,
+                         symbol_table_error_to_string(result.error()));
+      }
     }
   }
 
@@ -593,7 +601,7 @@ declaration
         QualifiedType base = parser_state.current_decl_base_type;
 
         if (base.type) {
-          for (const auto &di : $2) {
+          for (auto &di : $2) {
             if (di.is_function) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
@@ -608,33 +616,12 @@ declaration
 
                 // TODO fix later about the std::nullopt
                 std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, std::nullopt);
+                add_symbol_if_valid(mangled,
+                                    QualifiedType(fn, Qualifier::NONE),
+                                    @1,
+                                    std::optional<FunctionMeta>{meta});
 
-                (void)symbol_table.add_symbol(mangled,
-                                              QualifiedType(fn, Qualifier::NONE),
-                                              parser_state.current_storage,
-                                              std::optional<FunctionMeta>{meta});
-
               }
-            } else {
-              QualifiedType final_t;
-              if(di.pointer_levels > 0) {
-                final_t = apply_pointer_levels_or_error(base,
-                                                       di.pointer_levels,
-                                                       "pointer declarator",
-                                                       @1.begin.line,
-                                                       @1.begin.column);
-              }
-              else if(!di.array_dims.empty()) {
-                final_t = apply_array_dimensions_or_error(base,
-                                                         di.array_dims,
-                                                         "array declarator",
-                                                         @1.begin.line,
-                                                         @1.begin.column);
-              }
-              else {
-                final_t = base;
-              }
-              add_symbol_if_valid(di, final_t);
             }
           }
         }
@@ -785,7 +772,7 @@ init_declarator
             final_t = base;
           }
 
-          add_symbol_if_valid(di, final_t);
+          add_symbol_if_valid(di.name, final_t, @1);
 
           if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
             if (!di.name.empty()) {
@@ -821,7 +808,7 @@ init_declarator
             final_t = base;
           }
 
-          add_symbol_if_valid(di, final_t);
+          add_symbol_if_valid(di.name, final_t, @1);
 
           if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
             if (!di.name.empty()) {
@@ -874,7 +861,7 @@ struct_or_union_specifier
         // Create a dedicated member scope and add members as symbols
         symbol_table.enter_scope();
         for (const auto &kv : $4) {
-          symbol_table.add_symbol(kv.first, kv.second);
+          add_symbol_if_valid(kv.first, kv.second, @2);
         }
         symbol_table.exit_scope();
       }
@@ -901,7 +888,7 @@ struct_or_union_specifier
 
         symbol_table.enter_scope();
         for (const auto &kv : $3) {
-          symbol_table.add_symbol(kv.first, kv.second);
+          add_symbol_if_valid(kv.first, kv.second, @1);
         }
         symbol_table.exit_scope();
       }
@@ -956,7 +943,7 @@ struct_declaration
         $$ = std::unordered_map<std::string, QualifiedType>{};
         auto base = $1;
         if (base) {
-          for (const auto &di : $2) {
+          for (auto &di : $2) {
             if (!di.name.empty()) {
               QualifiedType final_t;
 
@@ -1277,7 +1264,7 @@ labeled_statement
         if (!label.has_value()) {
           label = unwrap_type_or_error(type_factory.make<BuiltinType>(BuiltinTypeKind::LABEL), "label", @1.begin.line, @1.begin.column);
         }
-        (void)symbol_table.add_symbol($1, QualifiedType(label.value(), Qualifier::NONE));
+        add_symbol_if_valid($1, QualifiedType(label.value(), Qualifier::NONE), @1);
 	  }
     | CASE constant_expression COLON_OP statement
     | DEFAULT COLON_OP statement
@@ -1350,10 +1337,10 @@ function_definition
                        @2.begin.column);
             FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
             std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta , std::nullopt);
-            (void)symbol_table.add_symbol(mangled,
-                                          QualifiedType(fn, Qualifier::NONE),
-                                          parser_state.current_storage,
-                                          std::optional<FunctionMeta>{meta});
+            add_symbol_if_valid(mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
 			} else {
 				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires function declarator");
 			}
@@ -1503,10 +1490,10 @@ function_declaration_or_definition
             auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
             std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
 
-            symbol_table.add_symbol(mangled,
-                                    QualifiedType(fn, Qualifier::NONE),
-                                    parser_state.current_storage,
-                                    std::optional<FunctionMeta>{meta});
+            add_symbol_if_valid(mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
           } else {
             QualifiedType final_t;
             if(di.pointer_levels){
@@ -1525,7 +1512,7 @@ function_declaration_or_definition
             }
 
             // TODO error handling
-            symbol_table.add_symbol(di.name, final_t);
+            add_symbol_if_valid(di.name, final_t, @1);
             auto mi = MemberInfo{final_t, parser_state.current_access, false};
             std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
 
@@ -1553,10 +1540,10 @@ function_declaration_or_definition
             auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
             std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
 
-            symbol_table.add_symbol(mangled,
-                                    QualifiedType(fn, Qualifier::NONE),
-                                    parser_state.current_storage,
-                                    std::optional<FunctionMeta>{meta});
+            add_symbol_if_valid(mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
           } else {
             QualifiedType final_t;
             if(di.pointer_levels){
@@ -1575,7 +1562,7 @@ function_declaration_or_definition
             }
 
             // TODO error handling
-            symbol_table.add_symbol(di.name, final_t);
+            add_symbol_if_valid(di.name, final_t, @1);
             auto mi = MemberInfo{final_t, parser_state.current_access, false};
             std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
           }
@@ -1610,11 +1597,10 @@ function_declaration_or_definition
 
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
       }
   | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
@@ -1642,10 +1628,11 @@ function_declaration_or_definition
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
       }
   | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
@@ -1676,11 +1663,10 @@ function_declaration_or_definition
 
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
       }
   | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
@@ -1711,10 +1697,10 @@ function_declaration_or_definition
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
 
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
         parser_state.reset_decl();
       }
@@ -1744,10 +1730,11 @@ function_declaration_or_definition
 
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
       }
     | /* constructor decl no params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
@@ -1777,10 +1764,10 @@ function_declaration_or_definition
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
 
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
       }
     | /* destructor decl */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
@@ -1811,10 +1798,11 @@ function_declaration_or_definition
 
           auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
           std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-          symbol_table.add_symbol(mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  parser_state.current_storage,
-                                  std::optional<FunctionMeta>{meta});
+
+          add_symbol_if_valid(mangled,
+                              QualifiedType(fn, Qualifier::NONE),
+                              @1,
+                              std::optional<FunctionMeta>{meta});
         }
       }
     ;
