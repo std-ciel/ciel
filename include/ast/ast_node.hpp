@@ -364,15 +364,15 @@ class ForStmt : public ASTNode {
   public:
     std::optional<ASTNodePtr> initializer;
     std::optional<ASTNodePtr> condition;
-    std::optional<ASTNodePtr> increment;
+    std::optional<ASTNodePtr> updation;
     ASTNodePtr body;
 
     ForStmt(std::optional<ASTNodePtr> initializer,
             std::optional<ASTNodePtr> condition,
-            std::optional<ASTNodePtr> increment,
+            std::optional<ASTNodePtr> updation,
             ASTNodePtr body)
         : ASTNode(ASTNodeType::FOR_STMT), initializer(std::move(initializer)),
-          condition(std::move(condition)), increment(std::move(increment)),
+          condition(std::move(condition)), updation(std::move(updation)),
           body(std::move(body))
     {
     }
