@@ -32,8 +32,9 @@ YYLTYPE loc;
 int column = 1;
 
 #define YY_USER_ACTION \
-    yylloc->step(); \
-    yylloc->columns(yyleng); \
+    yylloc->begin.line = yylloc->end.line = yylineno; \
+    yylloc->begin.column = column; \
+    yylloc->end.column = column + yyleng - 1; \
     loc.first_line = yylineno; \
     loc.first_column = column; \
     column += yyleng;

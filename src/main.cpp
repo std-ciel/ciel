@@ -87,6 +87,12 @@ int main(int argc, char *argv[])
         std::cout << "\n┌─────────────────────┐\n";
         std::cout << "│   PARSING PHASE     │\n";
         std::cout << "└─────────────────────┘\n";
+
+        // Initialize location tracking
+        yy::Parser::location_type initial_loc;
+        initial_loc.begin.line = initial_loc.end.line = 1;
+        initial_loc.begin.column = initial_loc.end.column = 1;
+
         // parser.set_debug_level(1);
         int parse_result = parser.parse();
 

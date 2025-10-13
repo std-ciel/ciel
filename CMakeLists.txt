@@ -27,6 +27,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 BISON_TARGET(CielParser src/parser/parser.y ${CMAKE_CURRENT_BINARY_DIR}/parser.cpp
     DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/parser.hpp
+    COMPILE_FLAGS "--locations"
 )
 FLEX_TARGET(CielLexer src/lexer/lex.l ${CMAKE_CURRENT_BINARY_DIR}/lex.yy.cc)
 
