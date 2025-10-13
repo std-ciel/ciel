@@ -17,6 +17,8 @@
   #include <memory>
   #include <optional>
   #include <variant>
+  #include <unordered_set>
+  #include <unordered_map>
 
   #include "ast/ast_node.hpp"
   #include "symbol_table/type.hpp"
@@ -61,6 +63,11 @@
 
     StorageClass current_storage = StorageClass::STATIC;
 
+    // Track forward declarations that need definitions
+    std::unordered_set<std::string> forward_declared_types;
+    std::unordered_set<std::string> defined_types;
+    std::unordered_map<std::string, std::pair<int, int>> forward_decl_locations; // type name -> (line, column)
+
     void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
     void pop_ctx() { if (!ctx_stack.empty()) ctx_stack.pop_back(); }
 
@@ -91,6 +98,16 @@
   static SymbolTable symbol_table;
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
+
+  void check_forward_declarations(){
+     for (const auto& type_name : parser_state.forward_declared_types) {
+        if (parser_state.defined_types.find(type_name) == parser_state.defined_types.end()) {
+            auto loc = parser_state.forward_decl_locations[type_name];
+            parser_add_error(loc.first, loc.second, 
+                "forward declaration of '" + type_name + "' is never defined");
+        }
+    }
+  }
 
 
   // Counters to uniquely name anonymous aggregates (struct/union/class) in a scope-stable way
@@ -394,6 +411,11 @@
 %type <ParamDeclInfo> parameter_declaration
 %type <std::string> operator_token
 
+%type <ASTNodePtr> primary_expression postfix_expression unary_expression cast_expression multiplicative_expression
+%type <ASTNodePtr> additive_expression shift_expression relational_expression equality_expression and_expression
+%type <ASTNodePtr> exclusive_or_expression inclusive_or_expression logical_and_expression logical_or_expression
+%type <ASTNodePtr> conditional_expression assignment_expression expression constant_expression argument_expression_list
+
 %left COMMA_OP
 
 %right ASSIGN_OP PLUS_ASSIGN_OP MINUS_ASSIGN_OP STAR_ASSIGN_OP DIVIDE_ASSIGN_OP MOD_ASSIGN_OP
@@ -430,7 +452,7 @@ open_brace
     ;
 
 close_brace
-    : CLOSE_BRACE_OP { symbol_table.exit_scope(); parser_state.pop_ctx(); }
+    : CLOSE_BRACE_OP { symbol_table.exit_scope(); parser_state.pop_ctx(); check_forward_declarations(); }
     ;
 
 class_open_brace
@@ -864,6 +886,11 @@ struct_or_union_specifier
       {
         std::string tag = $2;
         bool is_union = ($1 == "union");
+        std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
+        
+        // Mark as defined
+        parser_state.defined_types.insert(full_name);
+        
         // Create the aggregate type in the current (outer) scope
         $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
         // Create a dedicated member scope and add members as symbols
@@ -912,7 +939,9 @@ struct_or_union_specifier
         if (found.has_value()) {
           $$ = found.value();
         } else {
-          // Type doesn't exist - create a forward declaration
+          // Type doesn't exist - create a forward declaration and track it
+          parser_state.forward_declared_types.insert(full_name);
+          parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
           $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, false), "struct/union forward declaration", @1.begin.line, @2.begin.column);
         }
       }
@@ -920,6 +949,11 @@ struct_or_union_specifier
       {
         std::string tag = $2;
         bool is_union = ($1 == "union");
+        std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
+        
+        // Mark as defined
+        parser_state.defined_types.insert(full_name);
+        
         $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "empty struct/union", @1.begin.line, @2.begin.column);
       }
     ;
@@ -1005,6 +1039,11 @@ enum_specifier
     : ENUM IDENTIFIER OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
         std::string tag = $2;
+        std::string full_name = "enum " + tag;
+        
+        // Mark as defined
+        parser_state.defined_types.insert(full_name);
+        
         TypePtr t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
 
         int64_t v = 0;
@@ -1034,6 +1073,8 @@ enum_specifier
         if (found.has_value()) {
           $$ = found.value();
         } else {
+          parser_state.forward_declared_types.insert(full_name);
+          parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
           $$ = unwrap_type_or_error(type_factory.make<EnumType>(tag, false), "enum forward declaration", @1.begin.line, @2.begin.column);
         }
       }
@@ -1263,7 +1304,7 @@ statement
     | selection_statement
     | iteration_statement
     | jump_statement
-	  | declaration   // to allow declarations as statements for gotos
+    | declaration
     ;
 
 labeled_statement
@@ -1400,6 +1441,9 @@ class_specifier_tail
     }
     class_open_brace class_member_list class_close_brace
     {
+      std::string full_name = std::string("class ") + $1;
+      parser_state.defined_types.insert(full_name);
+      
       $$ = parser_state.current_class_type;
       parser_state.current_class_type = nullptr;
       parser_state.parent_class_type = nullptr;
@@ -1412,6 +1456,8 @@ class_specifier_tail
       if (found.has_value()) {
         $$ = found.value();
       } else {
+        parser_state.forward_declared_types.insert(full_name);
+        parser_state.forward_decl_locations[full_name] = {@1.begin.line, @1.begin.column};
         $$ = unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class forward declaration", @1.begin.line, @1.begin.column);
       }
 
