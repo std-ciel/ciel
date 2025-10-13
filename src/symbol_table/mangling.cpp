@@ -24,10 +24,10 @@ static const std::unordered_map<std::string, std::string>
         {">=", "ge"},  {"<=", "le"}, {"&&", "aa"}, {"||", "oo"}, {",", "cm"},
         {".*", "pm"},  {"->", "pt"}};
 
-std::string mangle_function_name(const std::string &name,
-                                 const FunctionType &ftype,
-                                 const FunctionMeta &meta,
-                                 std::optional<ClassType> cls)
+std::optional<std::string> mangle_function_name(const std::string &name,
+                                                const FunctionType &ftype,
+                                                const FunctionMeta &meta,
+                                                std::optional<ClassType> cls)
 {
     std::string result = "_Z";
     if (cls.has_value()) {
@@ -49,14 +49,14 @@ std::string mangle_function_name(const std::string &name,
             if (it != unary_operator_mangling.end()) {
                 result += it->second;
             } else {
-                throw std::runtime_error("Unknown unary operator: " + name);
+                return std::nullopt;
             }
         } else {
             auto it = binary_operator_mangling.find(name);
             if (it != binary_operator_mangling.end()) {
                 result += it->second;
             } else {
-                throw std::runtime_error("Unknown binary operator: " + name);
+                return std::nullopt;
             }
         }
         break;

@@ -60,23 +60,35 @@ class ManglingTest : public ::testing::Test {
     {
         return QualifiedType{type, q};
     }
+
+    std::string expect_mangled(std::optional<std::string> value,
+                               const std::string &context)
+    {
+        if (!value.has_value()) {
+            ADD_FAILURE() << "mangling returned empty optional for " << context;
+            return {};
+        }
+        return *value;
+    }
 };
 
 TEST_F(ManglingTest, BasicFunctionNoParams)
 {
     auto [func_type, meta] = create_function_type(qual(get_void_type()));
-    std::string mangled = mangle_function_name("main", func_type, meta);
+    auto mangled = mangle_function_name("main", func_type, meta);
 
-    EXPECT_EQ(mangled, "_Z4mainv");
+    ASSERT_TRUE(mangled.has_value());
+    EXPECT_EQ(*mangled, "_Z4mainv");
 }
 
 TEST_F(ManglingTest, FunctionWithSingleParam)
 {
     auto [func_type, meta] =
         create_function_type(qual(get_void_type()), {qual(get_int_type())});
-    std::string mangled = mangle_function_name("func", func_type, meta);
+    auto mangled = mangle_function_name("func", func_type, meta);
 
-    EXPECT_EQ(mangled, "_Z4funci");
+    ASSERT_TRUE(mangled.has_value());
+    EXPECT_EQ(*mangled, "_Z4funci");
 }
 
 TEST_F(ManglingTest, FunctionWithMultipleParams)
@@ -84,9 +96,10 @@ TEST_F(ManglingTest, FunctionWithMultipleParams)
     auto [func_type, meta] = create_function_type(
         qual(get_int_type()),
         {qual(get_int_type()), qual(get_bool_type()), qual(get_char_type())});
-    std::string mangled = mangle_function_name("add", func_type, meta);
+    auto mangled = mangle_function_name("add", func_type, meta);
 
-    EXPECT_EQ(mangled, "_Z3addibc");
+    ASSERT_TRUE(mangled.has_value());
+    EXPECT_EQ(*mangled, "_Z3addibc");
 }
 
 TEST_F(ManglingTest, VariadicFunction)
@@ -94,9 +107,10 @@ TEST_F(ManglingTest, VariadicFunction)
     auto [func_type, meta] = create_function_type(qual(get_void_type()),
                                                   {qual(get_char_type())},
                                                   true);
-    std::string mangled = mangle_function_name("printf", func_type, meta);
+    auto mangled = mangle_function_name("printf", func_type, meta);
 
-    EXPECT_EQ(mangled, "_Z6printfcz");
+    ASSERT_TRUE(mangled.has_value());
+    EXPECT_EQ(*mangled, "_Z6printfcz");
 }
 
 TEST_F(ManglingTest, ConstructorMangling)
@@ -108,9 +122,10 @@ TEST_F(ManglingTest, ConstructorMangling)
 
     ClassType cls("MyClass", nullptr, Access::PUBLIC);
 
-    std::string mangled = mangle_function_name("MyClass", func_type, meta, cls);
+    auto mangled = mangle_function_name("MyClass", func_type, meta, cls);
 
-    EXPECT_EQ(mangled, "_Z7MyClassC1i");
+    ASSERT_TRUE(mangled.has_value());
+    EXPECT_EQ(*mangled, "_Z7MyClassC1i");
 }
 
 TEST_F(ManglingTest, DestructorMangling)
@@ -121,10 +136,10 @@ TEST_F(ManglingTest, DestructorMangling)
                                                   FunctionKind::DESTRUCTOR);
 
     ClassType cls("MyClass", nullptr, Access::PUBLIC);
-    std::string mangled =
-        mangle_function_name("~MyClass", func_type, meta, cls);
+    auto mangled = mangle_function_name("~MyClass", func_type, meta, cls);
 
-    EXPECT_EQ(mangled, "_Z7MyClassD1v");
+    ASSERT_TRUE(mangled.has_value());
+    EXPECT_EQ(*mangled, "_Z7MyClassD1v");
 }
 
 TEST_F(ManglingTest, ArithmeticOperators)
@@ -134,17 +149,21 @@ TEST_F(ManglingTest, ArithmeticOperators)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    std::string plus_mangled = mangle_function_name("+", func_type, meta);
-    EXPECT_EQ(plus_mangled, "_Zpli");
+    auto plus_mangled = mangle_function_name("+", func_type, meta);
+    ASSERT_TRUE(plus_mangled.has_value());
+    EXPECT_EQ(*plus_mangled, "_Zpli");
 
-    std::string minus_mangled = mangle_function_name("-", func_type, meta);
-    EXPECT_EQ(minus_mangled, "_Zmii");
+    auto minus_mangled = mangle_function_name("-", func_type, meta);
+    ASSERT_TRUE(minus_mangled.has_value());
+    EXPECT_EQ(*minus_mangled, "_Zmii");
 
-    std::string mult_mangled = mangle_function_name("*", func_type, meta);
-    EXPECT_EQ(mult_mangled, "_Zmli");
+    auto mult_mangled = mangle_function_name("*", func_type, meta);
+    ASSERT_TRUE(mult_mangled.has_value());
+    EXPECT_EQ(*mult_mangled, "_Zmli");
 
-    std::string div_mangled = mangle_function_name("/", func_type, meta);
-    EXPECT_EQ(div_mangled, "_Zdvi");
+    auto div_mangled = mangle_function_name("/", func_type, meta);
+    ASSERT_TRUE(div_mangled.has_value());
+    EXPECT_EQ(*div_mangled, "_Zdvi");
 }
 
 TEST_F(ManglingTest, ComparisonOperators)
@@ -154,17 +173,21 @@ TEST_F(ManglingTest, ComparisonOperators)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    std::string eq_mangled = mangle_function_name("==", func_type, meta);
-    EXPECT_EQ(eq_mangled, "_Zeqi");
+    auto eq_mangled = mangle_function_name("==", func_type, meta);
+    ASSERT_TRUE(eq_mangled.has_value());
+    EXPECT_EQ(*eq_mangled, "_Zeqi");
 
-    std::string ne_mangled = mangle_function_name("!=", func_type, meta);
-    EXPECT_EQ(ne_mangled, "_Znei");
+    auto ne_mangled = mangle_function_name("!=", func_type, meta);
+    ASSERT_TRUE(ne_mangled.has_value());
+    EXPECT_EQ(*ne_mangled, "_Znei");
 
-    std::string lt_mangled = mangle_function_name("<", func_type, meta);
-    EXPECT_EQ(lt_mangled, "_Zlti");
+    auto lt_mangled = mangle_function_name("<", func_type, meta);
+    ASSERT_TRUE(lt_mangled.has_value());
+    EXPECT_EQ(*lt_mangled, "_Zlti");
 
-    std::string gt_mangled = mangle_function_name(">", func_type, meta);
-    EXPECT_EQ(gt_mangled, "_Zgti");
+    auto gt_mangled = mangle_function_name(">", func_type, meta);
+    ASSERT_TRUE(gt_mangled.has_value());
+    EXPECT_EQ(*gt_mangled, "_Zgti");
 }
 
 TEST_F(ManglingTest, LogicalOperators)
@@ -174,10 +197,12 @@ TEST_F(ManglingTest, LogicalOperators)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    std::string and_mangled = mangle_function_name("&&", func_type, meta);
+    auto and_mangled =
+        expect_mangled(mangle_function_name("&&", func_type, meta), "&&");
     EXPECT_EQ(and_mangled, "_Zaab");
 
-    std::string or_mangled = mangle_function_name("||", func_type, meta);
+    auto or_mangled =
+        expect_mangled(mangle_function_name("||", func_type, meta), "||");
     EXPECT_EQ(or_mangled, "_Zoob");
 }
 
@@ -188,16 +213,20 @@ TEST_F(ManglingTest, UnaryOperators)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    std::string plus_mangled = mangle_function_name("+", func_type, meta);
+    auto plus_mangled =
+        expect_mangled(mangle_function_name("+", func_type, meta), "unary +");
     EXPECT_EQ(plus_mangled, "_Zpsv");
 
-    std::string minus_mangled = mangle_function_name("-", func_type, meta);
+    auto minus_mangled =
+        expect_mangled(mangle_function_name("-", func_type, meta), "unary -");
     EXPECT_EQ(minus_mangled, "_Zngv");
 
-    std::string inc_mangled = mangle_function_name("++", func_type, meta);
+    auto inc_mangled =
+        expect_mangled(mangle_function_name("++", func_type, meta), "++");
     EXPECT_EQ(inc_mangled, "_Zppv");
 
-    std::string dec_mangled = mangle_function_name("--", func_type, meta);
+    auto dec_mangled =
+        expect_mangled(mangle_function_name("--", func_type, meta), "--");
     EXPECT_EQ(dec_mangled, "_Zmmv");
 }
 
@@ -208,19 +237,20 @@ TEST_F(ManglingTest, AssignmentOperators)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    std::string assign_mangled = mangle_function_name("=", func_type, meta);
+    auto assign_mangled =
+        expect_mangled(mangle_function_name("=", func_type, meta), "=");
     EXPECT_EQ(assign_mangled, "_ZaSi");
 
-    std::string plus_assign_mangled =
-        mangle_function_name("+=", func_type, meta);
+    auto plus_assign_mangled =
+        expect_mangled(mangle_function_name("+=", func_type, meta), "+=");
     EXPECT_EQ(plus_assign_mangled, "_ZpLi");
 
-    std::string minus_assign_mangled =
-        mangle_function_name("-=", func_type, meta);
+    auto minus_assign_mangled =
+        expect_mangled(mangle_function_name("-=", func_type, meta), "-=");
     EXPECT_EQ(minus_assign_mangled, "_ZmIi");
 
-    std::string mult_assign_mangled =
-        mangle_function_name("*=", func_type, meta);
+    auto mult_assign_mangled =
+        expect_mangled(mangle_function_name("*=", func_type, meta), "*=");
     EXPECT_EQ(mult_assign_mangled, "_ZmLi");
 }
 
@@ -231,19 +261,24 @@ TEST_F(ManglingTest, BitwiseOperators)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    std::string and_mangled = mangle_function_name("&", func_type, meta);
+    auto and_mangled =
+        expect_mangled(mangle_function_name("&", func_type, meta), "&");
     EXPECT_EQ(and_mangled, "_Zani");
 
-    std::string or_mangled = mangle_function_name("|", func_type, meta);
+    auto or_mangled =
+        expect_mangled(mangle_function_name("|", func_type, meta), "|");
     EXPECT_EQ(or_mangled, "_Zori");
 
-    std::string xor_mangled = mangle_function_name("^", func_type, meta);
+    auto xor_mangled =
+        expect_mangled(mangle_function_name("^", func_type, meta), "^");
     EXPECT_EQ(xor_mangled, "_Zeoi");
 
-    std::string ls_mangled = mangle_function_name("<<", func_type, meta);
+    auto ls_mangled =
+        expect_mangled(mangle_function_name("<<", func_type, meta), "<<");
     EXPECT_EQ(ls_mangled, "_Zlsi");
 
-    std::string rs_mangled = mangle_function_name(">>", func_type, meta);
+    auto rs_mangled =
+        expect_mangled(mangle_function_name(">>", func_type, meta), ">>");
     EXPECT_EQ(rs_mangled, "_Zrsi");
 }
 
@@ -257,9 +292,15 @@ TEST_F(ManglingTest, FunctionOverloading)
         create_function_type(qual(get_void_type()),
                              {qual(get_int_type()), qual(get_float_type())});
 
-    std::string mangled1 = mangle_function_name("func", func1, func1_meta);
-    std::string mangled2 = mangle_function_name("func", func2, func2_meta);
-    std::string mangled3 = mangle_function_name("func", func3, func3_meta);
+    auto mangled1 =
+        expect_mangled(mangle_function_name("func", func1, func1_meta),
+                       "func(int)");
+    auto mangled2 =
+        expect_mangled(mangle_function_name("func", func2, func2_meta),
+                       "func(float)");
+    auto mangled3 =
+        expect_mangled(mangle_function_name("func", func3, func3_meta),
+                       "func(int,float)");
 
     EXPECT_EQ(mangled1, "_Z4funci");
     EXPECT_EQ(mangled2, "_Z4funcf");
@@ -278,7 +319,9 @@ TEST_F(ManglingTest, MethodMangling)
                                                   FunctionKind::METHOD);
 
     ClassType cls("Calculator", nullptr, Access::PUBLIC);
-    std::string mangled = mangle_function_name("add", func_type, meta, cls);
+    auto mangled =
+        expect_mangled(mangle_function_name("add", func_type, meta, cls),
+                       "Calculator::add");
 
     EXPECT_EQ(mangled, "_Z10Calculator3addi");
 }
@@ -297,7 +340,9 @@ TEST_F(ManglingTest, ComplexParameterTypes)
         create_function_type(qual(get_void_type()),
                              {qual(int_ptr.value()), qual(int_array.value())});
 
-    std::string mangled = mangle_function_name("process", func_type, meta);
+    auto mangled =
+        expect_mangled(mangle_function_name("process", func_type, meta),
+                       "process");
 
     EXPECT_EQ(mangled, "_Z7processPiA10_i");
 }
@@ -308,7 +353,9 @@ TEST_F(ManglingTest, UnsignedTypes)
         qual(get_unsigned_type()),
         {qual(get_unsigned_type()), qual(get_unsigned_type())});
 
-    std::string mangled = mangle_function_name("add_unsigned", func_type, meta);
+    auto mangled =
+        expect_mangled(mangle_function_name("add_unsigned", func_type, meta),
+                       "add_unsigned");
 
     EXPECT_EQ(mangled, "_Z12add_unsignedjj");
 }
@@ -320,25 +367,30 @@ TEST_F(ManglingTest, UnknownOperatorError)
                                                   false,
                                                   FunctionKind::OPERATOR);
 
-    EXPECT_THROW(mangle_function_name("??", func_type, meta),
-                 std::runtime_error);
-    EXPECT_THROW(mangle_function_name("@#", func_type, meta),
-                 std::runtime_error);
+    auto unknown = mangle_function_name("??", func_type, meta);
+    EXPECT_FALSE(unknown.has_value());
+
+    auto other = mangle_function_name("@#", func_type, meta);
+    EXPECT_FALSE(other.has_value());
 }
 
 TEST_F(ManglingTest, EdgeCases)
 {
     auto [func_type, meta] = create_function_type(qual(get_void_type()));
-    std::string mangled = mangle_function_name("", func_type, meta);
+    auto mangled =
+        expect_mangled(mangle_function_name("", func_type, meta), "edge empty");
     EXPECT_EQ(mangled, "_Z0v");
 
     std::string long_name(100, 'a');
-    std::string long_mangled = mangle_function_name(long_name, func_type, meta);
+    auto long_mangled =
+        expect_mangled(mangle_function_name(long_name, func_type, meta),
+                       "long name");
     EXPECT_EQ(long_mangled, "_Z100" + long_name + "v");
 
     std::string special_name = "func_with_underscores";
-    std::string special_mangled =
-        mangle_function_name(special_name, func_type, meta);
+    auto special_mangled =
+        expect_mangled(mangle_function_name(special_name, func_type, meta),
+                       special_name);
     EXPECT_EQ(special_mangled, "_Z21func_with_underscoresv");
 }
 
@@ -362,9 +414,11 @@ TEST_F(ManglingTest, AllOperatorCoverage)
         {">=", "ge"},  {"<=", "le"}, {"&&", "aa"}, {"||", "oo"}, {",", "cm"}};
 
     for (const auto &op : binary_operators) {
-        std::string mangled = mangle_function_name(op.op,
-                                                   binary_func_type,
-                                                   binary_func_type_meta);
+        auto mangled =
+            expect_mangled(mangle_function_name(op.op,
+                                                binary_func_type,
+                                                binary_func_type_meta),
+                           op.op);
         std::string expected = "_Z" + op.expected_code + "i";
         EXPECT_EQ(mangled, expected) << "Failed for binary operator: " << op.op;
     }
@@ -390,8 +444,9 @@ TEST_F(ManglingTest, AllOperatorCoverage)
     };
 
     for (const auto &op : unary_operators) {
-        std::string mangled =
-            mangle_function_name(op.op, unary_func_type, unary_func_type_meta);
+        auto mangled = expect_mangled(
+            mangle_function_name(op.op, unary_func_type, unary_func_type_meta),
+            op.op);
         std::string expected = "_Z" + op.expected_code + "v";
         EXPECT_EQ(mangled, expected) << "Failed for unary operator: " << op.op;
     }
@@ -409,7 +464,9 @@ TEST_F(ManglingTest, DifferentReturnTypes)
 
     for (const auto &ret_type : return_types) {
         auto [func_type, meta] = create_function_type(qual(ret_type));
-        std::string mangled = mangle_function_name("test", func_type, meta);
+        auto mangled =
+            expect_mangled(mangle_function_name("test", func_type, meta),
+                           "test return type");
         mangled_names.push_back(mangled);
     }
 
@@ -450,7 +507,9 @@ TEST_F(ManglingTest, ManyParameters)
 
     auto [func_type, meta] =
         create_function_type(qual(get_void_type()), many_params);
-    std::string mangled = mangle_function_name("stress_test", func_type, meta);
+    auto mangled =
+        expect_mangled(mangle_function_name("stress_test", func_type, meta),
+                       "stress_test");
     std::string expected = "_Z11stress_test" + expected_params;
 
     EXPECT_EQ(mangled, expected);
@@ -462,29 +521,33 @@ TEST_F(ManglingTest, ConstQualifiedBasicTypes)
     auto [const_int_func, const_int_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_int_type(), Qualifier::CONST)});
-    std::string const_int_mangled =
-        mangle_function_name("func", const_int_func, const_int_func_meta);
+    auto const_int_mangled = expect_mangled(
+        mangle_function_name("func", const_int_func, const_int_func_meta),
+        "const int");
     EXPECT_EQ(const_int_mangled, "_Z4funcKi");
 
     auto [const_char_func, const_char_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_char_type(), Qualifier::CONST)});
-    std::string const_char_mangled =
-        mangle_function_name("func", const_char_func, const_char_func_meta);
+    auto const_char_mangled = expect_mangled(
+        mangle_function_name("func", const_char_func, const_char_func_meta),
+        "const char");
     EXPECT_EQ(const_char_mangled, "_Z4funcKc");
 
     auto [const_bool_func, const_bool_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_bool_type(), Qualifier::CONST)});
-    std::string const_bool_mangled =
-        mangle_function_name("func", const_bool_func, const_bool_func_meta);
+    auto const_bool_mangled = expect_mangled(
+        mangle_function_name("func", const_bool_func, const_bool_func_meta),
+        "const bool");
     EXPECT_EQ(const_bool_mangled, "_Z4funcKb");
 
     auto [const_float_func, const_float_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_float_type(), Qualifier::CONST)});
-    std::string const_float_mangled =
-        mangle_function_name("func", const_float_func, const_float_func_meta);
+    auto const_float_mangled = expect_mangled(
+        mangle_function_name("func", const_float_func, const_float_func_meta),
+        "const float");
     EXPECT_EQ(const_float_mangled, "_Z4funcKf");
 }
 
@@ -494,17 +557,19 @@ TEST_F(ManglingTest, VolatileQualifiedTypes)
     auto [volatile_int_func, volatile_int_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_int_type(), Qualifier::VOLATILE)});
-    std::string volatile_int_mangled =
-        mangle_function_name("func", volatile_int_func, volatile_int_func_meta);
+    auto volatile_int_mangled = expect_mangled(
+        mangle_function_name("func", volatile_int_func, volatile_int_func_meta),
+        "volatile int");
     EXPECT_EQ(volatile_int_mangled, "_Z4funcVi");
 
     auto [volatile_char_func, volatile_char_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_char_type(), Qualifier::VOLATILE)});
-    std::string volatile_char_mangled =
-        mangle_function_name("func",
-                             volatile_char_func,
-                             volatile_char_func_meta);
+    auto volatile_char_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            volatile_char_func,
+                                            volatile_char_func_meta),
+                       "volatile char");
     EXPECT_EQ(volatile_char_mangled, "_Z4funcVc");
 }
 
@@ -514,20 +579,22 @@ TEST_F(ManglingTest, ConstVolatileQualifiedTypes)
     auto [const_volatile_int_func, const_volatile_int_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(get_int_type(), Qualifier::CONST_VOLATILE)});
-    std::string const_volatile_int_mangled =
-        mangle_function_name("func",
-                             const_volatile_int_func,
-                             const_volatile_int_func_meta);
+    auto const_volatile_int_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_volatile_int_func,
+                                            const_volatile_int_func_meta),
+                       "const volatile int");
     EXPECT_EQ(const_volatile_int_mangled, "_Z4funcVKi");
 
     auto [const_volatile_char_func, const_volatile_char_func_meta] =
         create_function_type(
             qual(get_void_type()),
             {qual(get_char_type(), Qualifier::CONST_VOLATILE)});
-    std::string const_volatile_char_mangled =
-        mangle_function_name("func",
-                             const_volatile_char_func,
-                             const_volatile_char_func_meta);
+    auto const_volatile_char_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_volatile_char_func,
+                                            const_volatile_char_func_meta),
+                       "const volatile char");
     EXPECT_EQ(const_volatile_char_mangled, "_Z4funcVKc");
 }
 
@@ -542,10 +609,11 @@ TEST_F(ManglingTest, ConstQualifiedArrays)
     auto [const_char_array_func, const_char_array_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(const_char_array.value())});
-    std::string const_char_array_mangled =
-        mangle_function_name("func",
-                             const_char_array_func,
-                             const_char_array_func_meta);
+    auto const_char_array_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_char_array_func,
+                                            const_char_array_func_meta),
+                       "const char[10]");
     EXPECT_EQ(const_char_array_mangled, "_Z4funcA10_Kc");
 
     auto const_int_array =
@@ -556,10 +624,11 @@ TEST_F(ManglingTest, ConstQualifiedArrays)
     auto [const_int_array_func, const_int_array_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(const_int_array.value())});
-    std::string const_int_array_mangled =
-        mangle_function_name("func",
-                             const_int_array_func,
-                             const_int_array_func_meta);
+    auto const_int_array_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_int_array_func,
+                                            const_int_array_func_meta),
+                       "const int[5]");
     EXPECT_EQ(const_int_array_mangled, "_Z4funcA5_Ki");
 
     auto volatile_char_array = type_factory->make<ArrayType>(
@@ -570,10 +639,11 @@ TEST_F(ManglingTest, ConstQualifiedArrays)
     auto [volatile_char_array_func, volatile_char_array_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(volatile_char_array.value())});
-    std::string volatile_char_array_mangled =
-        mangle_function_name("func",
-                             volatile_char_array_func,
-                             volatile_char_array_func_meta);
+    auto volatile_char_array_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            volatile_char_array_func,
+                                            volatile_char_array_func_meta),
+                       "volatile char[7]");
     EXPECT_EQ(volatile_char_array_mangled, "_Z4funcA7_Vc");
 }
 
@@ -587,10 +657,11 @@ TEST_F(ManglingTest, PointerToConstTypes)
     auto [const_int_ptr_func, const_int_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(const_int_ptr.value())});
-    std::string const_int_ptr_mangled =
-        mangle_function_name("func",
-                             const_int_ptr_func,
-                             const_int_ptr_func_meta);
+    auto const_int_ptr_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_int_ptr_func,
+                                            const_int_ptr_func_meta),
+                       "const int*");
     EXPECT_EQ(const_int_ptr_mangled, "_Z4funcPKi");
 
     auto const_char_ptr = type_factory->make<PointerType>(
@@ -600,10 +671,11 @@ TEST_F(ManglingTest, PointerToConstTypes)
     auto [const_char_ptr_func, const_char_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(const_char_ptr.value())});
-    std::string const_char_ptr_mangled =
-        mangle_function_name("func",
-                             const_char_ptr_func,
-                             const_char_ptr_func_meta);
+    auto const_char_ptr_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_char_ptr_func,
+                                            const_char_ptr_func_meta),
+                       "const char*");
     EXPECT_EQ(const_char_ptr_mangled, "_Z4funcPKc");
 
     auto volatile_int_ptr = type_factory->make<PointerType>(
@@ -613,10 +685,11 @@ TEST_F(ManglingTest, PointerToConstTypes)
     auto [volatile_int_ptr_func, volatile_int_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(volatile_int_ptr.value())});
-    std::string volatile_int_ptr_mangled =
-        mangle_function_name("func",
-                             volatile_int_ptr_func,
-                             volatile_int_ptr_func_meta);
+    auto volatile_int_ptr_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            volatile_int_ptr_func,
+                                            volatile_int_ptr_func_meta),
+                       "volatile int*");
     EXPECT_EQ(volatile_int_ptr_mangled, "_Z4funcPVi");
 }
 
@@ -629,10 +702,11 @@ TEST_F(ManglingTest, ConstPointerTypes)
     auto [const_int_ptr_func, const_int_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(int_ptr.value(), Qualifier::CONST)});
-    std::string const_int_ptr_mangled =
-        mangle_function_name("func",
-                             const_int_ptr_func,
-                             const_int_ptr_func_meta);
+    auto const_int_ptr_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_int_ptr_func,
+                                            const_int_ptr_func_meta),
+                       "int* const");
     EXPECT_EQ(const_int_ptr_mangled, "_Z4funcKPi");
 
     auto char_ptr = type_factory->make<PointerType>(qual(get_char_type()));
@@ -641,10 +715,11 @@ TEST_F(ManglingTest, ConstPointerTypes)
     auto [const_char_ptr_func, const_char_ptr_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(char_ptr.value(), Qualifier::CONST)});
-    std::string const_char_ptr_mangled =
-        mangle_function_name("func",
-                             const_char_ptr_func,
-                             const_char_ptr_func_meta);
+    auto const_char_ptr_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_char_ptr_func,
+                                            const_char_ptr_func_meta),
+                       "char* const");
     EXPECT_EQ(const_char_ptr_mangled, "_Z4funcKPc");
 }
 
@@ -676,8 +751,9 @@ TEST_F(ManglingTest, ComplexMultiLevelPointers)
     auto [complex_func, complex_func_meta] =
         create_function_type(qual(get_void_type()),
                              {const_int_ptr_const_ptr_const_ptr_const});
-    std::string complex_mangled =
-        mangle_function_name("complex_func", complex_func, complex_func_meta);
+    auto complex_mangled = expect_mangled(
+        mangle_function_name("complex_func", complex_func, complex_func_meta),
+        "complex_func");
     EXPECT_EQ(complex_mangled, "_Z12complex_funcKPKPKPKi");
 }
 
@@ -692,10 +768,11 @@ TEST_F(ManglingTest, MixedQualifierScenarios)
         create_function_type(
             qual(get_void_type()),
             {qual(volatile_int_ptr.value(), Qualifier::CONST)});
-    std::string const_volatile_int_ptr_mangled =
-        mangle_function_name("func",
-                             const_volatile_int_ptr_func,
-                             const_volatile_int_ptr_func_meta);
+    auto const_volatile_int_ptr_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_volatile_int_ptr_func,
+                                            const_volatile_int_ptr_func_meta),
+                       "volatile int* const");
     EXPECT_EQ(const_volatile_int_ptr_mangled, "_Z4funcKPVi");
 
     auto const_volatile_int_ptr2 = type_factory->make<PointerType>(
@@ -705,10 +782,11 @@ TEST_F(ManglingTest, MixedQualifierScenarios)
     auto [const_volatile_int_ptr2_func, const_volatile_int_ptr2_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(const_volatile_int_ptr2.value())});
-    std::string const_volatile_int_ptr2_mangled =
-        mangle_function_name("func",
-                             const_volatile_int_ptr2_func,
-                             const_volatile_int_ptr2_func_meta);
+    auto const_volatile_int_ptr2_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            const_volatile_int_ptr2_func,
+                                            const_volatile_int_ptr2_func_meta),
+                       "const volatile int*");
     EXPECT_EQ(const_volatile_int_ptr2_mangled, "_Z4funcPVKi");
 }
 
@@ -727,10 +805,11 @@ TEST_F(ManglingTest, ComplexArrayPointerCombinations)
     auto [ptr_to_const_char_array_func, ptr_to_const_char_array_func_meta] =
         create_function_type(qual(get_void_type()),
                              {qual(ptr_to_const_char_array.value())});
-    std::string ptr_to_const_char_array_mangled =
-        mangle_function_name("func",
-                             ptr_to_const_char_array_func,
-                             ptr_to_const_char_array_func_meta);
+    auto ptr_to_const_char_array_mangled =
+        expect_mangled(mangle_function_name("func",
+                                            ptr_to_const_char_array_func,
+                                            ptr_to_const_char_array_func_meta),
+                       "const char (*)[10]");
     EXPECT_EQ(ptr_to_const_char_array_mangled, "_Z4funcPA10_Kc");
 
     auto const_char_array2 =
@@ -747,10 +826,11 @@ TEST_F(ManglingTest, ComplexArrayPointerCombinations)
         create_function_type(
             qual(get_void_type()),
             {qual(const_ptr_to_const_char_array.value(), Qualifier::CONST)});
-    std::string const_ptr_to_const_char_array_mangled =
+    auto const_ptr_to_const_char_array_mangled = expect_mangled(
         mangle_function_name("func",
                              const_ptr_to_const_char_array_func,
-                             const_ptr_to_const_char_array_func_meta);
+                             const_ptr_to_const_char_array_func_meta),
+        "char const (*const)[5]");
     EXPECT_EQ(const_ptr_to_const_char_array_mangled, "_Z4funcKPA5_Kc");
 }
 
@@ -792,9 +872,11 @@ TEST_F(ManglingTest, ExtremeComplexityStressTest)
 
     auto [extreme_func, extreme_func_meta] =
         create_function_type(qual(get_void_type()), complex_params);
-    std::string extreme_mangled = mangle_function_name("extreme_complexity",
-                                                       extreme_func,
-                                                       extreme_func_meta);
+    auto extreme_mangled =
+        expect_mangled(mangle_function_name("extreme_complexity",
+                                            extreme_func,
+                                            extreme_func_meta),
+                       "extreme_complexity");
 
     std::string expected = "_Z18extreme_complexityKPKPKPKiA20_VcKPVKf";
     EXPECT_EQ(extreme_mangled, expected);

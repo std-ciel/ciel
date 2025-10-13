@@ -614,9 +614,17 @@ declaration
 
                 FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
 
-                // TODO fix later about the std::nullopt
-                std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, std::nullopt);
-                add_symbol_if_valid(mangled,
+                auto mangled = mangle_function_name(di.name,
+                                                    *std::static_pointer_cast<FunctionType>(fn),
+                                                    meta,
+                                                    std::nullopt);
+                if (!mangled.has_value()) {
+                  parser_add_error(@1.begin.line,
+                                   @1.begin.column,
+                                   "unable to mangle function '" + di.name + "'");
+                  continue;
+                }
+                add_symbol_if_valid(*mangled,
                                     QualifiedType(fn, Qualifier::NONE),
                                     @1,
                                     std::optional<FunctionMeta>{meta});
@@ -1336,11 +1344,20 @@ function_definition
                        @1.begin.line,
                        @2.begin.column);
             FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
-            std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta , std::nullopt);
-            add_symbol_if_valid(mangled,
+            auto mangled = mangle_function_name(di.name,
+                                                *std::static_pointer_cast<FunctionType>(fn),
+                                                meta,
+                                                std::nullopt);
+            if (!mangled.has_value()) {
+              parser_add_error(@2.begin.line,
+                               @2.begin.column,
+                               "unable to mangle function '" + di.name + "'");
+            } else {
+              add_symbol_if_valid(*mangled,
                                 QualifiedType(fn, Qualifier::NONE),
                                 @1,
                                 std::optional<FunctionMeta>{meta});
+            }
 			} else {
 				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires function declarator");
 			}
@@ -1485,15 +1502,23 @@ function_declaration_or_definition
                                                      @2.begin.column);
             FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
 
-            std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+            auto mangled = mangle_function_name(di.name,
+                                                *std::static_pointer_cast<FunctionType>(fn),
+                                                meta,
+                                                *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+            if (!mangled.has_value()) {
+              parser_add_error(@2.begin.line,
+                               @2.begin.column,
+                               "unable to mangle method '" + di.name + "'");
+            } else {
+              auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-            add_symbol_if_valid(mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
+              add_symbol_if_valid(*mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  @1,
+                                  std::optional<FunctionMeta>{meta});
+            }
           } else {
             QualifiedType final_t;
             if(di.pointer_levels){
@@ -1535,15 +1560,23 @@ function_declaration_or_definition
 
             FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
 
-            std::string mangled = mangle_function_name(di.name, *std::static_pointer_cast<FunctionType>(fn), meta, *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+            auto mangled = mangle_function_name(di.name,
+                                                *std::static_pointer_cast<FunctionType>(fn),
+                                                meta,
+                                                *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+            if (!mangled.has_value()) {
+              parser_add_error(@2.begin.line,
+                               @2.begin.column,
+                               "unable to mangle method '" + di.name + "'");
+            } else {
+              auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-            add_symbol_if_valid(mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
+              add_symbol_if_valid(*mangled,
+                                  QualifiedType(fn, Qualifier::NONE),
+                                  @1,
+                                  std::optional<FunctionMeta>{meta});
+            }
           } else {
             QualifiedType final_t;
             if(di.pointer_levels){
@@ -1589,18 +1622,23 @@ function_declaration_or_definition
                                                    @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
+          auto mangled = mangle_function_name(
             $1,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+          if (!mangled.has_value()) {
+            parser_add_error(@1.begin.line,
+                             @1.begin.column,
+                             "unable to mangle constructor '" + $1 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
+            add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
       }
   | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
@@ -1621,18 +1659,24 @@ function_declaration_or_definition
                                                    @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
+          auto mangled = mangle_function_name(
             $1,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
+          if (!mangled.has_value()) {
+            parser_add_error(@1.begin.line,
+                             @1.begin.column,
+                             "unable to mangle constructor '" + $1 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
       }
   | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
@@ -1654,19 +1698,24 @@ function_declaration_or_definition
 
           FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
+          auto mangled = mangle_function_name(
             $2,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type)
             );
-
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+          if (!mangled.has_value()) {
+            parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "unable to mangle destructor '~" + $2 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
+            add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
       }
   | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
@@ -1688,19 +1737,24 @@ function_declaration_or_definition
                                                    @1.begin.column);
           FunctionMeta meta(FunctionKind::OPERATOR, plist.names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
-            $1,
+          auto mangled = mangle_function_name(
+            $3,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+          if (!mangled.has_value()) {
+            parser_add_error(@3.begin.line,
+                             @3.begin.column,
+                             "unable to mangle operator '" + $3 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+            add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
         parser_state.reset_decl();
       }
@@ -1722,19 +1776,24 @@ function_declaration_or_definition
                                                    @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
+          auto mangled = mangle_function_name(
             $1,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+          if (!mangled.has_value()) {
+            parser_add_error(@1.begin.line,
+                             @1.begin.column,
+                             "unable to mangle constructor '" + $1 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
       }
     | /* constructor decl no params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
@@ -1755,19 +1814,24 @@ function_declaration_or_definition
                                                    @1.begin.column);
           FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
+          auto mangled = mangle_function_name(
             $1,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+          if (!mangled.has_value()) {
+            parser_add_error(@1.begin.line,
+                             @1.begin.column,
+                             "unable to mangle constructor '" + $1 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+            add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
       }
     | /* destructor decl */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
@@ -1790,19 +1854,24 @@ function_declaration_or_definition
 
           FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
 
-          std::string mangled = mangle_function_name(
+          auto mangled = mangle_function_name(
             $2,
             *std::static_pointer_cast<FunctionType>(fn),
             meta,
             *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
+          if (!mangled.has_value()) {
+            parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "unable to mangle destructor '~" + $2 + "'");
+          } else {
+            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
-          auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-          std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(mangled, mi);
-
-          add_symbol_if_valid(mangled,
-                              QualifiedType(fn, Qualifier::NONE),
-                              @1,
-                              std::optional<FunctionMeta>{meta});
+          add_symbol_if_valid(*mangled,
+                                QualifiedType(fn, Qualifier::NONE),
+                                @1,
+                                std::optional<FunctionMeta>{meta});
+          }
         }
       }
     ;

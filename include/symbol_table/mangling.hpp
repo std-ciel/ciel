@@ -4,8 +4,9 @@
 #include <optional>
 #include <string>
 
-std::string mangle_function_name(const std::string &name,
-                                 const FunctionType &ftype,
-                                 const FunctionMeta &meta,
-                                 std::optional<ClassType> cls = std::nullopt);
+std::optional<std::string>
+mangle_function_name(const std::string &name,
+                     const FunctionType &ftype,
+                     const FunctionMeta &meta,
+                     std::optional<ClassType> cls = std::nullopt);
 #endif // MANGLING_HPP
