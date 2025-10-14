@@ -1513,12 +1513,30 @@ conditional_expression
       }
     | logical_or_expression QUESTION_OP expression COLON_OP conditional_expression
       {
-        get_expression_type($1, @1, "conditional condition");
+        TypePtr condition_type = get_expression_type($1, @1, "conditional condition");
         TypePtr true_type = get_expression_type($3, @3, "conditional true branch");
         TypePtr false_type = get_expression_type($5, @5, "conditional false branch");
-        TypePtr result_type = true_type ? true_type : false_type;
 
-        $$ = std::make_shared<TernaryExpr>($1, $3, $5, result_type);
+        if(!condition_type || !true_type || !false_type) {
+          $$ = nullptr;
+        }
+        else if(!is_bool_type(condition_type)){
+          parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "conditional condition must be a bool type");
+            $$ = nullptr;
+        }
+        else {
+          if (are_types_equal(true_type, false_type)) {
+            $$ = std::make_shared<TernaryExpr>($1, $3, $5, true_type);
+          }
+          else{
+            parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "conditional true and false branches must be of the same type");
+            $$ = nullptr;
+          }
+        }
       }
     ;
 
