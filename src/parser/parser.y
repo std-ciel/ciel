@@ -1413,22 +1413,22 @@ labeled_statement
     ;
 
 compound_statement
-    : open_brace close_brace
-    | open_brace block_item_list close_brace
+    : open_brace close_brace { $$ = std::make_shared<CompoundStmt>(std::vector<ASTNodePtr>{}); }
+    | open_brace block_item_list close_brace { $$ = std::make_shared<CompoundStmt>($2); }
     ;
 
 block_item_list
-    : block_item
-    | block_item_list block_item
+    : block_item { $$ = std::vector<ASTNodePtr>{ $1 }; }
+    | block_item_list block_item { $$ = $1; $$.push_back($2); }
     ;
 
 block_item
-    : statement
+    : statement { $$ = $1; }
     ;
 
 expression_statement
-    : SEMICOLON_OP
-    | expression SEMICOLON_OP
+  : SEMICOLON_OP { $$ = nullptr; }
+  | expression SEMICOLON_OP { $$ = $1; }
     ;
 
 selection_statement
@@ -1456,13 +1456,17 @@ jump_statement
     ;
 
 translation_unit
-    : external_declaration
+    : external_declaration { $$ = std::vector<ASTNodePtr>{ $1 }; }
     | translation_unit external_declaration
+    {
+        $$ = std::move($1);
+        $$.push_back($2);
+    }
     ;
 
 external_declaration
-    : function_definition
-    | declaration
+    : function_definition { $$ = std::move($1); }
+    | declaration { $$ = nullptr; }
     ;
 
 function_definition
