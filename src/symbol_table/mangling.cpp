@@ -22,7 +22,7 @@ static const std::unordered_map<std::string, std::string>
         {"&=", "aN"},  {"|=", "oR"}, {"<<", "ls"}, {">>", "rs"}, {"<<=", "lS"},
         {">>=", "rS"}, {"==", "eq"}, {"!=", "ne"}, {">", "gt"},  {"<", "lt"},
         {">=", "ge"},  {"<=", "le"}, {"&&", "aa"}, {"||", "oo"}, {",", "cm"},
-        {".*", "pm"},  {"->", "pt"}};
+        {".*", "pm"},  {"->", "pt"}, {"[]", "ix"}, {"()", "cl"}};
 
 std::optional<std::string> mangle_function_name(const std::string &name,
                                                 const FunctionType &ftype,
