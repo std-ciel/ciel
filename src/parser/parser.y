@@ -1594,7 +1594,23 @@ jump_statement
         }
     }
     | CONTINUE SEMICOLON_OP
+    {   
+        if (!in_loop()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "'continue' statement not within a loop");
+          $$ = nullptr; // TODO: replace with error node
+        } else {
+          $$ = std::make_shared<ContinueStmt>(); 
+        }
+    }
     | BREAK SEMICOLON_OP
+    { 
+        if (!in_loop_or_switch()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "'break' statement not within a loop or switch");
+          $$ = nullptr; // TODO: replace with error node
+        } else {
+          $$ = std::make_shared<BreakStmt>();
+        }
+    }
     | RETURN SEMICOLON_OP
     | RETURN expression SEMICOLON_OP
     ;
