@@ -96,3 +96,39 @@ bool is_class_type(TypePtr type)
     auto canonical = strip_typedefs(type);
     return canonical && canonical->kind == TypeKind::CLASS;
 }
+
+bool is_bool_type(TypePtr type)
+{
+    auto canonical = strip_typedefs(type);
+    if (!canonical || canonical->kind != TypeKind::BUILTIN) {
+        return false;
+    }
+
+    auto builtin = std::static_pointer_cast<BuiltinType>(canonical);
+    return builtin->builtin_kind == BuiltinTypeKind::BOOL;
+}
+
+bool is_void_type(TypePtr type)
+{
+    auto canonical = strip_typedefs(type);
+    if (!canonical || canonical->kind != TypeKind::BUILTIN) {
+        return false;
+    }
+
+    auto builtin = std::static_pointer_cast<BuiltinType>(canonical);
+    return builtin->builtin_kind == BuiltinTypeKind::VOID;
+}
+
+bool are_types_equal(TypePtr a, TypePtr b)
+{
+    return a->mangled_name() == b->mangled_name();
+}
+
+bool is_integral_or_enum_non_bool(TypePtr type) {
+    if (!type) return false;
+    // enum is also considered integral
+    if (is_integral_type(type)) {
+      return !is_bool_type(type); // exclude bool
+    }
+    return false;
+}
