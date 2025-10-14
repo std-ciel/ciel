@@ -22,6 +22,8 @@ enum class Operator {
     MODULO,
     INCREMENT,
     DECREMENT,
+    POST_INCREMENT,
+    POST_DECREMENT,
 
     // Bitwise operators
     BITWISE_AND,
@@ -79,6 +81,8 @@ inline const std::unordered_map<Operator, std::pair<std::string, std::string>>
         {Operator::MODULO, {"%", "modulo"}},
         {Operator::INCREMENT, {"++", "increment"}},
         {Operator::DECREMENT, {"--", "decrement"}},
+        {Operator::POST_INCREMENT, {"++", "post-increment"}},
+        {Operator::POST_DECREMENT, {"--", "post-decrement"}},
 
         // Bitwise operators
         {Operator::BITWISE_AND, {"&", "bitwise and"}},
@@ -152,6 +156,7 @@ enum class ASTNodeType {
     CAST_EXPR,
 
     UNARY_EXPR,
+    MEMBER_EXPR,
     BINARY_EXPR,
 
     TERNARY_EXPR,
@@ -271,6 +276,25 @@ class UnaryExpr : public ASTNode {
     {
     }
     ~UnaryExpr() override = default;
+};
+
+class MemberExpr : public ASTNode {
+  public:
+    Operator op; // Either MEMBER_ACCESS (.) or MEMBER_ACCESS_PTR (->)
+    ASTNodePtr object;
+    std::string member_name;
+    TypePtr expr_type;
+
+    MemberExpr(Operator op,
+               ASTNodePtr object,
+               std::string member_name,
+               TypePtr expr_type)
+        : ASTNode(ASTNodeType::MEMBER_EXPR), op(op),
+          object(std::move(object)), member_name(std::move(member_name)),
+          expr_type(std::move(expr_type))
+    {
+    }
+    ~MemberExpr() override = default;
 };
 
 class BinaryExpr : public ASTNode {
