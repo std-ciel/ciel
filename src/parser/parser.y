@@ -1441,8 +1441,38 @@ expression_statement
 
 selection_statement
     : IF OPEN_PAREN_OP expression CLOSE_PAREN_OP statement ELSE statement
+    {
+        ensure_condition_is_bool($3, @3, "if");
+        auto else_node = std::make_shared<ElseStmt>($7);
+        $$ = std::make_shared<IfStmt>($3, $5, else_node);
+    }
     | IF OPEN_PAREN_OP expression CLOSE_PAREN_OP statement
-    | SWITCH OPEN_PAREN_OP expression CLOSE_PAREN_OP statement
+    {
+        ensure_condition_is_bool($3, @3, "if");
+        $$ = std::make_shared<IfStmt>($3, $5);
+    }
+    | SWITCH OPEN_PAREN_OP expression CLOSE_PAREN_OP
+    {
+        ensure_switch_subject_type($3, @3);
+        parser_state.push_ctx(ContextKind::SWITCH);
+        parser_state.case_stmt_stack.emplace_back();
+        parser_state.default_case.push_back(std::nullopt);
+    }
+      statement
+    {
+        if (parser_state.case_stmt_stack.back().size() == 0 && 
+          !parser_state.default_case.back().has_value()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "switch statement has no cases");
+          $$ = nullptr; // TODO: replace with error node
+        } else {
+          $$ = std::make_shared<SwitchStmt>($3, 
+                parser_state.case_stmt_stack.back(),
+                parser_state.default_case.back());
+        }  
+        parser_state.pop_ctx();
+        parser_state.case_stmt_stack.pop_back();
+        parser_state.default_case.pop_back();
+    }
     ;
 
 iteration_statement
