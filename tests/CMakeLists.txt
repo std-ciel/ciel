@@ -39,25 +39,43 @@ foreach(sample_rel ${VALID_SAMPLE_FILES})
 endforeach()
 
 
-file(GLOB INVALID_SAMPLE_FILES
+file(GLOB LEXICAL_ERROR_FILES
     RELATIVE ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/tests/testcases/invalid/*.ciel
+    ${CMAKE_SOURCE_DIR}/tests/testcases/invalid/lexical/*.ciel
 )
 
-foreach(sample_rel ${INVALID_SAMPLE_FILES})
+foreach(sample_rel ${LEXICAL_ERROR_FILES})
     get_filename_component(sample_abs "${CMAKE_SOURCE_DIR}/${sample_rel}" ABSOLUTE)
     get_filename_component(sample_name "${sample_abs}" NAME_WE)
 
     add_test(
-        NAME lexer_invalid_${sample_name}
+        NAME lexer_invalid_lexical_${sample_name}
         COMMAND $<TARGET_FILE:cielc> -l ${sample_abs}
     )
-
-    set_tests_properties(lexer_invalid_${sample_name} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(lexer_invalid_lexical_${sample_name} PROPERTIES WILL_FAIL TRUE)
 
     add_test(
-        NAME parser_invalid_${sample_name}
+        NAME parser_invalid_lexical_${sample_name}
         COMMAND $<TARGET_FILE:cielc> -p ${sample_abs}
     )
-    set_tests_properties(parser_invalid_${sample_name} PROPERTIES WILL_FAIL TRUE)
+    set_tests_properties(parser_invalid_lexical_${sample_name} PROPERTIES WILL_FAIL TRUE)
+endforeach()
+
+
+# Semantic error tests - lexer passes but parser semantic checks fail
+file(GLOB SEMANTIC_ERROR_FILES
+    RELATIVE ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/tests/testcases/invalid/semantic/*.ciel
+)
+
+foreach(sample_rel ${SEMANTIC_ERROR_FILES})
+    get_filename_component(sample_abs "${CMAKE_SOURCE_DIR}/${sample_rel}" ABSOLUTE)
+    get_filename_component(sample_name "${sample_abs}" NAME_WE)
+
+    add_test(
+        NAME parser_invalid_semantic_${sample_name}
+        COMMAND $<TARGET_FILE:cielc> -p ${sample_abs}
+    )
+    # Parser should fail for semantic errors
+    set_tests_properties(parser_invalid_semantic_${sample_name} PROPERTIES WILL_FAIL TRUE)
 endforeach()
