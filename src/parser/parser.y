@@ -19,6 +19,7 @@
   #include <variant>
   #include <unordered_set>
   #include <unordered_map>
+  #include <functional>
 
   #include "ast/ast_node.hpp"
   #include "symbol_table/type.hpp"
@@ -813,6 +814,52 @@
 
     return nullptr;
   }
+  static ASTNodePtr handle_unary_operator(
+      ASTNodePtr operand,
+      const yy::location& loc,
+      Operator op_enum,
+      std::function<bool(TypePtr)> type_validator,
+      const std::string& type_requirement_msg)
+  {
+    std::string op_symbol = get_operator_string(op_enum);
+    std::string op_name = get_operator_name(op_enum);
+
+    TypePtr operand_type = get_expression_type(operand, loc, op_name + " operand");
+    if (!operand_type) {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       "Type of " + op_name + " operand could not be inferred");
+      return nullptr;
+    }
+
+    // Check for operator overload in class types
+    if (is_class_type(operand_type)) {
+      SymbolPtr overload = get_operator_overload(operand_type, op_symbol);
+      if (overload) {
+        TypePtr function_type = overload->get_type().type;
+        TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+
+        std::vector<ASTNodePtr> args = {operand};
+        return std::make_shared<CallExpr>(overload, args, result_type);
+      } else {
+        parser_add_error(loc.begin.line,
+                         loc.begin.column,
+                         "No operator" + op_symbol + " overload found for type '" + operand_type->debug_name() + "'");
+        return nullptr;
+      }
+    }
+
+    // Validate builtin type
+    if (type_validator(operand_type)) {
+      TypePtr result_type = operand_type;
+      return std::make_shared<UnaryExpr>(op_enum, operand, result_type);
+    } else {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       op_name + " operand must be " + type_requirement_msg);
+      return nullptr;
+    }
+  }
 }
 
 %token <std::string> IDENTIFIER
@@ -1051,322 +1098,51 @@ unary_expression
       }
     | INCREMENT_OP unary_expression
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "pre-increment operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of pre-increment operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "++");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator++ overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-          else if (is_integral_type(operand_type) || is_pointer_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::INCREMENT, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "pre-increment operand must be a integer or pointer type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::INCREMENT,
+                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                   "an integer or pointer type");
       }
     | DECREMENT_OP unary_expression
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "pre-decrement operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of pre-decrement operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "--");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator-- overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-
-          else if (is_integral_type(operand_type) || is_pointer_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::DECREMENT, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "pre-decrement operand must be a integer or pointer type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::DECREMENT,
+                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                   "an integer or pointer type");
       }
-    | LOGICAL_NOT_OP cast_expression         /* '!' */
+    | LOGICAL_NOT_OP cast_expression
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "logical_not operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of logical_not operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "++");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator!= overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-
-          else if (is_arithmetic_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::LOGICAL_NOT, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "logical not operand must be a arithmetic type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::LOGICAL_NOT,
+                                   [](TypePtr t) { return is_arithmetic_type(t); },
+                                   "an arithmetic type");
       }
-    | TILDE_OP cast_expression               /* '~' */
+    | TILDE_OP cast_expression
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "tilde operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of tilde operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "~");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator~ overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-
-          else if (is_integral_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::BITWISE_NOT, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "tilde operand must be a integral type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::BITWISE_NOT,
+                                   [](TypePtr t) { return is_integral_type(t); },
+                                   "an integral type");
       }
-    | AMPERSAND_OP cast_expression           /* address-of */
+    | AMPERSAND_OP cast_expression
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "ampersand operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of ampersand operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "&");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator& overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-          else {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::ADDRESS_OF, operand, result_type);
-          }
-          // else {
-          //   parser_add_error(@1.begin.line,
-          //                    @1.begin.column,
-          //                    "ampersand operand must be a ");
-          //   $$ = nullptr;
-          // }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::ADDRESS_OF,
+                                   [](TypePtr t) { return true; },
+                                   "any type");
       }
-    | STAR_OP cast_expression                /* deref */
+    | STAR_OP cast_expression
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "star operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of star operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "*");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator* overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-
-          else if (is_pointer_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::POINTER_DEREF, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "star operand must be a pointer type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::POINTER_DEREF,
+                                   [](TypePtr t) { return is_pointer_type(t); },
+                                   "a pointer type");
       }
     | PLUS_OP cast_expression %prec UNARY
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "unary plus operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of unary plus operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "+");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator+ overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-
-          else if (is_arithmetic_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::UNARY_PLUS, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "unary plus operand must be a arithmetic type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::UNARY_PLUS,
+                                   [](TypePtr t) { return is_arithmetic_type(t); },
+                                   "an arithmetic type");
       }
     | MINUS_OP cast_expression %prec UNARY
       {
-        ASTNodePtr operand = $2;
-        TypePtr operand_type = get_expression_type(operand, @1, "minus operand");
-        if(!operand_type) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "Type of minus operand could not be inferred");
-          $$ = nullptr;
-        }
-        else
-        {
-          if(is_class_type(operand_type)){
-            SymbolPtr overload = get_operator_overload(operand_type, "-");
-            if(overload){
-              TypePtr function_type = overload->get_type().type;
-              TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-              std::vector<ASTNodePtr> args = {operand};
-              $$ = std::make_shared<CallExpr>(overload, args, result_type);
-            }
-            else{
-              parser_add_error(@1.begin.line,
-                               @1.begin.column,
-                               "No operator- overload found for type '" + operand_type->debug_name() + "'");
-              $$ = nullptr;
-            }
-          }
-
-          else if (is_arithmetic_type(operand_type)) {
-            TypePtr result_type = operand_type;
-            $$ = std::make_shared<UnaryExpr>(Operator::UNARY_MINUS, operand, result_type);
-          } else {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "unary-minus operand must be a arithmetic type");
-            $$ = nullptr;
-          }
-        }
+        $$ = handle_unary_operator($2, @1, Operator::UNARY_MINUS,
+                                   [](TypePtr t) { return is_arithmetic_type(t); },
+                                   "an arithmetic type");
       }
     | NEW type_name
       {
