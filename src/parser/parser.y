@@ -352,7 +352,7 @@
 
     auto type_result = get_expression_type(node);
     if (type_result.is_ok()) {
-      return type_result.value();
+      return strip_typedefs(type_result.value());
     }
 
     switch (type_result.error()) {
