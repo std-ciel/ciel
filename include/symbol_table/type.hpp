@@ -50,7 +50,8 @@ struct BaseSpecifier {
 };
 
 struct Type {
-    const TypeKind kind;
+    TypeKind kind;
+    Type() = default;
     explicit Type(TypeKind kind) : kind(kind) {}
     virtual ~Type() = default;
     virtual std::string debug_name() const = 0;
@@ -233,6 +234,8 @@ struct FunctionType : public Type {
     QualifiedType return_type;
     std::vector<QualifiedType> param_types;
     bool is_variadic;
+
+    FunctionType() = default;
 
     FunctionType(QualifiedType return_type,
                  std::vector<QualifiedType> param_types,
