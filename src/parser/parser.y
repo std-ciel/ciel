@@ -69,6 +69,9 @@
     std::vector<std::optional<ASTNodePtr>> default_case;
     std::vector<TypePtr> switch_subject_stack;
 
+    // Track defined functions by mangled name to detect redefinitions
+    std::unordered_set<std::string> defined_functions;
+
     StorageClass current_storage = StorageClass::STATIC;
 
     // Track forward declarations that need definitions
@@ -401,6 +404,87 @@
   }
   static bool in_loop_or_switch() { return in_loop() || in_switch(); }
 
+  // -------- Function definition semantic helpers --------
+
+  // Check if a non-void function body contains at least one return with a value
+  static bool ast_contains_return_with_value(const ASTNodePtr& node) {
+    if (!node) return false;
+
+    switch (node->type) {
+      case ASTNodeType::RET_EXPR: {
+        auto ret = std::static_pointer_cast<RetExpr>(node);
+        return ret->value.has_value();
+      }
+      case ASTNodeType::COMPOUND_STMT: {
+        auto blk = std::static_pointer_cast<CompoundStmt>(node);
+        for (const auto& s : blk->statements)
+          if (ast_contains_return_with_value(s)) return true;
+        return false;
+      }
+      case ASTNodeType::IF_STMT: {
+        auto ifs = std::static_pointer_cast<IfStmt>(node);
+        if (ast_contains_return_with_value(ifs->then_branch)) return true;
+        if (ifs->else_branch && ast_contains_return_with_value(ifs->else_branch.value())) return true;
+        return false;
+      }
+      case ASTNodeType::SWITCH_STMT: {
+        auto sw = std::static_pointer_cast<SwitchStmt>(node);
+        for (const auto& c : sw->cases)
+          if (ast_contains_return_with_value(c)) return true;
+        if (sw->default_case && ast_contains_return_with_value(sw->default_case.value())) return true;
+        return false;
+      }
+      case ASTNodeType::CASE_STMT: {
+        auto cs = std::static_pointer_cast<CaseStmt>(node);
+        return ast_contains_return_with_value(cs->statement);
+      }
+      case ASTNodeType::DEFAULT_STMT: {
+        auto ds = std::static_pointer_cast<DefaultStmt>(node);
+        return ast_contains_return_with_value(ds->statement);
+      }
+      case ASTNodeType::FOR_STMT: {
+        auto fs = std::static_pointer_cast<ForStmt>(node);
+        return ast_contains_return_with_value(fs->body);
+      }
+      case ASTNodeType::WHILE_STMT: {
+        auto ws = std::static_pointer_cast<WhileStmt>(node);
+        return ast_contains_return_with_value(ws->body);
+      }
+      case ASTNodeType::DO_WHILE_STMT: {
+        auto dw = std::static_pointer_cast<DoWhileStmt>(node);
+        return ast_contains_return_with_value(dw->body);
+      }
+      case ASTNodeType::UNTIL_STMT: {
+        auto us = std::static_pointer_cast<UntilStmt>(node);
+        return ast_contains_return_with_value(us->body);
+      }
+      case ASTNodeType::LABEL_STMT: {
+        auto ls = std::static_pointer_cast<LabelStmt>(node);
+        return ast_contains_return_with_value(ls->statement);
+      }
+      default:
+        return false;
+    }
+  }
+
+  static void check_function_returns(TypePtr ret_type, const ASTNodePtr& body, const yy::location& loc) {
+    if (!ret_type || !body) return;
+    if (!is_void_type(ret_type) && !ast_contains_return_with_value(body)) {
+      parser_add_error(loc.begin.line, loc.begin.column, 
+        "non-void function may exit without returning a value");
+    }
+  }
+
+  static bool note_function_definition(const std::string& mangled, const yy::location& loc) {
+    auto& set = parser_state.defined_functions;
+    if (!set.insert(mangled).second) {
+      parser_add_error(loc.begin.line, loc.begin.column, 
+        "redefinition of function '" + mangled + "'");
+      return false;
+    }
+    return true;
+  }
+
 }
 
 %token <std::string> IDENTIFIER
@@ -573,21 +657,6 @@ postfix_expression
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
     | postfix_expression DOT_OP IDENTIFIER
     {
-        auto type = $1->type;
-        if (type == ASTNodeType::IDENTIFIER_EXPR) {
-          std::string enum_name = std::string("enum ") + std::static_pointer_cast<IdentifierExpr>($1)->symbol->get_name();
-          auto type_ptr_opt = type_factory.lookup(enum_name);
-          if (type_ptr_opt.has_value() && type_ptr_opt.value()->kind == TypeKind::ENUM) {
-            auto enum_type_ptr = std::static_pointer_cast<EnumType>(type_ptr_opt.value());
-            if (enum_type_ptr->enumerators.find($3) == enum_type_ptr->enumerators.end()) {
-              parser_add_error(@2.begin.line, @2.begin.column, "enumerator '" + $3 + "' not found in enum '" + enum_name + "'");
-            } else {
-                // TODO: propagate value
-            }
-          }else {
-            // TODO: handle other types with member access
-          }
-        }
     }
     | postfix_expression ARROW_OP IDENTIFIER
     | postfix_expression INCREMENT_OP
@@ -1633,11 +1702,15 @@ jump_statement
       } else if (!parser_state.in_function()) {
         parser_add_error(@1.begin.line, @1.begin.column, "'return' statement not within a function");
         $$ = nullptr; // TODO: replace with error node
-
       } else {
         auto fn_ret = strip_typedefs(parser_state.current_function_return());
         auto expr_ret = strip_typedefs(expr_type);
-        if (fn_ret != expr_ret) {
+        
+        // Check for return with value in void function first
+        if (is_void_type(fn_ret)) {
+          parser_add_error(@1.begin.line, @1.begin.column, "return with a value in function returning 'void'");
+          $$ = nullptr; // TODO: replace with error node
+        } else if (fn_ret != expr_ret) {
           parser_add_error(@2.begin.line, @2.begin.column, "return type mismatch: function expects '" + (fn_ret ? fn_ret->debug_name() : std::string("invalid")) + "', but returning expression of type '" + (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
           $$ = nullptr; // TODO: replace with error node
         } else {
@@ -1670,34 +1743,54 @@ function_definition
 		}
 	 } compound_statement {
 		auto base = $1;
-		if (base) {
+		$$ = nullptr;
+		
+		if (!base) {
+		  parser_add_error(@1.begin.line, @1.begin.column, "function definition requires a return type");
+		} else {
 		  const DeclaratorInfo &di = $2;
-			if (di.is_function && !di.name.empty()) {
+			if (!di.is_function || di.name.empty()) {
+				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires a named function declarator");
+			} else {
+			  // Build function type
       TypePtr fn = make_function_type_or_error(base,
                        di.param_types,
                        di.is_variadic,
                        "function definition",
                        @1.begin.line,
                        @2.begin.column);
+        if (fn) {
             FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
             auto mangled = mangle_function_name(di.name,
                                                 *std::static_pointer_cast<FunctionType>(fn),
                                                 meta,
                                                 std::nullopt);
             if (!mangled.has_value()) {
-              parser_add_error(@2.begin.line,
-                               @2.begin.column,
-                               "unable to mangle function '" + di.name + "'");
+            parser_add_error(@2.begin.line, @2.begin.column, "unable to mangle function '" + di.name + "'");
             } else {
+            // Check for redefinition
+            note_function_definition(*mangled, @2);
+            
+            // Reuse existing symbol if present (from prior declaration); otherwise add it
+            auto sym_opt = symbol_table.lookup_symbol(*mangled);
+            if (!sym_opt.has_value()) {
               add_symbol_if_valid(*mangled,
                                 QualifiedType(fn, Qualifier::NONE),
                                 @1,
                                 std::optional<FunctionMeta>{meta});
+              sym_opt = symbol_table.lookup_symbol(*mangled);
             }
-			} else {
-				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires function declarator");
+            
+            // Build FunctionDef AST node (parameters can be filled later if needed)
+            $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), base, std::vector<SymbolPtr>{}, $4);
+            
+            // Check that non-void functions have a return statement
+            check_function_returns(base, $4, @4);
 			}
 		}
+			}
+		}
+		
 		parser_state.reset_decl();
 		if (parser_state.in_function()) parser_state.pop_function();
 	  }
