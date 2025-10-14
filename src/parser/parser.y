@@ -1612,7 +1612,39 @@ jump_statement
         }
     }
     | RETURN SEMICOLON_OP
+    { 
+      if (!parser_state.in_function()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "'return' statement not within a function");
+          $$ = nullptr; // TODO: replace with error node
+      } else if (parser_state.current_function_return() && is_void_type(parser_state.current_function_return())) {
+          auto void_t = type_factory.get_builtin_type("void");
+          $$ = std::make_shared<RetExpr>(std::nullopt, void_t ? void_t.value() : nullptr); 
+      } else {
+          parser_add_error(@1.begin.line, @1.begin.column, "return without expression in non-void function");
+          $$ = nullptr; // TODO: replace with error node
+      }
+    }
     | RETURN expression SEMICOLON_OP
+    {
+      auto expr_type = get_expression_type($2, @2, "return expression");
+      if (!expr_type) {
+        parser_add_error(@2.begin.line, @2.begin.column, "unable to determine type of return expression");
+        $$ = nullptr; // TODO: replace with error node
+      } else if (!parser_state.in_function()) {
+        parser_add_error(@1.begin.line, @1.begin.column, "'return' statement not within a function");
+        $$ = nullptr; // TODO: replace with error node
+
+      } else {
+        auto fn_ret = strip_typedefs(parser_state.current_function_return());
+        auto expr_ret = strip_typedefs(expr_type);
+        if (fn_ret != expr_ret) {
+          parser_add_error(@2.begin.line, @2.begin.column, "return type mismatch: function expects '" + (fn_ret ? fn_ret->debug_name() : std::string("invalid")) + "', but returning expression of type '" + (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
+          $$ = nullptr; // TODO: replace with error node
+        } else {
+          $$ = std::make_shared<RetExpr>($2, expr_type);
+        }
+      }
+    }
     ;
 
 translation_unit
