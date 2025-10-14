@@ -835,7 +835,7 @@
         {BuiltinTypeKind::SIGNED, 2},
         {BuiltinTypeKind::INT, 2},
         {BuiltinTypeKind::UNSIGNED, 3},
-        {BuiltinTypeKind::FLOAT, 12}
+        {BuiltinTypeKind::FLOAT, 4}
     };
 
     int lhs_rank = rank_map[lhs_builtin->builtin_kind];
