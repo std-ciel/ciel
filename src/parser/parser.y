@@ -1261,6 +1261,9 @@ postfix_expression
       $$ = $1;
     }
     | postfix_expression OPEN_BRACKET_OP expression CLOSE_BRACKET_OP
+    {
+       //TODO: implement array subscript
+    }
     | postfix_expression OPEN_PAREN_OP CLOSE_PAREN_OP
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
     | postfix_expression DOT_OP IDENTIFIER
@@ -1425,11 +1428,20 @@ postfix_expression
                                  "an integer or pointer type");
     }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
+    {
+      //TODO: implement compound literal
+    }
     ;
 
 argument_expression_list
     : assignment_expression
+    {
+      $$ = $1;
+    }
     | argument_expression_list COMMA_OP assignment_expression
+    {
+      //TODO: implement as a comma expression node
+    }
     ;
 
 unary_expression
