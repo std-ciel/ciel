@@ -1795,6 +1795,11 @@ function_definition
 		if (parser_state.in_function()) parser_state.pop_function();
 	  }
     | declaration_specifiers declarator declaration_list compound_statement
+    {
+      // K&R style function definition - not fully supported yet
+      parser_add_error(@1.begin.line, @1.begin.column, "K&R style function definitions are not yet supported");
+      $$ = nullptr;
+    }
     ;
 
 declaration_list
