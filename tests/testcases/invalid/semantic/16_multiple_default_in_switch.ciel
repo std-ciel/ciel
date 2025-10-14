@@ -1,0 +1,12 @@
+// Error: multiple 'default' labels in the same switch
+int main() {
+    int x = 5;
+    switch (x) {
+        case 1:
+            return 1;
+        default:
+            return 2;
+        default:  // Error: duplicate default
+            return 3;
+    }
+}

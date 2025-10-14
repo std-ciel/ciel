@@ -1,0 +1,10 @@
+// Error: switch subject must be integral or enum (excluding bool)
+int main() {
+    bool b = true;
+    switch (b) {  // Error: bool not allowed in switch
+        case true:
+            return 1;
+        default:
+            return 0;
+    }
+}

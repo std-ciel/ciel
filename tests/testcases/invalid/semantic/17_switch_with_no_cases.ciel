@@ -1,0 +1,8 @@
+// Error: switch statement has no cases
+int main() {
+    int x = 5;
+    switch (x) {
+        // Empty switch - no cases
+    }
+    return 0;
+}

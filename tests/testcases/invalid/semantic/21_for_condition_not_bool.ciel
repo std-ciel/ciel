@@ -1,0 +1,8 @@
+// Error: for loop condition must be of type 'bool'
+int main() {
+    int i;
+    for (i = 0; i; i = i + 1) {  // Error: i is int, not bool
+        // loop body
+    }
+    return 0;
+}

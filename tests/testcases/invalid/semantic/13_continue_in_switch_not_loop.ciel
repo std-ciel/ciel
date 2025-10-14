@@ -1,0 +1,11 @@
+// Error: 'continue' statement in switch (not in loop)
+int main() {
+    int x = 5;
+    switch (x) {
+        case 1:
+            continue;  // Error: continue not in loop
+        default:
+            break;
+    }
+    return 0;
+}

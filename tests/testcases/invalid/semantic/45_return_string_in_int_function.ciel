@@ -1,0 +1,9 @@
+// Error: return with string literal in int function
+int get_message() {
+    return "Hello";  // Error: returning string, but function expects int
+}
+
+int main() {
+    int x = get_message();
+    return 0;
+}

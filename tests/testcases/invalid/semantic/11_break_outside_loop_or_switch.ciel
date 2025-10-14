@@ -1,0 +1,5 @@
+// Error: 'break' statement not within a loop or switch
+int main() {
+    break;
+    return 0;
+}

@@ -1,0 +1,13 @@
+// Error: redefinition of function (void function)
+void print_message() {
+    // first definition
+}
+
+void print_message() {  // Error: redefinition
+    // second definition
+}
+
+int main() {
+    print_message();
+    return 0;
+}

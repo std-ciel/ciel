@@ -1,0 +1,10 @@
+// Error: switch subject must be integral or enum (float not allowed)
+int main() {
+    float f = 3.14;
+    switch (f) {  // Error: float not allowed in switch
+        case 1:
+            return 1;
+        default:
+            return 0;
+    }
+}
