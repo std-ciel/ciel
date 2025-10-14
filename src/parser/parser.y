@@ -814,6 +814,36 @@
 
     return nullptr;
   }
+
+  static TypePtr get_higher_rank_type(TypePtr lhs, TypePtr rhs) {
+    if (!lhs || !rhs) {
+      return nullptr;
+    }
+
+    auto lhs_canonical = strip_typedefs(lhs);
+    auto rhs_canonical = strip_typedefs(rhs);
+
+    auto lhs_builtin = std::static_pointer_cast<BuiltinType>(lhs_canonical);
+    auto rhs_builtin = std::static_pointer_cast<BuiltinType>(rhs_canonical);
+
+    if (!lhs_builtin || !rhs_builtin) {
+      return nullptr;
+    }
+
+    std::unordered_map<BuiltinTypeKind, int> rank_map = {
+        {BuiltinTypeKind::CHAR, 1},
+        {BuiltinTypeKind::SIGNED, 2},
+        {BuiltinTypeKind::INT, 2},
+        {BuiltinTypeKind::UNSIGNED, 3},
+        {BuiltinTypeKind::FLOAT, 12}
+    };
+
+    int lhs_rank = rank_map[lhs_builtin->builtin_kind];
+    int rhs_rank = rank_map[rhs_builtin->builtin_kind];
+
+    return (lhs_rank >= rhs_rank) ? lhs : rhs;
+  }
+
   static ASTNodePtr handle_unary_operator(
       ASTNodePtr operand,
       const yy::location& loc,
@@ -857,6 +887,55 @@
       parser_add_error(loc.begin.line,
                        loc.begin.column,
                        op_name + " operand must be " + type_requirement_msg);
+      return nullptr;
+    }
+  }
+
+  static ASTNodePtr handle_binary_operator(
+      ASTNodePtr left,
+      ASTNodePtr right,
+      const yy::location& left_loc,
+      const yy::location& right_loc,
+      const yy::location& op_loc,
+      Operator op_enum,
+      std::function<bool(TypePtr, TypePtr)> type_validator,
+      const std::string& type_requirement_msg)
+  {
+    std::string op_symbol = get_operator_string(op_enum);
+    std::string op_name = get_operator_name(op_enum);
+
+    TypePtr left_type = get_expression_type(left, left_loc, op_name);
+    TypePtr right_type = get_expression_type(right, right_loc, op_name);
+
+    if (!left_type || !right_type) {
+      return nullptr;
+    }
+
+    // Check for operator overload in class types
+    if (is_class_type(left_type)) {
+      SymbolPtr overload = get_operator_overload(left_type, op_symbol, right_type);
+      if (overload) {
+        TypePtr function_type = overload->get_type().type;
+        TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+
+        std::vector<ASTNodePtr> args = {left, right};
+        return std::make_shared<CallExpr>(overload, args, result_type);
+      } else {
+        parser_add_error(op_loc.begin.line,
+                         op_loc.begin.column,
+                         "No operator" + op_symbol + " overload found for type '" + left_type->debug_name() + "'");
+        return nullptr;
+      }
+    }
+
+    // Validate builtin types
+    if (type_validator(left_type, right_type)) {
+      TypePtr result_type = get_higher_rank_type(left_type, right_type);
+      return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+    } else {
+      parser_add_error(op_loc.begin.line,
+                       op_loc.begin.column,
+                       op_name + " requires " + type_requirement_msg);
       return nullptr;
     }
   }
@@ -1183,12 +1262,21 @@ multiplicative_expression
     }
     | multiplicative_expression STAR_OP cast_expression
     {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::MULTIPLY,
+                                  [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
+                                  "arithmetic types");
     }
     | multiplicative_expression DIVIDE_OP cast_expression
     {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::DIVIDE,
+                                  [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
+                                  "arithmetic types");
     }
     | multiplicative_expression MOD_OP cast_expression
     {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::MODULO,
+                                  [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
+                                  "arithmetic types");
     }
     ;
 
@@ -1202,16 +1290,85 @@ additive_expression
       TypePtr left_type = get_expression_type($1, @1, "addition");
       TypePtr right_type = get_expression_type($3, @3, "addition");
 
-      // TODO: Type checking
-      $$ = std::make_shared<BinaryExpr>(Operator::ADD, $1, $3, left_type);
+      if(!left_type || !right_type) {
+        $$ = nullptr;
+      }
+      else
+      {
+        if(is_class_type(left_type)){
+          SymbolPtr overload = get_operator_overload(left_type, "+", right_type);
+          if (overload) {
+            TypePtr function_type = overload->get_type().type;
+            TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+
+            std::vector<ASTNodePtr> args = {$1, $3};
+            $$ = std::make_shared<CallExpr>(overload, args, result_type);
+          }
+          else{
+            parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "No operator+ overload found for type '" + left_type->debug_name() + "'");
+            $$ = nullptr;
+          }
+        }
+        else if (is_arithmetic_type(left_type) && is_arithmetic_type(right_type)) {
+          TypePtr result_type = get_higher_rank_type(left_type, right_type);
+          $$ = std::make_shared<BinaryExpr>(Operator::ADD, $1, $3, result_type);
+        }
+        else if(is_pointer_type(left_type) && is_integral_type(right_type)) {
+          $$ = std::make_shared<BinaryExpr>(Operator::ADD, $1, $3, left_type);
+        }
+        else if(is_integral_type(left_type) && is_pointer_type(right_type)) {
+          $$ = std::make_shared<BinaryExpr>(Operator::ADD, $3, $1, right_type);
+        }
+        else{
+          parser_add_error(@2.begin.line,
+                           @2.begin.column,
+                           "addition requires arithmetic or pointer/integral types");
+          $$ = nullptr;
+        }
+      }
     }
     | additive_expression MINUS_OP multiplicative_expression
     {
       TypePtr left_type = get_expression_type($1, @1, "subtraction");
       TypePtr right_type = get_expression_type($3, @3, "subtraction");
 
-      // TODO: Type checking
-      $$ = std::make_shared<BinaryExpr>(Operator::SUBTRACT, $1, $3, left_type);
+      if(!left_type || !right_type) {
+        $$ = nullptr;
+      }
+      else
+      {
+        if(is_class_type(left_type)){
+          SymbolPtr overload = get_operator_overload(left_type, "-", right_type);
+          if (overload) {
+            TypePtr function_type = overload->get_type().type;
+            TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+
+            std::vector<ASTNodePtr> args = {$1, $3};
+            $$ = std::make_shared<CallExpr>(overload, args, result_type);
+          }
+          else{
+            parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "No operator- overload found for type '" + left_type->debug_name() + "'");
+            $$ = nullptr;
+          }
+        }
+        else if (is_arithmetic_type(left_type) && is_arithmetic_type(right_type)) {
+          TypePtr result_type = get_higher_rank_type(left_type, right_type);
+          $$ = std::make_shared<BinaryExpr>(Operator::SUBTRACT, $1, $3, result_type);
+        }
+        else if(is_pointer_type(left_type) && is_integral_type(right_type)) {
+          $$ = std::make_shared<BinaryExpr>(Operator::SUBTRACT, $1, $3, left_type);
+        }
+        else{
+          parser_add_error(@2.begin.line,
+                           @2.begin.column,
+                           "subtraction requires arithmetic or pointer/integral types");
+          $$ = nullptr;
+        }
+      }
     }
     ;
 
@@ -1221,21 +1378,17 @@ shift_expression
         $$ = $1;
       }
     | shift_expression LSHIFT_OP additive_expression
-      {
-        TypePtr left_type = get_expression_type($1, @1, "left shift");
-        get_expression_type($3, @3, "left shift");
-
-        // TODO: Type checking
-        $$ = std::make_shared<BinaryExpr>(Operator::LEFT_SHIFT, $1, $3, left_type);
-      }
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LEFT_SHIFT,
+                                  [](TypePtr l, TypePtr r) { return is_integral_type(l) && is_integral_type(r); },
+                                  "integral types");
+    }
     | shift_expression RSHIFT_OP additive_expression
-      {
-        TypePtr left_type = get_expression_type($1, @1, "right shift");
-        get_expression_type($3, @3, "right shift");
-
-        // TODO: Type checking
-        $$ = std::make_shared<BinaryExpr>(Operator::RIGHT_SHIFT, $1, $3, left_type);
-      }
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::RIGHT_SHIFT,
+                                  [](TypePtr l, TypePtr r) { return is_integral_type(l) && is_integral_type(r); },
+                                  "integral types");
+    }
     ;
 
 relational_expression
@@ -1244,68 +1397,61 @@ relational_expression
         $$ = $1;
       }
     | relational_expression LT_OP shift_expression
-      {
-        get_expression_type($1, @1, "less-than");
-        get_expression_type($3, @3, "less-than");
-        TypePtr result_type = require_builtin("bool", @2, "less-than");
-        $$ = std::make_shared<BinaryExpr>(Operator::LESS_THAN, $1, $3, result_type);
-      }
-	  | relational_expression LE_OP shift_expression
-      {
-        get_expression_type($1, @1, "less-equal");
-        get_expression_type($3, @3, "less-equal");
-        TypePtr result_type = require_builtin("bool", @2, "less-equal");
-        $$ = std::make_shared<BinaryExpr>(Operator::LESS_EQUAL, $1, $3, result_type);
-      }
-	  | relational_expression GT_OP shift_expression
-      {
-        get_expression_type($1, @1, "greater-than");
-        get_expression_type($3, @3, "greater-than");
-        TypePtr result_type = require_builtin("bool", @2, "greater-than");
-        $$ = std::make_shared<BinaryExpr>(Operator::GREATER_THAN, $1, $3, result_type);
-      }
-	  | relational_expression GE_OP shift_expression
-      {
-        get_expression_type($1, @1, "greater-equal");
-        get_expression_type($3, @3, "greater-equal");
-        TypePtr result_type = require_builtin("bool", @2, "greater-equal");
-        $$ = std::make_shared<BinaryExpr>(Operator::GREATER_EQUAL, $1, $3, result_type);
-      }
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LESS_THAN,
+                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
+                                  "scalar types");
+    }
+    | relational_expression LE_OP shift_expression
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LESS_EQUAL,
+                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
+                                  "scalar types");
+    }
+    | relational_expression GT_OP shift_expression
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::GREATER_THAN,
+                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
+                                  "scalar types");
+    }
+    | relational_expression GE_OP shift_expression
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::GREATER_EQUAL,
+                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
+                                  "scalar types");
+    }
     ;
 
 equality_expression
     : relational_expression
-      {
+    {
         $$ = $1;
-      }
+    }
     | equality_expression EQ_OP relational_expression
-      {
-        get_expression_type($1, @1, "equality");
-        get_expression_type($3, @3, "equality");
-        TypePtr result_type = require_builtin("bool", @2, "equality");
-        $$ = std::make_shared<BinaryExpr>(Operator::EQUAL, $1, $3, result_type);
-      }
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::EQUAL,
+                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
+                                  "scalar types");
+    }
     | equality_expression NE_OP relational_expression
-      {
-        get_expression_type($1, @1, "inequality");
-        get_expression_type($3, @3, "inequality");
-        TypePtr result_type = require_builtin("bool", @2, "inequality");
-        $$ = std::make_shared<BinaryExpr>(Operator::NOT_EQUAL, $1, $3, result_type);
-      }
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::NOT_EQUAL,
+                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
+                                  "scalar types");
+    }
     ;
 
 and_expression
     : equality_expression
-      {
+    {
         $$ = $1;
-      }
+    }
     | and_expression AMPERSAND_OP equality_expression
-      {
-        TypePtr left_type = get_expression_type($1, @1, "bitwise and");
-        get_expression_type($3, @3, "bitwise and");
-
-        $$ = std::make_shared<BinaryExpr>(Operator::BITWISE_AND, $1, $3, left_type);
-      }
+    {
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::BITWISE_AND,
+                                  [](TypePtr l, TypePtr r) { return is_integral_type(l) && is_integral_type(r); },
+                                  "integral types");
+    }
     ;
 
 exclusive_or_expression
@@ -1315,10 +1461,9 @@ exclusive_or_expression
       }
     | exclusive_or_expression CARET_OP and_expression
       {
-        TypePtr left_type = get_expression_type($1, @1, "bitwise xor");
-        get_expression_type($3, @3, "bitwise xor");
-
-        $$ = std::make_shared<BinaryExpr>(Operator::BITWISE_XOR, $1, $3, left_type);
+        $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::BITWISE_XOR,
+                                    [](TypePtr l, TypePtr r) { return is_integral_type(l) && is_integral_type(r); },
+                                    "integral types");
       }
     ;
 
@@ -1329,10 +1474,9 @@ inclusive_or_expression
       }
     | inclusive_or_expression PIPE_OP exclusive_or_expression
       {
-        TypePtr left_type = get_expression_type($1, @1, "bitwise or");
-        get_expression_type($3, @3, "bitwise or");
-
-        $$ = std::make_shared<BinaryExpr>(Operator::BITWISE_OR, $1, $3, left_type);
+        $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::BITWISE_OR,
+                                    [](TypePtr l, TypePtr r) { return is_integral_type(l) && is_integral_type(r); },
+                                    "integral types");
       }
     ;
 
@@ -1343,10 +1487,9 @@ logical_and_expression
       }
     | logical_and_expression LOGICAL_AND_OP inclusive_or_expression
       {
-        get_expression_type($1, @1, "logical and");
-        get_expression_type($3, @3, "logical and");
-        TypePtr result_type = require_builtin("bool", @2, "logical and");
-        $$ = std::make_shared<BinaryExpr>(Operator::LOGICAL_AND, $1, $3, result_type);
+        $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LOGICAL_AND,
+                                    [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
+                                    "arithmetic types");
       }
     ;
 
@@ -1357,10 +1500,9 @@ logical_or_expression
       }
     | logical_or_expression LOGICAL_OR_OP logical_and_expression
       {
-        get_expression_type($1, @1, "logical or");
-        get_expression_type($3, @3, "logical or");
-        TypePtr result_type = require_builtin("bool", @2, "logical or");
-        $$ = std::make_shared<BinaryExpr>(Operator::LOGICAL_OR, $1, $3, result_type);
+        $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LOGICAL_OR,
+                                    [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
+                                    "arithmetic types");
       }
     ;
 
