@@ -49,17 +49,12 @@ bool is_integral_type(TypePtr type)
         return false;
     }
 
-    if (canonical->kind == TypeKind::ENUM) {
-        return true;
-    }
-
     if (canonical->kind != TypeKind::BUILTIN) {
         return false;
     }
 
     auto builtin = std::static_pointer_cast<BuiltinType>(canonical);
     switch (builtin->builtin_kind) {
-    case BuiltinTypeKind::BOOL:
     case BuiltinTypeKind::CHAR:
     case BuiltinTypeKind::INT:
     case BuiltinTypeKind::UNSIGNED:
