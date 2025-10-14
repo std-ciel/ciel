@@ -1,0 +1,10 @@
+// Error: return type mismatch (pointer vs int)
+int get_pointer() {
+    int* ptr;
+    return ptr;  // Error: returning int*, but function expects int
+}
+
+int main() {
+    int x = get_pointer();
+    return 0;
+}

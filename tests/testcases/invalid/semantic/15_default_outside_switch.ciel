@@ -1,0 +1,6 @@
+// Error: 'default' label not within a switch statement
+int main() {
+    default:
+        return 1;
+    return 0;
+}

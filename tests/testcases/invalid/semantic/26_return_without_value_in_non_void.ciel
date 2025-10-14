@@ -1,0 +1,9 @@
+// Error: return without expression in non-void function
+int get_value() {
+    return;  // Error: should return an int
+}
+
+int main() {
+    int x = get_value();
+    return 0;
+}

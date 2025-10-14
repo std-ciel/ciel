@@ -1,0 +1,7 @@
+// Error: 'goto' statement not within a function
+int x = 5;
+
+goto label;  // Error: goto at global scope
+
+label:
+x = 10;

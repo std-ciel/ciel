@@ -1,0 +1,9 @@
+// Error: return type mismatch
+int get_number() {
+    return true;  // Error: returning bool, but function expects int
+}
+
+int main() {
+    int x = get_number();
+    return 0;
+}

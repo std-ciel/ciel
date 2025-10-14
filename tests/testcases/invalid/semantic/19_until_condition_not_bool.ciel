@@ -1,0 +1,8 @@
+// Error: until condition must be of type 'bool'
+int main() {
+    int x = 5;
+    until (x) {  // Error: x is int, not bool
+        x = x - 1;
+    }
+    return 0;
+}

@@ -1,0 +1,5 @@
+// Error: 'continue' statement not within a loop
+int main() {
+    continue;
+    return 0;
+}

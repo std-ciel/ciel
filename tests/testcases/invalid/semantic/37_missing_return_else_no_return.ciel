@@ -1,0 +1,14 @@
+// Error: control may reach end (else branch doesn't return)
+int partial_return(bool condition) {
+    if (condition) {
+        return 1;
+    } else {
+        int x = 5;
+        // Error: else branch doesn't return
+    }
+}
+
+int main() {
+    int x = partial_return(false);
+    return 0;
+}

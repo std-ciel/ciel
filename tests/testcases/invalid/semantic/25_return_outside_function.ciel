@@ -1,0 +1,4 @@
+// Error: 'return' statement not within a function
+int x = 5;
+
+return 10;  // Error: return at global scope

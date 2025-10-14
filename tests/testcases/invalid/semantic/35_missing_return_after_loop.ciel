@@ -1,0 +1,16 @@
+// Error: control may reach end of non-void function (loop doesn't guarantee return)
+int find_value(int target) {
+    int i = 0;
+    while (i < 10) {
+        if (i == target) {
+            return i;
+        }
+        i = i + 1;
+    }
+    // Error: loop might not execute or might not find target
+}
+
+int main() {
+    int x = find_value(5);
+    return 0;
+}

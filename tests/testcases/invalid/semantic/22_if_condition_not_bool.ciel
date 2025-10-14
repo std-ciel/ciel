@@ -1,0 +1,8 @@
+// Error: if condition must be of type 'bool'
+int main() {
+    int x = 5;
+    if (x) {  // Error: x is int, not bool
+        return 1;
+    }
+    return 0;
+}

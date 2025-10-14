@@ -1,0 +1,7 @@
+// Error: for loop with declaration initializer, condition not bool
+int main() {
+    for (int i = 0; i; i = i + 1) {  // Error: i is int, not bool
+        // loop body
+    }
+    return 0;
+}

@@ -1,0 +1,14 @@
+// Error: break in nested function (not in loop/switch of outer function)
+int outer_function() {
+    // This break would be for outer_function, but there's no loop/switch here
+    
+    void inner() {
+        break;  // Error: not in loop or switch
+    }
+    
+    return 0;
+}
+
+int main() {
+    return outer_function();
+}

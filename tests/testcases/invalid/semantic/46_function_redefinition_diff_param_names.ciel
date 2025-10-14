@@ -1,0 +1,13 @@
+// Error: redefinition of function (same signature, different param names)
+int multiply(int x, int y) {
+    return x * y;
+}
+
+int multiply(int a, int b) {  // Error: same signature, still redefinition
+    return a * b * 2;
+}
+
+int main() {
+    int result = multiply(3, 4);
+    return 0;
+}
