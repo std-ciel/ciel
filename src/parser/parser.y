@@ -498,6 +498,12 @@
 %type <ParamDeclInfo> parameter_declaration
 %type <std::string> operator_token
 
+%type <ASTNodePtr> statement compound_statement block_item
+%type <ASTNodePtr> expression_statement selection_statement iteration_statement jump_statement
+%type <ASTNodePtr> labeled_statement
+%type <std::vector<ASTNodePtr>> block_item_list translation_unit
+%type <ASTNodePtr> external_declaration function_definition
+
 %type <ASTNodePtr> primary_expression postfix_expression unary_expression cast_expression multiplicative_expression
 %type <ASTNodePtr> additive_expression shift_expression relational_expression equality_expression and_expression
 %type <ASTNodePtr> exclusive_or_expression inclusive_or_expression logical_and_expression logical_or_expression
@@ -1385,13 +1391,13 @@ designator
     ;
 
 statement
-    : labeled_statement
-    | compound_statement
-    | expression_statement
-    | selection_statement
-    | iteration_statement
-    | jump_statement
-    | declaration
+    : labeled_statement { $$ = $1; }
+    | compound_statement { $$ = $1; }
+    | expression_statement { $$ = $1; }
+    | selection_statement { $$ = $1; }
+    | iteration_statement { $$ = $1; }
+    | jump_statement { $$ = $1; }
+	  | declaration   { $$ = nullptr;  } // TODO: handle declarations in statements 
     ;
 
 labeled_statement
