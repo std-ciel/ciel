@@ -24,6 +24,7 @@
   #include "symbol_table/type.hpp"
   #include "symbol_table/symbol.hpp"
   #include "symbol_table/mangling.hpp"
+  #include "parser/parser_errors.hpp"
 
 
   class Lexer;
@@ -50,7 +51,7 @@
     bool variadic = false;
   };
 
-  enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION };
+  enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION, SWITCH, LOOP };
 
   struct GlobalParserState {
     std::vector<ContextKind> ctx_stack = {ContextKind::GLOBAL};
@@ -61,6 +62,13 @@
 	  ClassTypePtr parent_class_type = nullptr;
     ClassTypePtr current_class_type = nullptr;
 
+    std::unordered_map<std::string, std::vector<ASTNodePtr>> unresolved_labels;
+
+    // For switch-case tracking
+    std::vector<std::vector<ASTNodePtr>> case_stmt_stack;
+    std::vector<std::optional<ASTNodePtr>> default_case;
+    std::vector<TypePtr> switch_subject_stack;
+
     StorageClass current_storage = StorageClass::STATIC;
 
     // Track forward declarations that need definitions
@@ -69,7 +77,35 @@
     std::unordered_map<std::string, std::pair<int, int>> forward_decl_locations; // type name -> (line, column)
 
     void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
-    void pop_ctx() { if (!ctx_stack.empty()) ctx_stack.pop_back(); }
+    void pop_ctx() { 
+      if (!ctx_stack.empty()) {
+        if (ctx_stack.back() == ContextKind::FUNCTION) {
+          if (!unresolved_labels.empty()) {
+            for (const auto& [label, nodes] : unresolved_labels) {
+              (void)nodes; // not used for now
+              parser_add_error(0, 0, "undefined label '" + label + "'");
+            }
+            unresolved_labels.clear();
+          } 
+        }
+        ctx_stack.pop_back();
+      }
+    }
+
+    // Ensure the expr is same as the switch subject type
+    TypePtr current_switch_subject() const { return switch_subject_stack.empty() ? nullptr : switch_subject_stack.back(); }
+    // Function-context tracking for return statements
+    std::vector<TypePtr> function_return_stack;
+    void push_function(TypePtr return_type) {
+      push_ctx(ContextKind::FUNCTION);
+      function_return_stack.push_back(return_type);
+    }
+    void pop_function() {
+      if (!function_return_stack.empty()) function_return_stack.pop_back();
+      pop_ctx();
+    }
+    bool in_function() const { return !function_return_stack.empty(); }
+    TypePtr current_function_return() const { return function_return_stack.empty() ? nullptr : function_return_stack.back(); }
 
     void reset_decl() {
       current_decl_base_type = QualifiedType{};
@@ -78,6 +114,22 @@
         current_storage = StorageClass::STATIC;
       } else {
         current_storage = StorageClass::AUTO;
+      }
+    }
+
+    void add_unresolved_label(const std::string& name, const ASTNodePtr& node) {
+      unresolved_labels[name].push_back(node);
+    }
+
+    void resolve_label(SymbolPtr label) {
+      auto it = unresolved_labels.find(label->get_name());
+      if (it != unresolved_labels.end()) {
+        for (const auto& node : it->second) {
+          if (node->type == ASTNodeType::GOTO_STMT) {
+            std::static_pointer_cast<GotoStmt>(node)->target_label = label;
+          }
+        }
+        unresolved_labels.erase(it);
       }
     }
   };
