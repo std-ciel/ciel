@@ -939,6 +939,98 @@
       return nullptr;
     }
   }
+
+  static bool is_valid_lvalue(const ASTNodePtr& node) {
+    if (!node) {
+      return false;
+    }
+
+    // Valid lvalues: identifiers, dereferences, array subscripts, member access
+    switch (node->type) {
+    case ASTNodeType::IDENTIFIER_EXPR:
+      return true;
+    case ASTNodeType::UNARY_EXPR: {
+      auto unary = std::static_pointer_cast<UnaryExpr>(node);
+      // Dereference operator produces an lvalue
+      return unary->op == Operator::POINTER_DEREF;
+    }
+    case ASTNodeType::BINARY_EXPR: {
+      auto binary = std::static_pointer_cast<BinaryExpr>(node);
+      // Array subscript produces an lvalue (handled as binary operation in some ASTs)
+      // Member access with dot operator
+      return false; // TODO: implement when array subscript and member access are added
+    }
+    case ASTNodeType::LITERAL_EXPR:
+    case ASTNodeType::CALL_EXPR:
+    case ASTNodeType::NEW_EXPR:
+      return false;
+    default:
+      return false;
+    }
+  }
+
+  static ASTNodePtr handle_assignment_operator(
+      ASTNodePtr lhs,
+      ASTNodePtr rhs,
+      const yy::location& lhs_loc,
+      const yy::location& rhs_loc,
+      const yy::location& op_loc,
+      Operator op_enum,
+      const std::string& op_name)
+  {
+    // Check if lhs is a valid lvalue
+    if (!is_valid_lvalue(lhs)) {
+      parser_add_error(lhs_loc.begin.line,
+                       lhs_loc.begin.column,
+                       op_name + ": left operand must be a modifiable lvalue");
+      return nullptr;
+    }
+
+    TypePtr lhs_type = get_expression_type(lhs, lhs_loc, op_name + " left operand");
+    TypePtr rhs_type = get_expression_type(rhs, rhs_loc, op_name + " right operand");
+
+    if (!lhs_type || !rhs_type) {
+      return nullptr;
+    }
+
+    // For compound assignment operators, check type compatibility
+    if (op_enum != Operator::ASSIGN) {
+      // Extract the base operation (e.g., ADD from ADD_ASSIGN)
+      bool types_compatible = false;
+
+      switch (op_enum) {
+      case Operator::ADD_ASSIGN:
+      case Operator::SUBTRACT_ASSIGN:
+        // Arithmetic or pointer arithmetic
+        types_compatible = (is_arithmetic_type(lhs_type) && is_arithmetic_type(rhs_type)) ||
+                          (is_pointer_type(lhs_type) && is_integral_type(rhs_type));
+        break;
+      case Operator::MULTIPLY_ASSIGN:
+      case Operator::DIVIDE_ASSIGN:
+      case Operator::MODULO_ASSIGN:
+        types_compatible = is_arithmetic_type(lhs_type) && is_arithmetic_type(rhs_type);
+        break;
+      case Operator::BITWISE_AND_ASSIGN:
+      case Operator::BITWISE_OR_ASSIGN:
+      case Operator::BITWISE_XOR_ASSIGN:
+      case Operator::LEFT_SHIFT_ASSIGN:
+      case Operator::RIGHT_SHIFT_ASSIGN:
+        types_compatible = is_integral_type(lhs_type) && is_integral_type(rhs_type);
+        break;
+      default:
+        types_compatible = false;
+      }
+
+      if (!types_compatible) {
+        parser_add_error(op_loc.begin.line,
+                         op_loc.begin.column,
+                         op_name + ": incompatible types for compound assignment");
+        return nullptr;
+      }
+    }
+
+    return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type);
+  }
 }
 
 %token <std::string> IDENTIFIER
@@ -1547,69 +1639,47 @@ assignment_expression
       }
     | unary_expression ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "assignment");
-        get_expression_type($3, @3, "assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::ASSIGN, "assignment");
       }
     | unary_expression PLUS_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "plus assignment");
-        get_expression_type($3, @3, "plus assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::ADD_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::ADD_ASSIGN, "plus assignment");
       }
     | unary_expression MINUS_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "minus assignment");
-        get_expression_type($3, @3, "minus assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::SUBTRACT_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::SUBTRACT_ASSIGN, "minus assignment");
       }
     | unary_expression STAR_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "multiply assignment");
-        get_expression_type($3, @3, "multiply assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::MULTIPLY_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::MULTIPLY_ASSIGN, "multiply assignment");
       }
     | unary_expression DIVIDE_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "divide assignment");
-        get_expression_type($3, @3, "divide assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::DIVIDE_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::DIVIDE_ASSIGN, "divide assignment");
       }
     | unary_expression MOD_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "mod assignment");
-        get_expression_type($3, @3, "mod assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::MODULO_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::MODULO_ASSIGN, "modulo assignment");
       }
     | unary_expression AMPERSAND_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "bitwise and assignment");
-        get_expression_type($3, @3, "bitwise and assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::BITWISE_AND_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::BITWISE_AND_ASSIGN, "bitwise and assignment");
       }
     | unary_expression PIPE_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "bitwise or assignment");
-        get_expression_type($3, @3, "bitwise or assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::BITWISE_OR_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::BITWISE_OR_ASSIGN, "bitwise or assignment");
       }
     | unary_expression CARET_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "bitwise xor assignment");
-        get_expression_type($3, @3, "bitwise xor assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::BITWISE_XOR_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::BITWISE_XOR_ASSIGN, "bitwise xor assignment");
       }
     | unary_expression LSHIFT_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "left shift assignment");
-        get_expression_type($3, @3, "left shift assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::LEFT_SHIFT_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::LEFT_SHIFT_ASSIGN, "left shift assignment");
       }
     | unary_expression RSHIFT_ASSIGN_OP assignment_expression
       {
-        TypePtr target_type = get_expression_type($1, @1, "right shift assignment");
-        get_expression_type($3, @3, "right shift assignment value");
-        $$ = std::make_shared<AssignmentExpr>(Operator::RIGHT_SHIFT_ASSIGN, $1, $3, target_type);
+        $$ = handle_assignment_operator($1, $3, @1, @3, @2, Operator::RIGHT_SHIFT_ASSIGN, "right shift assignment");
       }
     ;
 
