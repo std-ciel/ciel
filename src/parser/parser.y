@@ -366,6 +366,41 @@
 
     return nullptr;
   }
+
+  // -------- Centralized semantic helpers for statements --------
+
+  static void ensure_condition_is_bool(const ASTNodePtr& expr, const yy::location& loc, const std::string& context) {
+    auto t = get_expression_type(expr, loc, context);
+    if (!t) return; // type error already reported
+    if (!is_bool_type(t)) {
+      parser_add_error(loc.begin.line, loc.begin.column, context + ": condition must be of type 'bool', got '" + t->debug_name() + "'");
+    }
+  }
+
+  // Also sets the switch subject type in parser_state
+  static void ensure_switch_subject_type(const ASTNodePtr& expr, const yy::location& loc) {
+    auto t = get_expression_type(expr, loc, "switch subject");
+    if (!t) return;
+    if (!is_integral_or_enum_non_bool(t)) {
+      parser_add_error(loc.begin.line, loc.begin.column, "switch subject must be integral or enum (excluding bool), got '" + t->debug_name() + "'");
+    }
+    parser_state.switch_subject_stack.push_back(t);
+  }
+
+  static bool in_loop() {
+    for (auto it = parser_state.ctx_stack.rbegin(); it != parser_state.ctx_stack.rend(); ++it) {
+      if (*it == ContextKind::LOOP) return true;
+    }
+    return false;
+  }
+  static bool in_switch() {
+    for (auto it = parser_state.ctx_stack.rbegin(); it != parser_state.ctx_stack.rend(); ++it) {
+      if (*it == ContextKind::SWITCH) return true;
+    }
+    return false;
+  }
+  static bool in_loop_or_switch() { return in_loop() || in_switch(); }
+
 }
 
 %token <std::string> IDENTIFIER
