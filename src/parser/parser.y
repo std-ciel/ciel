@@ -1413,7 +1413,17 @@ postfix_expression
       }
     }
     | postfix_expression INCREMENT_OP
+    {
+      $$ = handle_unary_operator($1, @2, Operator::POST_INCREMENT,
+                                 [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                 "an integer or pointer type");
+    }
     | postfix_expression DECREMENT_OP
+    {
+      $$ = handle_unary_operator($1, @2, Operator::POST_DECREMENT,
+                                 [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                 "an integer or pointer type");
+    }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
     ;
 
