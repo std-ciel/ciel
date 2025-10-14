@@ -1407,6 +1407,14 @@ labeled_statement
           label = unwrap_type_or_error(type_factory.make<BuiltinType>(BuiltinTypeKind::LABEL), "label", @1.begin.line, @1.begin.column);
         }
         add_symbol_if_valid($1, QualifiedType(label.value(), Qualifier::NONE), @1);
+        auto label_sym_opt = symbol_table.lookup_symbol($1);
+        if (!label_sym_opt.has_value()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "label symbol '" + $1 + "' not found after adding it");
+          $$ = nullptr; // TODO: replace with error node
+        } else {
+          $$ = std::make_shared<LabelStmt>(label_sym_opt.value(), $3);
+          parser_state.resolve_label(label_sym_opt.value());
+        }
 	  }
     | CASE constant_expression COLON_OP statement
     | DEFAULT COLON_OP statement
@@ -1449,6 +1457,22 @@ iteration_statement
 
 jump_statement
     : GOTO IDENTIFIER SEMICOLON_OP
+    {
+        if (!parser_state.in_function()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "'goto' statement not within a function");
+          $$ = nullptr; // TODO: replace with error node
+        } else {
+          auto label_sym_opt = symbol_table.lookup_symbol($2);
+          auto goto_node = std::make_shared<GotoStmt>(nullptr);
+          if (!label_sym_opt.has_value()) {
+            parser_state.add_unresolved_label($2, goto_node);
+          }
+          else {
+            goto_node->target_label = label_sym_opt.value();
+          }
+          $$ = goto_node;
+        }
+    }
     | CONTINUE SEMICOLON_OP
     | BREAK SEMICOLON_OP
     | RETURN SEMICOLON_OP
