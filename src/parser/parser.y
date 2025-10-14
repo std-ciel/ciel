@@ -891,6 +891,13 @@
     }
   }
 
+  std::unordered_map<std::string,int> is_relational_operator = {
+    {"<",1},
+    {"<=",1},
+    {">",1},
+    {">=",1}
+  };
+
   static ASTNodePtr handle_binary_operator(
       ASTNodePtr left,
       ASTNodePtr right,
@@ -929,9 +936,17 @@
     }
 
     // Validate builtin types
-    if (type_validator(left_type, right_type)) {
+    if (type_validator(left_type, right_type) && !is_relational_operator[op_symbol]) {
       TypePtr result_type = get_higher_rank_type(left_type, right_type);
       return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+    }
+    else if(type_validator(left_type,right_type)){
+      // For relational operators, result type is bool
+      TypePtr bool_type = require_builtin("bool", op_loc, op_name + " operator");
+      if (!bool_type) {
+        return nullptr;
+      }
+      return std::make_shared<BinaryExpr>(op_enum, left, right, bool_type);
     } else {
       parser_add_error(op_loc.begin.line,
                        op_loc.begin.column,
