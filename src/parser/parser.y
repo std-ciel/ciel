@@ -1470,7 +1470,13 @@ external_declaration
     ;
 
 function_definition
-    : declaration_specifiers declarator compound_statement {
+    : declaration_specifiers declarator { /* begin function body: set function return context */
+		TypePtr ret_t = $1;
+		const DeclaratorInfo &di = $2;
+		if (ret_t && di.is_function) {
+		  parser_state.push_function(ret_t);
+		}
+	 } compound_statement {
 		auto base = $1;
 		if (base) {
 		  const DeclaratorInfo &di = $2;
@@ -1501,6 +1507,7 @@ function_definition
 			}
 		}
 		parser_state.reset_decl();
+		if (parser_state.in_function()) parser_state.pop_function();
 	  }
     | declaration_specifiers declarator declaration_list compound_statement
     ;
@@ -1688,7 +1695,13 @@ function_declaration_or_definition
         }
         parser_state.reset_decl();
       }
-    | declaration_specifiers declarator compound_statement
+    | declaration_specifiers declarator
+      { /* enter function context before parsing body if this is a method */
+        TypePtr ret = $1;
+        const DeclaratorInfo &di = $2;
+        if (ret && di.is_function) { parser_state.push_function(ret); }
+      }
+      compound_statement
       {
         const DeclaratorInfo &di = $2;
   		TypePtr ret = $1;
@@ -1744,8 +1757,14 @@ function_declaration_or_definition
           }
         }
         parser_state.reset_decl();
+        if (parser_state.in_function()) parser_state.pop_function();
       }
-    | /* constructor */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
+    | /* constructor */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+      { /* push function context (void return) before body */
+        TypePtr ret = require_builtin("void", @1, "constructor return type");
+        if (ret) { parser_state.push_function(ret); }
+      }
+      compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           // Optional check: name matches class
@@ -1783,8 +1802,14 @@ function_declaration_or_definition
                                 std::optional<FunctionMeta>{meta});
           }
         }
+        if (parser_state.in_function()) parser_state.pop_function();
       }
-  | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
+  | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP
+      { /* push function context (void) before body */
+        TypePtr ret = require_builtin("void", @1, "constructor return type");
+        if (ret) { parser_state.push_function(ret); }
+      }
+      compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           std::string expected = parser_state.current_class_type->debug_name();
@@ -1820,9 +1845,15 @@ function_declaration_or_definition
                                 @1,
                                 std::optional<FunctionMeta>{meta});
           }
+          if (parser_state.in_function()) parser_state.pop_function();
         }
       }
-  | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP compound_statement
+  | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP
+      { /* push function context (void) before body */
+        TypePtr ret = require_builtin("void", @1, "destructor return type");
+        if (ret) { parser_state.push_function(ret); }
+      }
+      compound_statement
       {
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
           std::string expected = parser_state.current_class_type->debug_name();
@@ -1860,8 +1891,14 @@ function_declaration_or_definition
                                 std::optional<FunctionMeta>{meta});
           }
         }
+        if (parser_state.in_function()) parser_state.pop_function();
       }
-  | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP compound_statement
+  | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+      { /* push function context before body */
+        TypePtr ret = type_factory.lookup($1).value_or(nullptr);
+        if (ret) { parser_state.push_function(ret); }
+      }
+      compound_statement
       {
 		std::string expected = parser_state.current_class_type ? parser_state.current_class_type->debug_name() : std::string{};
 		std::string got = std::string("class ") + $1;
@@ -1900,6 +1937,7 @@ function_declaration_or_definition
           }
         }
         parser_state.reset_decl();
+        if (parser_state.in_function()) parser_state.pop_function();
       }
     | /* constructor decl */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP SEMICOLON_OP
       {
