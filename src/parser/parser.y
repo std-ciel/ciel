@@ -1417,7 +1417,35 @@ labeled_statement
         }
 	  }
     | CASE constant_expression COLON_OP statement
+    {
+      if (!in_switch()) {
+        parser_add_error(@1.begin.line, @1.begin.column, "'case' label not within a switch statement");
+        $$ = nullptr; // TODO: replace with error node
+      } else {
+        auto t = parser_state.current_switch_subject();
+        if (t) {
+          auto expr_type = get_expression_type($2);
+          if (expr_type && !are_types_equal(t, expr_type.value())) {
+            parser_add_error(@2.begin.line, @2.begin.column, "'case' label type does not match switch expression type");
+          } else {
+            $$ = std::make_shared<CaseStmt>($2, $4);
+            parser_state.case_stmt_stack.back().push_back($$);
+          }
+        }
+      }
+    }
     | DEFAULT COLON_OP statement
+    { 
+      if (!in_switch()) {
+        parser_add_error(@1.begin.line, @1.begin.column, "'default' label not within a switch statement");
+        $$ = nullptr; // TODO: replace with error node
+      } else if (parser_state.default_case.back().has_value()) {
+        parser_add_error(@1.begin.line, @1.begin.column, "multiple 'default' labels in the same switch");
+      } else {
+        $$ = std::make_shared<DefaultStmt>($3); 
+        parser_state.default_case.back() = $$;
+      }
+    }
     ;
 
 compound_statement
