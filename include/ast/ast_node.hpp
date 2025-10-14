@@ -339,11 +339,11 @@ class SwitchStmt : public ASTNode {
 class CaseStmt : public ASTNode {
   public:
     ASTNodePtr value;
-    std::vector<ASTNodePtr> statements;
+    ASTNodePtr statement;
 
-    CaseStmt(ASTNodePtr value, std::vector<ASTNodePtr> statements)
+    CaseStmt(ASTNodePtr value, ASTNodePtr statement)
         : ASTNode(ASTNodeType::CASE_STMT), value(std::move(value)),
-          statements(std::move(statements))
+          statement(std::move(statement))
     {
     }
     ~CaseStmt() override = default;
@@ -351,10 +351,10 @@ class CaseStmt : public ASTNode {
 
 class DefaultStmt : public ASTNode {
   public:
-    std::vector<ASTNodePtr> statements;
+    ASTNodePtr statement;
 
-    explicit DefaultStmt(std::vector<ASTNodePtr> statements)
-        : ASTNode(ASTNodeType::DEFAULT_STMT), statements(std::move(statements))
+    explicit DefaultStmt(ASTNodePtr statement)
+        : ASTNode(ASTNodeType::DEFAULT_STMT), statement(std::move(statement))
     {
     }
     ~DefaultStmt() override = default;
