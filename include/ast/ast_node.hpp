@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -67,6 +68,80 @@ enum class Operator {
     MEMBER_ACCESS_PTR,
     COMMA_OP,
 };
+
+inline const std::unordered_map<Operator, std::pair<std::string, std::string>>
+    operator_to_string = {
+        // Arithmetic Operators
+        {Operator::ADD, {"+", "addition"}},
+        {Operator::SUBTRACT, {"-", "subtraction"}},
+        {Operator::MULTIPLY, {"*", "multiplication"}},
+        {Operator::DIVIDE, {"/", "division"}},
+        {Operator::MODULO, {"%", "modulo"}},
+        {Operator::INCREMENT, {"++", "increment"}},
+        {Operator::DECREMENT, {"--", "decrement"}},
+
+        // Bitwise operators
+        {Operator::BITWISE_AND, {"&", "bitwise and"}},
+        {Operator::BITWISE_OR, {"|", "bitwise or"}},
+        {Operator::BITWISE_XOR, {"^", "bitwise xor"}},
+        {Operator::BITWISE_NOT, {"~", "bitwise not"}},
+        {Operator::LEFT_SHIFT, {"<<", "left shift"}},
+        {Operator::RIGHT_SHIFT, {">>", "right shift"}},
+
+        // Logical Operators
+        {Operator::LOGICAL_AND, {"&&", "logical and"}},
+        {Operator::LOGICAL_OR, {"||", "logical or"}},
+        {Operator::LOGICAL_NOT, {"!", "logical not"}},
+
+        // Relational Operators
+        {Operator::EQUAL, {"==", "equal"}},
+        {Operator::NOT_EQUAL, {"!=", "not equal"}},
+        {Operator::LESS_THAN, {"<", "less than"}},
+        {Operator::LESS_EQUAL, {"<=", "less equal"}},
+        {Operator::GREATER_THAN, {">", "greater than"}},
+        {Operator::GREATER_EQUAL, {">=", "greater equal"}},
+
+        // Assignment Operators
+        {Operator::ASSIGN, {"=", "assignment"}},
+        {Operator::ADD_ASSIGN, {"+=", "add assignment"}},
+        {Operator::SUBTRACT_ASSIGN, {"-=", "subtract assignment"}},
+        {Operator::MULTIPLY_ASSIGN, {"*=", "multiply assignment"}},
+        {Operator::DIVIDE_ASSIGN, {"/=", "divide assignment"}},
+        {Operator::MODULO_ASSIGN, {"%=", "modulo assignment"}},
+        {Operator::BITWISE_AND_ASSIGN, {"&=", "bitwise and assignment"}},
+        {Operator::BITWISE_OR_ASSIGN, {"|=", "bitwise or assignment"}},
+        {Operator::BITWISE_XOR_ASSIGN, {"^=", "bitwise xor assignment"}},
+        {Operator::LEFT_SHIFT_ASSIGN, {"<<=", "left shift assignment"}},
+        {Operator::RIGHT_SHIFT_ASSIGN, {">>=", "right shift assignment"}},
+
+        // Other Operators
+        {Operator::TERNARY_CONDITIONAL, {"?:", "ternary conditional"}},
+        {Operator::ADDRESS_OF, {"&", "address of"}},
+        {Operator::UNARY_PLUS, {"+", "unary plus"}},
+        {Operator::UNARY_MINUS, {"-", "unary minus"}},
+        {Operator::POINTER_DEREF, {"*", "pointer dereference"}},
+        {Operator::MEMBER_ACCESS, {".", "member access"}},
+        {Operator::MEMBER_ACCESS_PTR, {"->", "member access pointer"}},
+        {Operator::COMMA_OP, {",", "comma"}},
+};
+
+inline std::string get_operator_string(Operator op)
+{
+    auto it = operator_to_string.find(op);
+    if (it != operator_to_string.end()) {
+        return it->second.first;
+    }
+    return "<unknown_operator>";
+}
+
+inline std::string get_operator_name(Operator op)
+{
+    auto it = operator_to_string.find(op);
+    if (it != operator_to_string.end()) {
+        return it->second.second;
+    }
+    return "<unknown_operator>";
+}
 
 enum class ASTNodeType {
     LITERAL_EXPR,
