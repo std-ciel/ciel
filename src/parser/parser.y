@@ -782,14 +782,27 @@ declaration
       }
     | declaration_specifiers init_declarator_list SEMICOLON_OP
       {
-        QualifiedType base = parser_state.current_decl_base_type;
+        // Use $1 directly instead of parser_state.current_decl_base_type
+        // because parameter parsing may have reset it
+        TypePtr base = $1;
 
-        if (base.type) {
+        if (base) {
           for (auto &di : $2) {
             if (di.is_function) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
-                TypePtr fn = make_function_type_or_error(base.type,
+                // Apply pointer levels to base type for return type
+                TypePtr return_type = base;
+                if (di.pointer_levels > 0) {
+                  QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(base, Qualifier::NONE),
+                                                                   di.pointer_levels,
+                                                                   "function return type",
+                                                                   @1.begin.line,
+                                                                   @1.begin.column);
+                  return_type = qt.type;
+                }
+                
+                TypePtr fn = make_function_type_or_error(return_type,
                                                          di.param_types,
                                                          di.is_variadic,
                                                          "function declarator",
@@ -1739,6 +1752,14 @@ function_definition
 		TypePtr ret_t = $1;
 		const DeclaratorInfo &di = $2;
 		if (ret_t && di.is_function) {
+		  if (di.pointer_levels > 0) {
+		    QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(ret_t, Qualifier::NONE),
+		                                                     di.pointer_levels,
+		                                                     "function return type context",
+		                                                     @1.begin.line,
+		                                                     @2.begin.column);
+		    ret_t = qt.type;
+		  }
 		  parser_state.push_function(ret_t);
 		}
 	 } compound_statement {
@@ -1752,8 +1773,19 @@ function_definition
 			if (!di.is_function || di.name.empty()) {
 				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires a named function declarator");
 			} else {
+			  // Apply pointer levels to base type for return type
+			  TypePtr return_type = base;
+			  if (di.pointer_levels > 0) {
+			    QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(base, Qualifier::NONE),
+			                                                     di.pointer_levels,
+			                                                     "function return type",
+			                                                     @1.begin.line,
+			                                                     @2.begin.column);
+			    return_type = qt.type;
+			  }
+			  
 			  // Build function type
-      TypePtr fn = make_function_type_or_error(base,
+      TypePtr fn = make_function_type_or_error(return_type,
                        di.param_types,
                        di.is_variadic,
                        "function definition",
@@ -1782,10 +1814,10 @@ function_definition
             }
             
             // Build FunctionDef AST node (parameters can be filled later if needed)
-            $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), base, std::vector<SymbolPtr>{}, $4);
+            $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), return_type, std::vector<SymbolPtr>{}, $4);
             
             // Check that non-void functions have a return statement
-            check_function_returns(base, $4, @4);
+            check_function_returns(return_type, $4, @4);
 			}
 		}
 			}
