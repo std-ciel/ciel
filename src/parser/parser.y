@@ -485,6 +485,20 @@
     return true;
   }
 
+  // Check if a type is complete and emit an error if not
+  static bool check_complete_type(TypePtr type, const yy::location& loc, const std::string& context) {
+    if (!type) {
+      return false;
+    }
+    
+    if (!is_complete_type(type)) {
+      parser_add_error(loc.begin.line, loc.begin.column, 
+                       "incomplete type '" + type->debug_name() + "' used in " + context);
+      return false;
+    }
+    return true;
+  }
+
 }
 
 %token <std::string> IDENTIFIER
