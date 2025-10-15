@@ -2468,6 +2468,7 @@ operator_token
     | AMPERSAND_OP    { $$ = "&"; }
     | PIPE_OP         { $$ = "|"; }
     | CARET_OP        { $$ = "^"; }
+    | TILDE_OP        { $$ = "~"; }
     | EQ_OP           { $$ = "=="; }
     | NE_OP           { $$ = "!="; }
     | LT_OP           { $$ = "<"; }
@@ -2484,7 +2485,18 @@ operator_token
     | STAR_ASSIGN_OP  { $$ = "*="; }
     | DIVIDE_ASSIGN_OP{ $$ = "/="; }
     | MOD_ASSIGN_OP   { $$ = "%="; }
+    | AMPERSAND_ASSIGN_OP { $$ = "&="; }
+    | PIPE_ASSIGN_OP  { $$ = "|="; }
+    | CARET_ASSIGN_OP { $$ = "^="; }
+    | LSHIFT_ASSIGN_OP{ $$ = "<<="; }
+    | RSHIFT_ASSIGN_OP{ $$ = ">>="; }
     | ARROW_OP        { $$ = "->"; }
+    | DOT_OP          { $$ = "."; }
+    | OPEN_BRACKET_OP CLOSE_BRACKET_OP { $$ = "[]"; }
+    | OPEN_PAREN_OP CLOSE_PAREN_OP { $$ = "()"; }
+    | COMMA_OP        { $$ = ","; }
+    | LOGICAL_AND_OP { $$ = "&&"; }
+    | LOGICAL_OR_OP  { $$ = "||"; }
     | NEW             { $$ = " new"; }
     | DELETE          { $$ = " delete"; }
     ;
