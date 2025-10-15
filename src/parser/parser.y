@@ -957,32 +957,38 @@ init_declarator
         const DeclaratorInfo &di = $1;
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
-          QualifiedType final_t;
+          // Functions cannot have initializers in declarations
+          if (di.is_function) {
+            parser_add_error(@2.begin.line, @2.begin.column, 
+                           "function '" + di.name + "' cannot have an initializer");
+          } else {
+            QualifiedType final_t;
 
-          if(di.pointer_levels > 0){
-            final_t = apply_pointer_levels_or_error(base,
-                                                   di.pointer_levels,
-                                                   "initializer pointer declarator",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          }
-          else if(!di.array_dims.empty()){
-            final_t = apply_array_dimensions_or_error(base,
-                                                     di.array_dims,
-                                                     "initializer array declarator",
+            if(di.pointer_levels > 0){
+              final_t = apply_pointer_levels_or_error(base,
+                                                     di.pointer_levels,
+                                                     "initializer pointer declarator",
                                                      @1.begin.line,
                                                      @1.begin.column);
-          }
-          else {
-            final_t = base;
-          }
+            }
+            else if(!di.array_dims.empty()){
+              final_t = apply_array_dimensions_or_error(base,
+                                                       di.array_dims,
+                                                       "initializer array declarator",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
+            }
+            else {
+              final_t = base;
+            }
 
-          add_symbol_if_valid(di.name, final_t, @1);
+            add_symbol_if_valid(di.name, final_t, @1);
 
-          if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-            if (!di.name.empty()) {
-              auto mi = MemberInfo{final_t, parser_state.current_access, false};
-              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+            if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
+              if (!di.name.empty()) {
+                auto mi = MemberInfo{final_t, parser_state.current_access, false};
+                std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+              }
             }
           }
         }
@@ -994,31 +1000,35 @@ init_declarator
         QualifiedType base = parser_state.current_decl_base_type;
 
         if (base.type) {
-          QualifiedType final_t;
-          if(di.pointer_levels > 0){
-            final_t = apply_pointer_levels_or_error(base,
-                                                   di.pointer_levels,
-                                                   "declarator pointer",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          }
-          else if(!di.array_dims.empty()){
-            final_t = apply_array_dimensions_or_error(base,
-                                                     di.array_dims,
-                                                     "declarator array",
+          // Skip adding as a variable if this is a function declarator
+          // Function declarations are handled separately in the declaration rule
+          if (!di.is_function) {
+            QualifiedType final_t;
+            if(di.pointer_levels > 0){
+              final_t = apply_pointer_levels_or_error(base,
+                                                     di.pointer_levels,
+                                                     "declarator pointer",
                                                      @1.begin.line,
                                                      @1.begin.column);
-          }
-          else {
-            final_t = base;
-          }
+            }
+            else if(!di.array_dims.empty()){
+              final_t = apply_array_dimensions_or_error(base,
+                                                       di.array_dims,
+                                                       "declarator array",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
+            }
+            else {
+              final_t = base;
+            }
 
-          add_symbol_if_valid(di.name, final_t, @1);
+            add_symbol_if_valid(di.name, final_t, @1);
 
-          if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-            if (!di.name.empty()) {
-              auto mi = MemberInfo{final_t, parser_state.current_access, false};
-              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+            if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
+              if (!di.name.empty()) {
+                auto mi = MemberInfo{final_t, parser_state.current_access, false};
+                std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+              }
             }
           }
         }
