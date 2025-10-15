@@ -1,0 +1,16 @@
+// Operator overload declarations are not allowed, only definitions
+
+class Vector {
+    private:
+        float x;
+        float y;
+    public:
+        Vector(float nx, float ny) {}
+        
+        // This should be an error - operator overload declaration without body
+        class Vector operator+(class Vector other);
+};
+
+int main() {
+    return 0;
+}
