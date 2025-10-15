@@ -1,0 +1,36 @@
+// Assignment operators
+
+int main() {
+    int x = 10;
+    int y = 5;
+    
+    // Simple assignment
+    x = y;
+    x = 100;
+    
+    // Compound assignments
+    x += y;
+    x -= y;
+    x *= y;
+    x /= y;
+    x %= y;
+    
+    // Bitwise compound assignments
+    x &= y;
+    x |= y;
+    x ^= y;
+    x <<= 2;
+    x >>= 1;
+    
+    // Chain of assignments
+    int a;
+    int b;
+    int c;
+    a = b = c = 0;
+    
+    // With expressions
+    x += 5 + 3;
+    x *= y + 2;
+    
+    return 0;
+}
