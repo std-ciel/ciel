@@ -44,8 +44,8 @@ class TypeFactory {
     TypeId next_id;
     std::unordered_map<std::string, TypeId> name_to_id;
     std::unordered_map<TypeId, std::string> id_to_name;
-    // scope id to defined types in the scope
-    std::unordered_map<size_t, std::vector<TypeId>> scope_defined_types;
+    std::unordered_map<ScopeID, std::vector<TypeId>> scope_defined_types;
+
     TypePtr define_builtin(const std::string &name, BuiltinTypeKind kind)
     {
         auto type = std::make_shared<BuiltinType>(kind);
@@ -110,6 +110,11 @@ class TypeFactory {
         types[id] = type;
         name_to_id[name] = id;
         id_to_name[id] = name;
+
+        if (type->kind != TypeKind::BUILTIN) {
+            scope_defined_types[0].push_back(id);
+        }
+
         return Result<TypePtr, TypeFactoryError>(type);
     }
 

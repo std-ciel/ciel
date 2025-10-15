@@ -25,6 +25,7 @@ TypeFactory::lookup_by_scope(const std::string &name,
     TypeId id = it->second;
     return lookup_by_scope(id, scope_chain);
 }
+
 std::optional<TypePtr>
 TypeFactory::lookup_by_scope(TypeId id,
                              const std::vector<size_t> &scope_chain) const
