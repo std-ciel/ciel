@@ -7,8 +7,6 @@ int to_bison_token(TokenType t)
     switch (t) {
     case TokenType::INT:
         return Token::INT;
-    case TokenType::SIGNED:
-        return Token::SIGNED;
     case TokenType::UNSIGNED:
         return Token::UNSIGNED;
     case TokenType::CHAR:

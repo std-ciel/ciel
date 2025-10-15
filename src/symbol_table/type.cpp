@@ -58,7 +58,6 @@ bool is_integral_type(TypePtr type)
     case BuiltinTypeKind::CHAR:
     case BuiltinTypeKind::INT:
     case BuiltinTypeKind::UNSIGNED:
-    case BuiltinTypeKind::SIGNED:
         return true;
     default:
         return false;

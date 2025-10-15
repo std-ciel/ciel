@@ -6,7 +6,6 @@
 
 enum class TokenType {
     INT,
-    SIGNED,
     UNSIGNED,
     CHAR,
     BOOL,

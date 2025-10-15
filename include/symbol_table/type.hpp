@@ -30,7 +30,6 @@ enum class BuiltinTypeKind {
     INT,
     FLOAT,
     UNSIGNED,
-    SIGNED,
     LABEL
 };
 
@@ -150,8 +149,6 @@ struct BuiltinType : public Type {
             return "float";
         case BuiltinTypeKind::UNSIGNED:
             return "unsigned";
-        case BuiltinTypeKind::SIGNED:
-            return "signed";
         case BuiltinTypeKind::LABEL:
             return "label";
         default:
@@ -174,8 +171,6 @@ struct BuiltinType : public Type {
             return "f";
         case BuiltinTypeKind::UNSIGNED:
             return "j"; // unsigned int
-        case BuiltinTypeKind::SIGNED:
-            return "i"; // signed int (same as int)
         default:
             return "u"; // unknown type
         }

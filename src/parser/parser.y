@@ -882,7 +882,6 @@
 
     std::unordered_map<BuiltinTypeKind, int> rank_map = {
         {BuiltinTypeKind::CHAR, 1},
-        {BuiltinTypeKind::SIGNED, 2},
         {BuiltinTypeKind::INT, 2},
         {BuiltinTypeKind::UNSIGNED, 3},
         {BuiltinTypeKind::FLOAT, 4}
@@ -1137,7 +1136,7 @@
 %token <std::string> STRING_LITERAL
 %token <bool> BOOL_LITERAL
 
-%token INT SIGNED UNSIGNED CHAR BOOL FLOAT VOID
+%token INT UNSIGNED CHAR BOOL FLOAT VOID
 %token TYPEDEF STATIC CONST VOLATILE
 %token ENUM STRUCT UNION CLASS
 %token RETURN IF ELSE SWITCH CASE DEFAULT FOR WHILE DO GOTO CONTINUE BREAK UNTIL
@@ -2649,7 +2648,6 @@ type_specifier
   : VOID     { $$ = require_builtin("void", @1, "type specifier");     parser_state.current_decl_base_type = $$;  }
   | CHAR     { $$ = require_builtin("char", @1, "type specifier");     parser_state.current_decl_base_type = $$; }
   | INT      { $$ = require_builtin("int", @1, "type specifier");      parser_state.current_decl_base_type = $$; }
-  | SIGNED   { $$ = require_builtin("signed", @1, "type specifier");   parser_state.current_decl_base_type = $$; }
   | UNSIGNED { $$ = require_builtin("unsigned", @1, "type specifier"); parser_state.current_decl_base_type = $$; }
   | BOOL     { $$ = require_builtin("bool", @1, "type specifier");     parser_state.current_decl_base_type = $$; }
   | FLOAT    { $$ = require_builtin("float", @1, "type specifier");    parser_state.current_decl_base_type = $$; }

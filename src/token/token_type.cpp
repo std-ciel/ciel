@@ -3,7 +3,6 @@
 
 static const std::unordered_map<std::string, TokenType> keyword_map = {
     {"int", TokenType::INT},
-    {"signed", TokenType::SIGNED},
     {"unsigned", TokenType::UNSIGNED},
     {"char", TokenType::CHAR},
     {"bool", TokenType::BOOL},
@@ -100,7 +99,6 @@ static const std::unordered_map<std::string, TokenType> operator_map = {
 
 static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::INT, "int"},
-    {TokenType::SIGNED, "signed"},
     {TokenType::UNSIGNED, "unsigned"},
     {TokenType::CHAR, "char"},
     {TokenType::BOOL, "bool"},

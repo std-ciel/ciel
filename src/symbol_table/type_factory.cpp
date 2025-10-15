@@ -11,7 +11,6 @@ TypeFactory::TypeFactory() : next_id(0)
     define_builtin("int", BuiltinTypeKind::INT);
     define_builtin("float", BuiltinTypeKind::FLOAT);
     define_builtin("unsigned", BuiltinTypeKind::UNSIGNED);
-    define_builtin("signed", BuiltinTypeKind::SIGNED);
 }
 
 std::optional<TypePtr>
