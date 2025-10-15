@@ -68,6 +68,7 @@ enum class Operator {
     POINTER_DEREF,
     MEMBER_ACCESS,
     MEMBER_ACCESS_PTR,
+    SUBSCRIPT_OP,
     COMMA_OP,
 };
 
@@ -127,6 +128,7 @@ inline const std::unordered_map<Operator, std::pair<std::string, std::string>>
         {Operator::MEMBER_ACCESS, {".", "member access"}},
         {Operator::MEMBER_ACCESS_PTR, {"->", "member access pointer"}},
         {Operator::COMMA_OP, {",", "comma"}},
+        {Operator::SUBSCRIPT_OP, {"[]", "subscript"}},
 };
 
 inline std::string get_operator_string(Operator op)
@@ -150,6 +152,8 @@ inline std::string get_operator_name(Operator op)
 enum class ASTNodeType {
     LITERAL_EXPR,
     IDENTIFIER_EXPR,
+    ENUM_IDENTIFIER_EXPR,
+    FUNCTION_IDENTIFIER_EXPR,
 
     CALL_EXPR,
     RET_EXPR,
@@ -192,7 +196,7 @@ class ASTNode {
 };
 
 using ASTNodePtr = std::shared_ptr<ASTNode>;
-using LiteralValue = std::variant<uint64_t, double, char, bool, std::string>;
+using LiteralValue = std::variant<int64_t, uint64_t, double, char, bool, std::string>;
 
 class LiteralExpr : public ASTNode {
   public:
@@ -218,6 +222,30 @@ class IdentifierExpr : public ASTNode {
     {
     }
     ~IdentifierExpr() override = default;
+};
+
+class EnumIdentifierExpr : public ASTNode {
+  public:
+    TypePtr expr_type;
+
+    EnumIdentifierExpr(TypePtr expr_type)
+        : ASTNode(ASTNodeType::ENUM_IDENTIFIER_EXPR),
+          expr_type(std::move(expr_type))
+    {
+    }
+    ~EnumIdentifierExpr() override = default;
+};
+
+class FunctionIdentifierExpr : public ASTNode {
+  public:
+    std::string function_name;
+
+    explicit FunctionIdentifierExpr(std::string function_name)
+        : ASTNode(ASTNodeType::FUNCTION_IDENTIFIER_EXPR),
+          function_name(std::move(function_name))
+    {
+    }
+    ~FunctionIdentifierExpr() override = default;
 };
 
 class CallExpr : public ASTNode {
@@ -289,9 +317,8 @@ class MemberExpr : public ASTNode {
                ASTNodePtr object,
                std::string member_name,
                TypePtr expr_type)
-        : ASTNode(ASTNodeType::MEMBER_EXPR), op(op),
-          object(std::move(object)), member_name(std::move(member_name)),
-          expr_type(std::move(expr_type))
+        : ASTNode(ASTNodeType::MEMBER_EXPR), op(op), object(std::move(object)),
+          member_name(std::move(member_name)), expr_type(std::move(expr_type))
     {
     }
     ~MemberExpr() override = default;
@@ -598,6 +625,9 @@ inline bool is_expression_node(ASTNodeType type)
     case ASTNodeType::ASSIGNMENT_EXPR:
     case ASTNodeType::NEW_EXPR:
     case ASTNodeType::DELETE_EXPR:
+    case ASTNodeType::MEMBER_EXPR:
+    case ASTNodeType::ENUM_IDENTIFIER_EXPR:
+    case ASTNodeType::FUNCTION_IDENTIFIER_EXPR:
         return true;
     default:
         return false;
@@ -639,6 +669,10 @@ get_expression_type(const ASTNodePtr &node)
         return static_cast<NewExpr *>(node.get())->expr_type;
     case ASTNodeType::DELETE_EXPR:
         return static_cast<DeleteExpr *>(node.get())->expr_type;
+    case ASTNodeType::MEMBER_EXPR:
+        return static_cast<MemberExpr *>(node.get())->expr_type;
+    case ASTNodeType::ENUM_IDENTIFIER_EXPR:
+        return static_cast<EnumIdentifierExpr *>(node.get())->expr_type;
     default:
         return ExpressionTypeError::NotExpression;
     }
