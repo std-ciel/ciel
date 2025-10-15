@@ -1265,8 +1265,153 @@ postfix_expression
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
     | postfix_expression DOT_OP IDENTIFIER
     {
+      TypePtr base_type = get_expression_type($1, @1, "member access");
+
+      if (!base_type) {
+        $$ = nullptr;
+      }
+      else if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
+          std::string enum_name = std::string("enum ") + std::static_pointer_cast<IdentifierExpr>($1)->symbol->get_name();
+          auto type_ptr_opt = type_factory.lookup(enum_name);
+
+          if (type_ptr_opt.has_value() && type_ptr_opt.value()->kind == TypeKind::ENUM) {
+            auto enum_type_ptr = std::static_pointer_cast<EnumType>(type_ptr_opt.value());
+            if (enum_type_ptr->enumerators.find($3) == enum_type_ptr->enumerators.end()) {
+            parser_add_error(@2.begin.line, @2.begin.column,
+                           "enumerator '" + $3 + "' not found in enum '" + enum_name + "'");
+            $$ = nullptr;
+            } else {
+            int64_t value = enum_type_ptr->enumerators.at($3);
+            TypePtr int_type = require_builtin("int", @3, "enum value");
+            LiteralValue literal = static_cast<uint64_t>(value);
+            $$ = std::make_shared<LiteralExpr>(literal, int_type);
+            }
+        }
+        else if (is_class_type(base_type)) {
+          auto class_type = std::static_pointer_cast<ClassType>(base_type);
+          while(class_type){
+            if (class_type->members.find($3)!= class_type->members.end()) {
+              TypePtr member_type = class_type->members.at($3).type.type;
+              // Create a member access expression (could be a specialized AST node)
+              // For simplicity, we represent it as a binary expression with a special operator
+              $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+              break;
+            }
+            if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+              base_type = class_type->base.base_type;
+              if(is_class_type(base_type)){
+                class_type = std::static_pointer_cast<ClassType>(base_type);
+              }
+              else{
+                class_type = nullptr;
+              }
+            }
+            else{
+              class_type = nullptr;
+            }
+          }
+          if(!class_type){
+            parser_add_error(@2.begin.line, @2.begin.column,
+                           "member '" + $3 + "' not found in class or its base classes");
+            $$ = nullptr;
+          }
+        }
+        else if(base_type->kind == TypeKind::RECORD){
+          auto record_type = std::static_pointer_cast<RecordType>(base_type);
+          if (record_type->fields.find($3)!= record_type->fields.end()) {
+            TypePtr member_type = record_type->fields.at($3).type;
+            // Create a member access expression (could be a specialized AST node)
+            // For simplicity, we represent it as a binary expression with a special operator
+            $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+          } else {
+            parser_add_error(@2.begin.line, @2.begin.column,
+                           "member '" + $3 + "' not found in struct/union");
+            $$ = nullptr;
+          }
+        }
+        else {
+          parser_add_error(@1.begin.line, @1.begin.column,
+                         "member reference base type is not a structure or union");
+          $$ = nullptr;
+        }
+      }
+      else {
+        parser_add_error(@1.begin.line, @1.begin.column,
+                       "member access requires struct, union, or class type");
+        $$ = nullptr;
+        }
     }
     | postfix_expression ARROW_OP IDENTIFIER
+    {
+      TypePtr ptr_type = get_expression_type($1, @1, "member access through pointer");
+
+      if (!ptr_type) {
+        $$ = nullptr;
+      }
+      else if (!is_pointer_type(ptr_type)) {
+        parser_add_error(@1.begin.line,
+                         @1.begin.column,
+                         "member reference type is not a pointer");
+        $$ = nullptr;
+      }
+      else {
+        TypePtr base_type = dereference_pointer(ptr_type, @1, "arrow operator");
+        if (base_type) {
+          if(is_class_type(base_type)){
+            auto class_type = std::static_pointer_cast<ClassType>(base_type);
+            while(class_type){
+              if (class_type->members.find($3)!= class_type->members.end()) {
+                TypePtr member_type = class_type->members.at($3).type.type;
+                // Create a member access expression (could be a specialized AST node)
+                // For simplicity, we represent it as a binary expression with a special operator
+                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, member_type);
+                break;
+              }
+              if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+                base_type = class_type->base.base_type;
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
+              }
+              else{
+                class_type = nullptr;
+              }
+            }
+            if(!class_type){
+              parser_add_error(@2.begin.line, @2.begin.column,
+                             "member '" + $3 + "' not found in class or its base classes");
+              $$ = nullptr;
+            }
+          }
+          else if(base_type->kind == TypeKind::RECORD){
+            auto record_type = std::static_pointer_cast<RecordType>(base_type);
+            if (record_type->fields.find($3)!= record_type->fields.end()) {
+              TypePtr member_type = record_type->fields.at($3).type;
+              // Create a member access expression (could be a specialized AST node)
+              // For simplicity, we represent it as a binary expression with a special operator
+              $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, member_type);
+            } else {
+              parser_add_error(@2.begin.line, @2.begin.column,
+                             "member '" + $3 + "' not found in struct/union");
+              $$ = nullptr;
+            }
+          }
+          else{
+            parser_add_error(@1.begin.line, @1.begin.column,
+                           "member reference base type is not a structure or union");
+            $$ = nullptr;
+          }
+        }
+        else {
+          parser_add_error(@1.begin.line, @1.begin.column,
+                         "member reference base type is not a pointer to structure or union");
+          $$ = nullptr;
+        }
+      }
+    }
     | postfix_expression INCREMENT_OP
     | postfix_expression DECREMENT_OP
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
