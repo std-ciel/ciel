@@ -385,6 +385,8 @@ bool is_bool_type(TypePtr type);
 bool is_void_type(TypePtr type);
 bool are_types_equal(TypePtr a, TypePtr b);
 bool is_integral_or_enum_non_bool(TypePtr type);
+bool is_user_defined_type(TypePtr type);
+bool is_complete_type(TypePtr type);
 
 using TypeId = size_t;
 
