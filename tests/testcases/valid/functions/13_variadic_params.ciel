@@ -10,20 +10,20 @@ float average(int count, ...) {
 }
 
 char* concat_strings(char* first, ...) {
-    return 0;
+    return (char *)0;
 }
 
 void* generic_func(int type, ...) {
-    return 0;
+    return (void *)0;
 }
 
 // Pointer returns with variadic params
 int* create_array(int size, ...) {
-    return 0;
+    return (int *)0;
 }
 
 char** build_string_list(int count, ...) {
-    return 0;
+    return (char **)0;
 }
 
 // Mixed parameter types with variadic
@@ -32,7 +32,7 @@ int process(int a, char c, float f, ...) {
 }
 
 unsigned* complex_variadic(int* ptr, char** strs, ...) {
-    return 0;
+    return (unsigned *)0;
 }
 
 // No fixed parameters before variadic (just ellipsis - edge case)

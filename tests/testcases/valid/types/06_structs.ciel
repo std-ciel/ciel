@@ -42,11 +42,11 @@ int main() {
     struct Node n;
     struct Person person;
     struct Complex cplx;
-    
+
     // Pointer to struct
     struct Point* p_ptr;
     struct Node* n_ptr;
-    
+
     return 0;
 }
 
@@ -56,5 +56,5 @@ int distance(struct Point p1, struct Point p2) {
 }
 
 struct Node* create_node(int data) {
-    return 0;
+    return (struct Node *)0;
 }

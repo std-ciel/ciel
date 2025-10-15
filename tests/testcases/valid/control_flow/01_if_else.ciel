@@ -2,22 +2,22 @@
 
 int main() {
     int x = 10;
-    
+
     // Simple if
-    if (x) {
+    if (x != 0) {
         x = 1;
     }
-    
+
     // If-else
-    if (x) {
+    if (x != 0) {
         x = 2;
     } else {
         x = 3;
     }
-    
+
     // Nested if-else
-    if (x) {
-        if (x) {
+    if (x != 0) {
+        if (x != 0) {
             x = 4;
         } else {
             x = 5;
@@ -25,12 +25,12 @@ int main() {
     } else {
         x = 6;
     }
-    
+
     // Multiple conditions
     bool flag = true;
     if (flag) {
         x = 7;
     }
-    
+
     return 0;
 }

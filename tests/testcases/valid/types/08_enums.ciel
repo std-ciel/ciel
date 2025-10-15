@@ -36,24 +36,24 @@ int main() {
     enum Status s;
     enum Priority p;
     enum Direction d;
-    
+
     // Assignment
-    c = RED;
-    c = GREEN;
-    c = BLUE;
-    
-    s = SUCCESS;
-    s = FAILURE;
-    
-    p = LOW;
-    p = HIGH;
-    
-    d = NORTH;
-    
+    c = Color.RED;
+    c = Color.GREEN;
+    c = Color.BLUE;
+
+    s = Status.SUCCESS;
+    s = Status.FAILURE;
+
+    p = Priority.LOW;
+    p = Priority.HIGH;
+
+    d = Direction.NORTH;
+
     // Pointer to enum
     enum Color* c_ptr;
     enum Status* s_ptr;
-    
+
     return 0;
 }
 
@@ -63,5 +63,5 @@ int process_color(enum Color c) {
 }
 
 enum Status get_status(int code) {
-    return;
+    return Status.SUCCESS;
 }

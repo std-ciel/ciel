@@ -39,19 +39,19 @@ int main() {
     union Value v;
     union Pointer p;
     union Buffer buf;
-    
+
     // Assignment to union members
     d.i = 10;
     d.f = 3.14;
     d.c = 'a';
-    
+
     v.intval = 42;
     v.floatval = 2.5;
-    
+
     // Pointer to union
     union Data* d_ptr;
     union Value* v_ptr;
-    
+
     return 0;
 }
 
@@ -61,5 +61,5 @@ int process_data(union Data d) {
 }
 
 union Value* create_value() {
-    return 0;
+    return (union Value *)0;
 }
