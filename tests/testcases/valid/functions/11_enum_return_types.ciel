@@ -1,0 +1,56 @@
+// Test enum return types
+
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+enum Status {
+    SUCCESS,
+    FAILURE,
+    PENDING
+};
+
+enum Direction {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST
+};
+
+// Return enum by value
+enum Color get_color() {
+    return;
+}
+
+enum Status get_status() {
+    return;
+}
+
+// Return pointer to enum
+enum Color* get_color_ptr() {
+    return 0;
+}
+
+enum Direction* get_direction_ptr() {
+    return 0;
+}
+
+// Return double pointer to enum
+enum Status** get_status_array() {
+    return 0;
+}
+
+// Functions with enum parameters
+enum Color process_color(enum Color c) {
+    return;
+}
+
+enum Status* check_status(enum Status* s) {
+    return s;
+}
+
+int main() {
+    return 0;
+}

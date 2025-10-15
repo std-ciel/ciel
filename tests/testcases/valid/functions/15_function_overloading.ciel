@@ -1,0 +1,302 @@
+// Comprehensive function overloading tests
+// Tests all valid ways functions can be overloaded
+
+// 1. Different number of parameters
+int add(int a) {
+    return a;
+}
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int add(int a, int b, int c) {
+    return a + b + c;
+}
+
+int add(int a, int b, int c, int d) {
+    return a + b + c + d;
+}
+
+// 2. Different parameter types (same count)
+int process(int x) {
+    return 0;
+}
+
+int process(float x) {
+    return 0;
+}
+
+int process(char x) {
+    return 0;
+}
+
+int process(bool x) {
+    return 0;
+}
+
+// 3. Pointer vs non-pointer
+int getValue(int x) {
+    return 0;
+}
+
+int getValue(int* ptr) {
+    return 0;
+}
+
+// 4. Different pointer levels
+int deref(int* p) {
+    return 0;
+}
+
+int deref(int** pp) {
+    return 0;
+}
+
+int deref(int*** ppp) {
+    return 0;
+}
+
+int deref(int**** pppp) {
+    return 0;
+}
+
+// 5. Struct parameters
+struct Point {
+    int x;
+    int y;
+};
+
+int measure(struct Point p) {
+    return 0;
+}
+
+int measure(struct Point* p) {
+    return 0;
+}
+
+int measure(struct Point** p) {
+    return 0;
+}
+
+// 6. Class parameters
+class Vector {
+    private:
+        float x;
+        float y;
+    public:
+        Vector(float nx, float ny) { x = nx; y = ny; }
+};
+
+int calculate(class Vector v) {
+    return 0;
+}
+
+int calculate(class Vector* v) {
+    return 1;
+}
+
+// 7. Enum parameters
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+int colorToInt(enum Color c) {
+    return 0;
+}
+
+int colorToInt(enum Color* c) {
+    return 0;
+}
+
+// 8. Union parameters
+union Data {
+    int i;
+    float f;
+    char c;
+};
+
+int extract(union Data d) {
+    return 0;
+}
+
+int extract(union Data* d) {
+    return 0;
+}
+
+// 9. Typedef parameters
+typedef int* IntPtr;
+typedef float** FloatPtrPtr;
+
+int work(IntPtr p) {
+    return 0;
+}
+
+int work(FloatPtrPtr p) {
+    return 0;
+}
+
+int work(int x) {
+    return 0;
+}
+
+// 10. Mixed pointer types
+int convert(int* ip) {
+    return 0;
+}
+
+int convert(float* fp) {
+    return 0;
+}
+
+int convert(char* cp) {
+    return 0;
+}
+
+int convert(void* vp) {
+    return 0;
+}
+
+// 11. Const doesn't affect overloading (if supported)
+int read(int* p) {
+    return 0;
+}
+
+// 12. Arrays treated as pointers
+int sum(int arr[]) {
+    return 0;
+}
+
+int sum(int* arr) {  // This would conflict with above in C/C++
+    return 0;
+}
+
+// 13. Multiple parameters with different combinations
+int combine(int a, float b) {
+    return 0;
+}
+
+int combine(float a, int b) {
+    return 0;
+}
+
+int combine(int a, int b) {
+    return 0;
+}
+
+int combine(float a, float b) {
+    return 0;
+}
+
+// 14. Pointers in different positions
+int operate(int* a, int b) {
+    return 0;
+}
+
+int operate(int a, int* b) {
+    return 0;
+}
+
+int operate(int* a, int* b) {
+    return 0;
+}
+
+// 15. Class/struct/union/enum combinations
+int transform(struct Point p, enum Color c) {
+    return 0;
+}
+
+int transform(struct Point* p, enum Color c) {
+    return 0;
+}
+
+int transform(struct Point p, enum Color* c) {
+    return 0;
+}
+
+int transform(class Vector v, union Data d) {
+    return 0;
+}
+
+// 16. Deep nesting with multiple types
+int complex(int** pp, struct Point* sp, enum Color c) {
+    return 0;
+}
+
+int complex(int* p, struct Point** spp, enum Color c) {
+    return 0;
+}
+
+int complex(int*** ppp, struct Point p, enum Color* cp) {
+    return 0;
+}
+
+// 17. Same name with completely different signatures
+int func(int a) {
+    return 0;
+}
+
+int func(char a, char b) {
+    return 0;
+}
+
+int func(float a, int b, char c) {
+    return 0;
+}
+
+int func(struct Point p, class Vector v, union Data d, enum Color col) {
+    return 0;
+}
+
+// 18. Forward declarations of overloaded functions
+int forward(int x);
+int forward(int x, int y);
+int forward(float x);
+
+int forward(int x) {
+    return 0;
+}
+
+int forward(int x, int y) {
+    return 0;
+}
+
+int forward(float x) {
+    return 0;
+}
+
+// 19. Different basic types
+int typeFunc(int x) {
+    return 0;
+}
+
+int typeFunc(float x) {
+    return 0;
+}
+
+int typeFunc(char x) {
+    return 0;
+}
+
+int typeFunc(bool x) {
+    return 0;
+}
+
+// 20. Variadic vs non-variadic
+int varFunc(int x) {
+    return 0;
+}
+
+int varFunc(int x, int y) {
+    return 0;
+}
+
+int varFunc(int x, ...) {
+    return 0;
+}
+
+int main() {
+    return 0;
+}

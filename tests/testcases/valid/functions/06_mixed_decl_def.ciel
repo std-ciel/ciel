@@ -1,0 +1,46 @@
+// Test mixed declarations and definitions
+
+// Declaration first, then definition
+int* func_decl_then_def(int x);
+
+int* func_decl_then_def(int x) {
+    return 0;
+}
+
+// Multiple related functions
+char* process_string(char* input);
+int* process_numbers(int* arr, unsigned size);
+float** create_matrix(int rows, int cols);
+
+char* process_string(char* input) {
+    return input;
+}
+
+int* process_numbers(int* arr, unsigned size) {
+    return arr;
+}
+
+float** create_matrix(int rows, int cols) {
+    return 0;
+}
+
+// Forward declarations
+void helper1();
+void helper2();
+int* main_processor();
+
+void helper1() {
+    return;
+}
+
+void helper2() {
+    return;
+}
+
+int* main_processor() {
+    return 0;
+}
+
+int main() {
+    return 0;
+}

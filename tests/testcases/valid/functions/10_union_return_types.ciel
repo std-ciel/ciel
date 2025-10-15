@@ -1,0 +1,49 @@
+// Test union return types
+
+union Data {
+    int i;
+    float f;
+    char c;
+};
+
+union Value {
+    int intval;
+    float floatval;
+    char* strval;
+};
+
+// Return union by value
+union Data create_data() {
+    return;
+}
+
+union Value create_value() {
+    return;
+}
+
+// Return pointer to union
+union Data* alloc_data() {
+    return 0;
+}
+
+union Value* create_value_ptr() {
+    return 0;
+}
+
+// Return double pointer to union
+union Data** create_data_array() {
+    return 0;
+}
+
+// Functions with union parameters
+union Data process_data(union Data d) {
+    return;
+}
+
+union Value* modify_value(union Value* v) {
+    return v;
+}
+
+int main() {
+    return 0;
+}

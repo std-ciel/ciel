@@ -1,0 +1,41 @@
+// Test multi-level pointer return types
+
+// Double pointers
+int** func_int_double_ptr() {
+    return 0;
+}
+
+char** func_char_double_ptr() {
+    return 0;
+}
+
+float** func_float_double_ptr() {
+    return 0;
+}
+
+void** func_void_double_ptr() {
+    return 0;
+}
+
+// Triple pointers
+int*** func_int_triple_ptr() {
+    return 0;
+}
+
+char*** func_char_triple_ptr() {
+    return 0;
+}
+
+// Quadruple pointers
+int**** func_int_quad_ptr() {
+    return 0;
+}
+
+// Mixed levels
+unsigned** func_unsigned_double_ptr() {
+    return 0;
+}
+
+bool*** func_bool_triple_ptr() {
+    return 0;
+}

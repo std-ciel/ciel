@@ -1,0 +1,25 @@
+// Test function declarations (without definitions)
+
+// Basic declarations
+int* decl_int_ptr();
+char* decl_char_ptr(int x);
+float** decl_float_double_ptr(int* p, char c);
+void*** decl_void_triple_ptr();
+
+// With various parameter types
+unsigned* decl_with_unsigned(unsigned x, unsigned* ptr);
+bool** decl_with_bool(bool b, bool* pb);
+signed*** decl_with_signed(signed s, signed** pps);
+
+// Void return declarations
+void decl_void_no_params();
+void decl_void_with_params(int x, char* str);
+
+// Multiple pointer levels
+int**** decl_quad_ptr(int*** p);
+char***** decl_five_ptr();
+
+// Main function definition for valid compilation
+int main() {
+    return 0;
+}

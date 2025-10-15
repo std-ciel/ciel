@@ -1,0 +1,34 @@
+// Test basic return types
+
+// Void return
+void func_void() {
+    return;
+}
+
+// Basic integer types
+int func_int() {
+    return 42;
+}
+
+signed func_signed() {
+    return -10;
+}
+
+unsigned func_unsigned() {
+    return 100;
+}
+
+// Character types
+char func_char() {
+    return 'a';
+}
+
+// Boolean type
+bool func_bool() {
+    return true;
+}
+
+// Floating point type
+float func_float() {
+    return 3.14;
+}

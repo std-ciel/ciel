@@ -1,0 +1,30 @@
+// Test single-level pointer return types
+
+// Pointer to basic types
+int* func_int_ptr() {
+    return 0;
+}
+
+char* func_char_ptr() {
+    return 0;
+}
+
+float* func_float_ptr() {
+    return 0;
+}
+
+bool* func_bool_ptr() {
+    return 0;
+}
+
+unsigned* func_unsigned_ptr() {
+    return 0;
+}
+
+signed* func_signed_ptr() {
+    return 0;
+}
+
+void* func_void_ptr() {
+    return 0;
+}

@@ -1,0 +1,53 @@
+// Test struct return types
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Vector {
+    float x;
+    float y;
+    float z;
+};
+
+struct Node {
+    int data;
+    int* next;
+};
+
+// Return struct by value
+struct Point create_point() {
+    return;
+}
+
+struct Vector create_vector() {
+    return;
+}
+
+// Return pointer to struct
+struct Point* alloc_point() {
+    return 0;
+}
+
+struct Node* create_node() {
+    return 0;
+}
+
+// Return double pointer to struct
+struct Point** create_point_array() {
+    return 0;
+}
+
+// Functions with struct parameters
+struct Point transform_point(struct Point p) {
+    return;
+}
+
+struct Vector* process_vector(struct Vector* v) {
+    return v;
+}
+
+int main() {
+    return 0;
+}

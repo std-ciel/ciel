@@ -1,0 +1,33 @@
+// Test function return types with const and volatile qualifiers
+
+// Const return types (pointers to const)
+int* func_ptr_to_int() {
+    return 0;
+}
+
+char* func_ptr_to_char() {
+    return 0;
+}
+
+// Various pointer combinations
+int** func_double_ptr_int() {
+    return 0;
+}
+
+// Functions returning pointers with parameters
+int* func_with_const_param(int x) {
+    return 0;
+}
+
+char** func_complex(int* p1, char* p2) {
+    return 0;
+}
+
+// Void pointers
+void* func_void_ptr_ret() {
+    return 0;
+}
+
+void** func_void_double_ptr_ret() {
+    return 0;
+}
