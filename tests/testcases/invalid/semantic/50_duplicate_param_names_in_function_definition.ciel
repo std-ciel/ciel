@@ -1,0 +1,36 @@
+// Error: function definition cannot have duplicate parameter names
+
+// Error: duplicate parameter names
+int add(int x, int x) {  // Error: duplicate parameter 'x'
+    return x + x;
+}
+
+// Error: multiple duplicates
+int calculate(int a, int b, int a, int c) {  // Error: duplicate parameter 'a'
+    return a + b + c;
+}
+
+// Error: three parameters with same name
+int compute(float x, int x, char x) {  // Error: duplicate parameter 'x' (appears twice)
+    return 0;
+}
+
+// Valid: all parameters have unique names
+int valid_func(int x, int y, int z) {
+    return x + y + z;
+}
+
+// Valid: declaration can have unnamed or duplicate names (though not recommended)
+int process(int, int);
+int forward(int a, int a);
+
+// Valid: definition with unique parameter names
+int process(int a, int b) {
+    return a + b;
+}
+
+int main() {
+    int result = valid_func(1, 2, 3);
+    int sum = process(10, 20);
+    return 0;
+}

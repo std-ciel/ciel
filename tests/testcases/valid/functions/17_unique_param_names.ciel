@@ -1,0 +1,35 @@
+// Valid testcase: function definitions with unique parameter names
+
+// Valid: simple function with unique parameters
+int add(int x, int y) {
+    return x + y;
+}
+
+// Valid: function with multiple unique parameters
+int calculate(int a, int b, int c, int d) {
+    return a + b + c + d;
+}
+
+// Valid: parameters with similar but different names
+int process(int value, int value2, int value_temp) {
+    return value + value2 + value_temp;
+}
+
+// Valid: single parameter
+int double_value(int x) {
+    return x * 2;
+}
+
+// Valid: no parameters
+int get_constant() {
+    return 42;
+}
+
+int main() {
+    int sum = add(10, 20);
+    int total = calculate(1, 2, 3, 4);
+    int result = process(5, 6, 7);
+    int doubled = double_value(8);
+    int constant = get_constant();
+    return 0;
+}
