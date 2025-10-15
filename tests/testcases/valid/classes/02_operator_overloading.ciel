@@ -1,0 +1,81 @@
+// Test operator overloading
+
+class Vector {
+    private:
+        float x;
+        float y;
+    public:
+        Vector(float nx, float ny) {}
+        
+        // Arithmetic operators
+        class Vector operator+(class Vector other) { return other; }
+        class Vector operator-(class Vector other) { return other; }
+        class Vector operator*(float scalar) { class Vector v; return v; }
+        class Vector operator/(float scalar) { class Vector v; return v; }
+        
+        // Comparison operators
+        bool operator==(class Vector other) { bool result = 1 == 1; return result; }
+        bool operator!=(class Vector other) { bool result = 1 != 1; return result; }
+        bool operator<(class Vector other) { bool result = 1 < 2; return result; }
+        bool operator>(class Vector other) { bool result = 2 > 1; return result; }
+        
+        // Unary operators
+        class Vector operator-() { class Vector v; return v; }
+        class Vector operator+() { class Vector v; return v; }
+        
+        // Assignment operators
+        class Vector operator=(class Vector other) { return other; }
+        class Vector operator+=(class Vector other) { return other; }
+        class Vector operator-=(class Vector other) { return other; }
+        
+        // Increment/decrement
+        class Vector operator++() { class Vector v; return v; }
+        class Vector operator--() { class Vector v; return v; }
+        
+        // Bitwise operators
+        class Vector operator&(class Vector other) { return other; }
+        class Vector operator|(class Vector other) { return other; }
+        class Vector operator^(class Vector other) { return other; }
+        class Vector operator~() { class Vector v; return v; }
+};
+
+class Complex {
+    private:
+        float real;
+        float imag;
+    public:
+        Complex(float r, float i) {}
+        
+        class Complex operator+(class Complex other) { return other; }
+        class Complex operator-(class Complex other) { return other; }
+        class Complex operator*(class Complex other) { return other; }
+        class Complex operator/(class Complex other) { return other; }
+        
+        bool operator==(class Complex other) { bool result = 1 == 1; return result; }
+        bool operator!=(class Complex other) { bool result = 1 != 1; return result; }
+};
+
+class Integer {
+    private:
+        int value;
+    public:
+        Integer(int v) {}
+        
+        class Integer operator+(class Integer other) { return other; }
+        class Integer operator-(class Integer other) { return other; }
+        class Integer operator*(class Integer other) { return other; }
+        class Integer operator/(class Integer other) { return other; }
+        class Integer operator%(class Integer other) { return other; }
+        
+        class Integer operator&(class Integer other) { return other; }
+        class Integer operator|(class Integer other) { return other; }
+        class Integer operator^(class Integer other) { return other; }
+        class Integer operator~() { class Integer i; return i; }
+        
+        class Integer operator<<(int shift) { class Integer i; return i; }
+        class Integer operator>>(int shift) { class Integer i; return i; }
+};
+
+int main() {
+    return 0;
+}
