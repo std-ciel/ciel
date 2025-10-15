@@ -130,6 +130,18 @@ bool is_integral_or_enum_non_bool(TypePtr type)
     return false;
 }
 
+bool is_function_type(TypePtr type)
+{
+    auto canonical = strip_typedefs(type);
+    return canonical && canonical->kind == TypeKind::FUNCTION;
+}
+
+bool is_array_type(TypePtr type)
+{
+    auto canonical = strip_typedefs(type);
+    return canonical && canonical->kind == TypeKind::ARRAY;
+}
+
 bool is_user_defined_type(TypePtr type)
 {
     if (!type)
