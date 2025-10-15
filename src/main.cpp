@@ -93,7 +93,7 @@ int main(int argc, char *argv[])
         initial_loc.begin.line = initial_loc.end.line = 1;
         initial_loc.begin.column = initial_loc.end.column = 1;
 
-        // parser.set_debug_level(1);
+        parser.set_debug_level(debug_mode ? 1 : 0);
         int parse_result = parser.parse();
 
         if (parse_result == 0) {
