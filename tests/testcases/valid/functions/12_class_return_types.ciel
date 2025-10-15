@@ -1,0 +1,64 @@
+// Test class return types
+
+class Shape {
+    private:
+        int x;
+        int y;
+    public:
+        void set_position(int nx, int ny) { x = nx; y = ny; }
+};
+
+class Rectangle {
+    private:
+        int width;
+        int height;
+    public:
+        int get_area() { return width * height; }
+};
+
+class Node {
+    public:
+        int data;
+        class Node* next;
+};
+
+// Return class by value
+class Shape create_shape() {
+    class Shape s;
+    return s;
+}
+
+class Rectangle create_rectangle() {
+    class Rectangle r;
+    return r;
+}
+
+// Return pointer to class
+class Shape* alloc_shape() {
+    class Shape* ptr;
+    return ptr;
+}
+
+class Node* create_node() {
+    class Node* ptr;
+    return ptr;
+}
+
+// Return double pointer to class
+class Rectangle** create_rect_array() {
+    class Rectangle** ptr;
+    return ptr;
+}
+
+// Functions with class parameters
+class Shape transform_shape(class Shape s) {
+    return s;
+}
+
+class Node* process_node(class Node* n) {
+    return n;
+}
+
+int main() {
+    return 0;
+}

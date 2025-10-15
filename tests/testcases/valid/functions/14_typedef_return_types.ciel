@@ -1,0 +1,65 @@
+// Test typedef return types
+
+typedef int Integer;
+typedef char* String;
+typedef float Real;
+typedef unsigned Counter;
+
+typedef struct Point {
+    int x;
+    int y;
+} Point;
+
+typedef struct Node* NodePtr;
+
+// Return typedef types
+Integer get_integer() {
+    return 0;
+}
+
+String get_string() {
+    return 0;
+}
+
+Real get_real() {
+    return 0.0;
+}
+
+Counter get_counter() {
+    return 0;
+}
+
+// Return typedef struct
+Point create_point() {
+    return;
+}
+
+NodePtr create_node() {
+    return 0;
+}
+
+// Pointer to typedef
+Integer* get_int_array() {
+    return 0;
+}
+
+String* get_string_array() {
+    return 0;
+}
+
+// Functions with typedef parameters
+Integer add(Integer a, Integer b) {
+    return 0;
+}
+
+String concat(String s1, String s2) {
+    return 0;
+}
+
+Point translate(Point p, Integer dx, Integer dy) {
+    return;
+}
+
+int main() {
+    return 0;
+}
