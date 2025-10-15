@@ -1,0 +1,36 @@
+// If-else statements
+
+int main() {
+    int x = 10;
+    
+    // Simple if
+    if (x) {
+        x = 1;
+    }
+    
+    // If-else
+    if (x) {
+        x = 2;
+    } else {
+        x = 3;
+    }
+    
+    // Nested if-else
+    if (x) {
+        if (x) {
+            x = 4;
+        } else {
+            x = 5;
+        }
+    } else {
+        x = 6;
+    }
+    
+    // Multiple conditions
+    bool flag = true;
+    if (flag) {
+        x = 7;
+    }
+    
+    return 0;
+}

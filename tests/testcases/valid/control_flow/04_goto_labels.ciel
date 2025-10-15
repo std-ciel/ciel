@@ -1,0 +1,65 @@
+// Test goto and label usage
+
+int main() {
+    int x = 0;
+    
+    // Simple goto
+    goto label1;
+    x = 1;
+    
+label1:
+    x = 2;
+    
+    // Forward goto
+    if (x) {
+        goto end;
+    }
+    
+    x = 3;
+    
+    // Backward goto (loop simulation)
+loop_start:
+    x = x + 1;
+    if (x) {
+        goto loop_start;
+    }
+    
+    // Multiple labels
+label2:
+    x = 4;
+    goto label3;
+    
+label3:
+    x = 5;
+    
+    // Nested gotos
+    if (x) {
+        goto inner_label;
+    } else {
+        goto outer_label;
+    }
+    
+inner_label:
+    x = 6;
+    goto end;
+    
+outer_label:
+    x = 7;
+    
+end:
+    return 0;
+}
+
+// Function with gotos and labels
+int process(int value) {
+    if (value) {
+        goto positive;
+    }
+    goto negative;
+    
+positive:
+    return 1;
+    
+negative:
+    return -1;
+}
