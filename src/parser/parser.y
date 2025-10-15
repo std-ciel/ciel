@@ -2188,11 +2188,13 @@ struct_or_union_specifier
         parser_state.defined_types.insert(full_name);
 
         // Create the aggregate type in the current (outer) scope
-        $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
+        auto rec = type_factory.make<RecordType>(tag, is_union, true);
+        $$ = unwrap_type_or_error(rec, "struct/union definition", @1.begin.line, @2.begin.column);
         // Create a dedicated member scope and add members as symbols
         symbol_table.enter_scope();
+        auto record_type = std::static_pointer_cast<RecordType>($$);
         for (const auto &kv : $4) {
-          add_symbol_if_valid(kv.first, kv.second, @2);
+          record_type->add_field(kv.first, kv.second);
         }
         symbol_table.exit_scope();
       }
