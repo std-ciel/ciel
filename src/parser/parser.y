@@ -501,6 +501,31 @@
     return true;
   }
 
+  // Check that all parameters in a function definition have names
+  static void check_unnamed_parameters(const std::vector<std::string>& param_names, const yy::location& loc) {
+    for (size_t i = 0; i < param_names.size(); ++i) {
+      if (param_names[i].empty()) {
+        parser_add_error(loc.begin.line, loc.begin.column, 
+                         "function definition cannot have unnamed parameters (parameter " + 
+                         std::to_string(i + 1) + ")");
+      }
+    }
+  }
+
+  // Check that all parameters in a function definition have unique names
+  static void check_duplicate_parameter_names(const std::vector<std::string>& param_names, const yy::location& loc) {
+    std::unordered_set<std::string> seen_names;
+    for (size_t i = 0; i < param_names.size(); ++i) {
+      const std::string& name = param_names[i];
+      if (!name.empty()) {
+        if (!seen_names.insert(name).second) {
+          parser_add_error(loc.begin.line, loc.begin.column, 
+                           "duplicate parameter name '" + name + "' in function definition");
+        }
+      }
+    }
+  }
+
   static void handle_operator_overload_definition(
       TypePtr return_type,
       const std::string& operator_name,
@@ -3510,14 +3535,9 @@ function_definition
 			if (!di.is_function || di.name.empty()) {
 				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires a named function declarator");
 			} else {
-
-			  for (size_t i = 0; i < di.param_names.size(); ++i) {
-			    if (di.param_names[i].empty()) {
-			      parser_add_error(@2.begin.line, @2.begin.column, 
-			                       "function definition cannot have unnamed parameters (parameter " + 
-			                       std::to_string(i + 1) + ")");
-			    }
-			  }
+			  // Validate function parameters
+			  check_unnamed_parameters(di.param_names, @2);
+			  check_duplicate_parameter_names(di.param_names, @2);
 			  
         encountered_function_names.insert(di.name);
 			  // Apply pointer levels to base type for return type
