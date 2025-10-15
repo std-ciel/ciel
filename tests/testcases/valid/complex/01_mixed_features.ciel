@@ -94,7 +94,7 @@ int complex_logic(int x, int y, bool flag) {
         }
     }
     
-    while (result) {
+    while (result != 0) {
         result = result - 1;
     }
     
