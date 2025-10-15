@@ -1,0 +1,35 @@
+// Valid testcase: function declarations can have unnamed parameters, definitions must have all named
+
+// Valid: declaration with unnamed parameters (forward declaration)
+int process(int, int);
+int compute(float x, int);
+
+// Valid: definition with all parameters named
+int process(int a, int b) {
+    return a + b;
+}
+
+// Valid: definition with all parameters named
+int compute(float x, int y) {
+    return y;
+}
+
+// Valid: declaration and definition with named parameters
+int add(int x, int y);
+
+int add(int x, int y) {
+    return x + y;
+}
+
+// Valid: function with no parameters
+int get_constant() {
+    return 42;
+}
+
+int main() {
+    int result = process(1, 2);
+    int computed = compute(3.14, 5);
+    int sum = add(10, 20);
+    int constant = get_constant();
+    return 0;
+}

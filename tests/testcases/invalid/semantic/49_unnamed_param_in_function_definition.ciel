@@ -1,0 +1,29 @@
+// Error: function definition cannot have unnamed parameters
+
+// Valid: declaration with unnamed parameter (for forward declaration)
+int process(int, int);
+
+// Error: definition with unnamed parameter
+int process(int a, int) {  // Error: parameter 2 is unnamed
+    return a + 1;
+}
+
+// Error: multiple unnamed parameters
+int compute(int, float, int z) {  // Error: parameters 1 and 2 are unnamed
+    return z;
+}
+
+// Error: all parameters unnamed
+int calculate(int, int) {  // Error: both parameters are unnamed
+    return 0;
+}
+
+// Valid: all parameters named
+int valid_func(int x, int y) {
+    return x + y;
+}
+
+int main() {
+    int result = valid_func(1, 2);
+    return 0;
+}
