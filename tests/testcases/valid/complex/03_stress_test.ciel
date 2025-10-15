@@ -1,0 +1,171 @@
+// Stress test with deep nesting and complexity
+
+typedef int*** Int3D;
+typedef struct Node* NodePtr;
+
+struct Node {
+    int data;
+    struct Node* next;
+    struct Node** children;
+};
+
+union Value {
+    int i;
+    float f;
+    struct Node* n;
+    void* ptr;
+};
+
+enum Type {
+    INT_TYPE,
+    FLOAT_TYPE,
+    NODE_TYPE,
+    UNKNOWN
+};
+
+class Base {
+    protected:
+        int id;
+    public:
+        Base(int i) { id = i; }
+        int get_id() { return id; }
+};
+
+class Derived : public Base {
+    private:
+        int value;
+    public:
+        Derived(int i, int v) { id = i; value = v; }
+        int get_value() { return value; }
+};
+
+// Functions with extreme parameter combinations
+int**** hyper_allocate(int w, int x, int y, int z, ...) {
+    return 0;
+}
+
+struct Node*** build_tree(int depth, int branching, enum Type t, ...) {
+    return 0;
+}
+
+union Value** process_values(union Value* vals, int count, bool* flags, ...) {
+    return 0;
+}
+
+// Complex nested control flow
+int ultra_complex(int x, int y, int z) {
+    int result = 0;
+    
+    if (x != 0) {
+        int i = 0;
+        while (i != 0) {
+            if (y != 0) {
+                switch (z) {
+                    case 0:
+                        if (result != 0) {
+                            goto inner_exit;
+                        }
+                        result = 1;
+                        break;
+                    case 1:
+                        result = 2;
+                        goto outer_exit;
+                    default:
+                        result = 3;
+                        break;
+                }
+            } else {
+                until (result == 0) {
+                    result = result + 1;
+                }
+            }
+            i = i + 1;
+        }
+    } else {
+        switch (x) {
+            case 0:
+                while (y != 0) {
+                    if (z != 0) {
+                        goto inner_exit;
+                    }
+                    y = y - 1;
+                }
+                break;
+            case 1:
+                until (y == 0) {
+                    y = y + 1;
+                }
+                break;
+            default:
+                goto outer_exit;
+        }
+    }
+    
+inner_exit:
+    result = result * 2;
+    
+outer_exit:
+    return result;
+}
+
+// Multi-dimensional struct arrays
+struct Point {
+    int x;
+    int y;
+};
+
+struct Point*** create_grid(int layers, int rows, int cols) {
+    return 0;
+}
+
+int process_complex_grid(struct Point grid[5][5][5], int size) {
+    return 0;
+}
+
+// Variadic with complex types
+struct Node* build_list(int count, ...) {
+    return 0;
+}
+
+class Base* create_hierarchy(int depth, ...) {
+    return 0;
+}
+
+// Operator overloading in classes
+class Matrix {
+    private:
+        int** data;
+        int rows;
+        int cols;
+    public:
+        Matrix(int r, int c) {}
+        class Matrix operator+(class Matrix other) { return other; }
+        class Matrix operator-(class Matrix other) { return other; }
+        class Matrix operator*(class Matrix other) { return other; }
+        int* operator[](int index) { return data; }
+        bool operator==(class Matrix other) { bool result = 1 == 1; return result; }
+};
+
+// Typedef chains
+typedef int* IntPtr;
+typedef IntPtr* IntPtrPtr;
+typedef IntPtrPtr* IntPtrPtrPtr;
+
+IntPtrPtrPtr ultra_pointer() {
+    return 0;
+}
+
+int main() {
+    Int3D arr3d;
+    NodePtr node;
+    union Value v;
+    enum Type t;
+    class Derived* d;
+    struct Point grid[3][3][3];
+    
+    int****  hyper;
+    struct Node*** tree;
+    IntPtrPtrPtr ultra;
+    
+    return 0;
+}

@@ -1,0 +1,112 @@
+// Advanced inheritance and polymorphism tests
+
+class Animal {
+    protected:
+        int age;
+        char name[50];
+    public:
+        Animal(int a) { age = a; }
+        void set_age(int a) { age = a; }
+        int get_age() { return age; }
+};
+
+class Mammal : public Animal {
+    protected:
+        bool warm_blooded;
+    public:
+        Mammal(int a) { age = a; warm_blooded = 1 == 1; }
+        void set_warm_blooded(bool wb) { warm_blooded = wb; }
+};
+
+class Dog : public Mammal {
+    private:
+        char breed[30];
+    public:
+        Dog(int a) { age = a; }
+        void bark() { age = age + 1; }
+        void set_breed(char* b) {}
+};
+
+// Multiple inheritance levels
+class Vehicle {
+    protected:
+        int speed;
+    public:
+        Vehicle(int s) { speed = s; }
+        void accelerate(int amount) { speed = speed + amount; }
+};
+
+class Car : public Vehicle {
+    private:
+        int doors;
+    public:
+        Car(int s, int d) { speed = s; doors = d; }
+        void honk() { speed = speed + 1; }
+};
+
+class SportsCar : public Car {
+    private:
+        int turbo_boost;
+    public:
+        SportsCar(int s, int d, int tb) { speed = s; turbo_boost = tb; }
+        void activate_turbo() { speed = speed + turbo_boost; }
+};
+
+// Different access specifiers in inheritance
+class ProtectedBase {
+    protected:
+        int prot_val;
+    public:
+        int pub_val;
+};
+
+class ProtectedDerived : protected ProtectedBase {
+    public:
+        void access_protected() { prot_val = 0; }
+};
+
+class PrivateDerived : private ProtectedBase {
+    public:
+        void access_private() { pub_val = 0; }
+};
+
+// Functions returning inherited types
+class Animal* create_animal() {
+    return 0;
+}
+
+class Dog* create_dog() {
+    return 0;
+}
+
+class Dog** create_dog_pack(int size) {
+    return 0;
+}
+
+class SportsCar* build_sports_car(int speed, int doors, int turbo) {
+    return 0;
+}
+
+// Complex hierarchy functions
+int train_dog(class Dog* d, class Animal* trainer) {
+    return 0;
+}
+
+class Car* upgrade_vehicle(class Vehicle* v, int new_features, ...) {
+    return 0;
+}
+
+int main() {
+    class Animal a;
+    class Mammal m;
+    class Dog d;
+    class Vehicle v;
+    class Car c;
+    class SportsCar sc;
+    
+    class Animal* a_ptr;
+    class Dog* d_ptr;
+    class SportsCar* sc_ptr;
+    
+    return 0;
+}

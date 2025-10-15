@@ -1,0 +1,116 @@
+// Extreme operator overloading combinations
+
+class Vector3D {
+    private:
+        float x;
+        float y;
+        float z;
+    public:
+        Vector3D(float nx, float ny, float nz) {}
+        
+        // All arithmetic operators
+        class Vector3D operator+(class Vector3D other) { return other; }
+        class Vector3D operator-(class Vector3D other) { return other; }
+        class Vector3D operator*(float scalar) { class Vector3D v; return v; }
+        class Vector3D operator/(float scalar) { class Vector3D v; return v; }
+        class Vector3D operator%(class Vector3D other) { return other; }
+        
+        // All comparison operators
+        bool operator==(class Vector3D other) { bool result = 1 == 1; return result; }
+        bool operator!=(class Vector3D other) { bool result = 1 != 1; return result; }
+        bool operator<(class Vector3D other) { bool result = 1 < 2; return result; }
+        bool operator<=(class Vector3D other) { bool result = 1 <= 2; return result; }
+        bool operator>(class Vector3D other) { bool result = 2 > 1; return result; }
+        bool operator>=(class Vector3D other) { bool result = 2 >= 1; return result; }
+        
+        // All bitwise operators
+        class Vector3D operator&(class Vector3D other) { return other; }
+        class Vector3D operator|(class Vector3D other) { return other; }
+        class Vector3D operator^(class Vector3D other) { return other; }
+        class Vector3D operator~() { class Vector3D v; return v; }
+        class Vector3D operator<<(int shift) { class Vector3D v; return v; }
+        class Vector3D operator>>(int shift) { class Vector3D v; return v; }
+        
+        // All compound assignment operators
+        class Vector3D operator=(class Vector3D other) { return other; }
+        class Vector3D operator+=(class Vector3D other) { return other; }
+        class Vector3D operator-=(class Vector3D other) { return other; }
+        class Vector3D operator*=(float scalar) { class Vector3D v; return v; }
+        class Vector3D operator/=(float scalar) { class Vector3D v; return v; }
+        class Vector3D operator%=(class Vector3D other) { return other; }
+        class Vector3D operator&=(class Vector3D other) { return other; }
+        class Vector3D operator|=(class Vector3D other) { return other; }
+        class Vector3D operator^=(class Vector3D other) { return other; }
+        class Vector3D operator<<=(int shift) { class Vector3D v; return v; }
+        class Vector3D operator>>=(int shift) { class Vector3D v; return v; }
+        
+        // Increment and decrement
+        class Vector3D operator++() { class Vector3D v; return v; }
+        class Vector3D operator--() { class Vector3D v; return v; }
+        
+        // Unary operators
+        class Vector3D operator+() { class Vector3D v; return v; }
+        class Vector3D operator-() { class Vector3D v; return v; }
+        bool operator!() { bool result = 1 != 1; return result; }
+};
+
+class Matrix {
+    private:
+        int rows;
+        int cols;
+        float** data;
+    public:
+        Matrix(int r, int c) {}
+        
+        class Matrix operator+(class Matrix other) { return other; }
+        class Matrix operator-(class Matrix other) { return other; }
+        class Matrix operator*(class Matrix other) { return other; }
+        bool operator==(class Matrix other) { bool result = 1 == 1; return result; }
+        bool operator!=(class Matrix other) { bool result = 1 != 1; return result; }
+};
+
+class ComplexNumber {
+    private:
+        float real;
+        float imag;
+    public:
+        ComplexNumber(float r, float i) {}
+        
+        class ComplexNumber operator+(class ComplexNumber other) { return other; }
+        class ComplexNumber operator-(class ComplexNumber other) { return other; }
+        class ComplexNumber operator*(class ComplexNumber other) { return other; }
+        class ComplexNumber operator/(class ComplexNumber other) { return other; }
+        
+        bool operator==(class ComplexNumber other) { bool result = 1 == 1; return result; }
+        bool operator!=(class ComplexNumber other) { bool result = 1 != 1; return result; }
+        
+        class ComplexNumber operator-() { class ComplexNumber c; return c; }
+        class ComplexNumber operator+() { class ComplexNumber c; return c; }
+};
+
+// Functions that use operator overloaded types
+class Vector3D* create_vector(float x, float y, float z) {
+    class Vector3D* ptr;
+    return ptr;
+}
+
+class Matrix* multiply_matrices(class Matrix* m1, class Matrix* m2) {
+    return m1;
+}
+
+class ComplexNumber add_complex(class ComplexNumber c1, class ComplexNumber c2) {
+    return c1;
+}
+
+// Variadic with overloaded types
+class Vector3D* combine_vectors(int count, ...) {
+    return 0;
+}
+
+int main() {
+    class Vector3D v;
+    class Matrix m;
+    class ComplexNumber c;
+    
+    return 0;
+}
