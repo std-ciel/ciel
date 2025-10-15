@@ -154,6 +154,7 @@
   static SymbolTable symbol_table;
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
+  std::unordered_set<std::string> encountered_function_names;
 
   void check_forward_declarations(){
      for (const auto& type_name : parser_state.forward_declared_types) {
@@ -891,11 +892,15 @@
     }
   }
 
-  std::unordered_map<std::string,int> is_relational_operator = {
+  std::unordered_map<std::string,int> operator_returns_bool = {
     {"<",1},
     {"<=",1},
     {">",1},
-    {">=",1}
+    {">=",1},
+    {"||",1},
+    {"&&",1},
+    {"==",1},
+    {"!=",1}
   };
 
   static ASTNodePtr handle_binary_operator(
@@ -936,17 +941,41 @@
     }
 
     // Validate builtin types
-    if (type_validator(left_type, right_type) && !is_relational_operator[op_symbol]) {
-      TypePtr result_type = get_higher_rank_type(left_type, right_type);
-      return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
-    }
-    else if(type_validator(left_type,right_type)){
-      // For relational operators, result type is bool
-      TypePtr bool_type = require_builtin("bool", op_loc, op_name + " operator");
-      if (!bool_type) {
-        return nullptr;
+    if (type_validator(left_type, right_type)) {
+      if (operator_returns_bool[op_symbol]) {
+        // For relational operators, result type is bool
+        TypePtr bool_type = require_builtin("bool", op_loc, op_name + " operator");
+        if (!bool_type) {
+          return nullptr;
+        }
+        return std::make_shared<BinaryExpr>(op_enum, left, right, bool_type);
       }
-      return std::make_shared<BinaryExpr>(op_enum, left, right, bool_type);
+      else if(op_enum == Operator::SUBSCRIPT_OP)
+      {
+        if (left_type->kind == TypeKind::ARRAY) {
+          auto array_type = std::static_pointer_cast<ArrayType>(left_type);
+          return std::make_shared<BinaryExpr>(op_enum, left, right, array_type->element_type.type);
+        }
+        else if (left_type->kind == TypeKind::POINTER) {
+          TypePtr result_type = dereference_pointer(left_type, op_loc, "array subscript");
+          if (!result_type) {
+            return nullptr;
+          }
+          return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+        }
+        else
+        {
+          parser_add_error(op_loc.begin.line,
+                           op_loc.begin.column,
+                           "array subscript requires array or pointer type on left side");
+          return nullptr;
+        }
+      }
+      else{
+        TypePtr result_type = get_higher_rank_type(left_type, right_type);
+        return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+      }
+
     } else {
       parser_add_error(op_loc.begin.line,
                        op_loc.begin.column,
@@ -964,6 +993,8 @@
     switch (node->type) {
     case ASTNodeType::IDENTIFIER_EXPR:
       return true;
+    case ASTNodeType::ENUM_IDENTIFIER_EXPR:
+      return false;
     case ASTNodeType::MEMBER_EXPR:
       return true;
     case ASTNodeType::UNARY_EXPR: {
@@ -1123,7 +1154,7 @@
 
 %type <TypePtr> type_specifier specifier_qualifier_list type_name declaration_specifiers
 %type <unsigned> pointer pointer_opt
-%type <DeclaratorInfo> declarator direct_declarator
+%type <DeclaratorInfo> declarator direct_declarator abstract_declarator direct_abstract_declarator
 %type <std::unordered_map<std::string, QualifiedType>> struct_declaration_list
 %type <std::unordered_map<std::string, QualifiedType>> struct_declaration
 %type <std::vector<DeclaratorInfo>> struct_declarator_list
@@ -1188,12 +1219,12 @@
 
 
 open_brace
-    : OPEN_BRACE_OP { symbol_table.enter_scope(); parser_state.push_ctx(ContextKind::BLOCK); }
-    ;
+  : OPEN_BRACE_OP { symbol_table.enter_scope(); parser_state.push_ctx(ContextKind::BLOCK); }
+  ;
 
 close_brace
-    : CLOSE_BRACE_OP { symbol_table.exit_scope(); parser_state.pop_ctx(); check_forward_declarations(); }
-    ;
+  : CLOSE_BRACE_OP { symbol_table.exit_scope(); parser_state.pop_ctx(); check_forward_declarations(); }
+  ;
 
 class_open_brace
   : OPEN_BRACE_OP { symbol_table.enter_scope(); parser_state.push_ctx(ContextKind::CLASS); }
@@ -1206,20 +1237,30 @@ class_close_brace
 primary_expression
     : IDENTIFIER
       {
-        SymbolPtr symbol = nullptr;
-        TypePtr expr_type = nullptr;
+        // At this point, an indentifier can be a variable name, function name, or enum name.
+
+        // Variable name case
         auto sym_opt = symbol_table.lookup_symbol($1);
-
-        if (sym_opt.has_value()) {
-          symbol = sym_opt.value();
-          expr_type = symbol->get_type().type;
+        if(sym_opt.has_value()){
+          $$ = std::make_shared<IdentifierExpr>(sym_opt.value(), sym_opt.value()->get_type().type);
         } else {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "unknown identifier '" + $1 + "'");
-        }
+          auto enum_opt = type_factory.lookup_by_scope("enum " + $1, symbol_table.get_scope_chain());
 
-        $$ = std::make_shared<IdentifierExpr>(symbol, expr_type);
+          if (enum_opt.has_value()) {
+            $$ = std::make_shared<EnumIdentifierExpr>(enum_opt.value());
+          }
+          else{
+            if(encountered_function_names.find($1) != encountered_function_names.end()){
+              $$=std::make_shared<FunctionIdentifierExpr>($1);
+            }
+            else{
+              $$=nullptr;
+              parser_add_error(@1.begin.line,
+                                @1.begin.column,
+                                "use of undeclared identifier '" + $1 + "'");
+            }
+          }
+        }
       }
     | INT_LITERAL
       {
@@ -1264,10 +1305,205 @@ postfix_expression
     }
     | postfix_expression OPEN_BRACKET_OP expression CLOSE_BRACKET_OP
     {
-       //TODO: implement array subscript
+      $$ = handle_binary_operator($1, $3, @1, @3, @2,
+          Operator::SUBSCRIPT_OP,
+          [](TypePtr left, TypePtr right) {
+            return is_pointer_type(left) && is_integral_type(right);
+          },
+          "pointer and integer types for array subscript");
     }
     | postfix_expression OPEN_PAREN_OP CLOSE_PAREN_OP
+    {
+      if($1->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR){
+        std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>($1)->function_name;
+        FunctionType non_variadic(QualifiedType(), {}, false);
+        FunctionType variadic(QualifiedType(), {}, true);
+
+        FunctionMeta meta{};
+
+        auto non_variadic_mangled_name = mangle_function_name(function_name, non_variadic, meta, std::nullopt).value();
+        auto variadic_mangled_name = mangle_function_name(function_name, variadic, meta, std::nullopt).value();
+
+        auto non_variadic_symbol = symbol_table.lookup_symbol(non_variadic_mangled_name);
+        auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled_name);
+
+        if (!non_variadic_symbol.has_value() && !variadic_symbol.has_value()) {
+          parser_add_error(@1.begin.line,
+                           @1.begin.column,
+                           "use of undeclared function '" + function_name + "'");
+          $$ = nullptr;
+        }
+        else if (non_variadic_symbol.has_value() && variadic_symbol.has_value()) {
+          parser_add_error(@1.begin.line,
+                           @1.begin.column,
+                           "ambiguous call to overloaded function '" + function_name + "' with no arguments");
+          $$ = nullptr;
+        }
+        else {
+          SymbolPtr func_symbol = non_variadic_symbol.has_value() ? non_variadic_symbol.value() : variadic_symbol.value();
+          auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+
+          if (!fn_type->param_types.empty() && !fn_type->is_variadic) {
+            parser_add_error(@2.begin.line,
+                             @2.begin.column,
+                             "too few arguments to function call, expected " +
+                             std::to_string(fn_type->param_types.size()) + ", have 0");
+            $$ = nullptr;
+          }
+          else {
+            std::vector<ASTNodePtr> args; // empty argument list
+            $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+          }
+        }
+      }
+      else if ($1->type == ASTNodeType::MEMBER_EXPR) {
+        std::string function_name = std::static_pointer_cast<MemberExpr>($1)->member_name;
+        TypePtr base_class = get_expression_type(std::static_pointer_cast<MemberExpr>($1)->object, @1, "member function call base");
+
+        if (!base_class || !is_class_type(base_class)) {
+          parser_add_error(@1.begin.line,
+                           @1.begin.column,
+                           "member function call base is not a class type");
+          $$ = nullptr;
+        }
+        else {
+          FunctionType non_variadic(QualifiedType(), {}, false);
+          FunctionType variadic(QualifiedType(), {}, true);
+
+          FunctionMeta meta(FunctionKind::METHOD, {});
+
+          auto non_variadic_mangled_name = mangle_function_name(function_name, non_variadic, meta, *std::static_pointer_cast<ClassType>(base_class)).value();
+          auto variadic_mangled_name = mangle_function_name(function_name, variadic, meta, *std::static_pointer_cast<ClassType>(base_class)).value();
+
+          auto non_variadic_symbol = symbol_table.lookup_symbol(non_variadic_mangled_name);
+          auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled_name);
+
+          if (!non_variadic_symbol.has_value() && !variadic_symbol.has_value()) {
+            parser_add_error(@1.begin.line,
+                             @1.begin.column,
+                             "use of undeclared member function '" + function_name + "'");
+            $$ = nullptr;
+          }
+          else if (non_variadic_symbol.has_value() && variadic_symbol.has_value()) {
+            parser_add_error(@1.begin.line,
+                             @1.begin.column,
+                             "ambiguous call to overloaded member function '" + function_name + "' with no arguments");
+            $$ = nullptr;
+          }
+          else {
+            SymbolPtr func_symbol = non_variadic_symbol.has_value() ? non_variadic_symbol.value() : variadic_symbol.value();
+            auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+
+            if (!fn_type->param_types.empty() && !fn_type->is_variadic) {
+              parser_add_error(@2.begin.line,
+                               @2.begin.column,
+                               "too few arguments to member function call, expected " +
+                               std::to_string(fn_type->param_types.size()) + ", have 0");
+              $$ = nullptr;
+            }
+            else {
+              std::vector<ASTNodePtr> args={$1}; // empty argument list
+              $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+            }
+          }
+        }
+      }
+      else {
+        TypePtr func_type = get_expression_type($1, @1, "function call");
+
+        if (is_class_type(func_type)) {
+          SymbolPtr overload = get_operator_overload(func_type, "()");
+          if (overload) {
+            TypePtr function_type = overload->get_type().type;
+            TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+            std::vector<ASTNodePtr> args = {$1};
+            $$ = std::make_shared<CallExpr>(overload, args, result_type);
+          } else {
+            parser_add_error(@2.begin.line,
+                            @2.begin.column,
+                            "No operator() overload found for type '" + func_type->debug_name() + "'");
+            $$ = nullptr;
+          }
+        }
+        else{
+          parser_add_error(@1.begin.line,
+                           @1.begin.column,
+                           "called object is not a function");
+          $$ = nullptr;
+        }
+      }
+
+    }
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
+    {
+      TypePtr func_type = get_expression_type($1, @1, "function call");
+
+      if (!func_type) {
+        $$ = nullptr;
+      }
+      else if (is_function_type(func_type)) {
+        auto fn_type = std::static_pointer_cast<FunctionType>(func_type);
+
+        // Type check arguments
+        std::vector<ASTNodePtr> args;
+        auto arg_list = $3;
+
+        // Extract arguments from comma expression chain
+        std::function<void(ASTNodePtr)> extract_args = [&](ASTNodePtr node) {
+          if (!node) return;
+          if (node->type == ASTNodeType::BINARY_EXPR) {
+            auto binary = std::static_pointer_cast<BinaryExpr>(node);
+            if (binary->op == Operator::COMMA_OP) {
+              extract_args(binary->left);
+              args.push_back(binary->right);
+              return;
+            }
+          }
+          args.push_back(node);
+        };
+        extract_args(arg_list);
+
+        // Check argument count
+        if (!fn_type->is_variadic && args.size() != fn_type->param_types.size()) {
+          parser_add_error(@2.begin.line,
+                           @2.begin.column,
+                           "wrong number of arguments to function call, expected " +
+                           std::to_string(fn_type->param_types.size()) + ", have " +
+                           std::to_string(args.size()));
+          $$ = nullptr;
+        }
+        else if (fn_type->is_variadic && args.size() < fn_type->param_types.size()) {
+          parser_add_error(@2.begin.line,
+                           @2.begin.column,
+                           "too few arguments to variadic function call, expected at least " +
+                           std::to_string(fn_type->param_types.size()));
+          $$ = nullptr;
+        }
+        else {
+          SymbolPtr func_symbol = nullptr;
+          if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
+            func_symbol = std::static_pointer_cast<IdentifierExpr>($1)->symbol;
+          }
+
+          $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+        }
+      }
+      else if (is_class_type(func_type)) {
+        // Check for operator() overload with arguments
+
+        // TODO: implement operator() with arguments
+        parser_add_error(@2.begin.line,
+                         @2.begin.column,
+                         "operator() overload with arguments not yet supported");
+        $$ = nullptr;
+      }
+      else {
+        parser_add_error(@1.begin.line,
+                         @1.begin.column,
+                         "called object is not a function or function pointer");
+        $$ = nullptr;
+      }
+    }
     | postfix_expression DOT_OP IDENTIFIER
     {
       TypePtr base_type = get_expression_type($1, @1, "member access");
@@ -1276,75 +1512,80 @@ postfix_expression
         $$ = nullptr;
       }
       else if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
-        std::string enum_name = std::static_pointer_cast<IdentifierExpr>($1)->symbol->get_type().debug_name();
-          auto type_ptr_opt = type_factory.lookup(enum_name);
+          if (is_class_type(base_type)) {
+            auto class_type = std::static_pointer_cast<ClassType>(base_type);
+            while(class_type){
+              if (class_type->members.find($3)!= class_type->members.end()) {
+                TypePtr member_type = class_type->members.at($3).type.type;
 
-          if (type_ptr_opt.has_value() && type_ptr_opt.value()->kind == TypeKind::ENUM) {
-            auto enum_type_ptr = std::static_pointer_cast<EnumType>(type_ptr_opt.value());
-            if (enum_type_ptr->enumerators.find($3) == enum_type_ptr->enumerators.end()) {
-            parser_add_error(@2.begin.line, @2.begin.column,
-                           "enumerator '" + $3 + "' not found in enum '" + enum_name + "'");
-            $$ = nullptr;
-            } else {
-            int64_t value = enum_type_ptr->enumerators.at($3);
-            TypePtr int_type = require_builtin("int", @3, "enum value");
-            LiteralValue literal = static_cast<uint64_t>(value);
-            $$ = std::make_shared<LiteralExpr>(literal, int_type);
-            }
-        }
-        else if (is_class_type(base_type)) {
-          auto class_type = std::static_pointer_cast<ClassType>(base_type);
-          while(class_type){
-            if (class_type->members.find($3)!= class_type->members.end()) {
-              TypePtr member_type = class_type->members.at($3).type.type;
-              // Create a member access expression (could be a specialized AST node)
-              // For simplicity, we represent it as a binary expression with a special operator
-              $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
-              break;
-            }
-            if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
-              base_type = class_type->base.base_type;
-              if(is_class_type(base_type)){
-                class_type = std::static_pointer_cast<ClassType>(base_type);
+                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+                break;
+              }
+              if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+                base_type = class_type->base.base_type;
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
               }
               else{
                 class_type = nullptr;
               }
             }
-            else{
-              class_type = nullptr;
+            if(!class_type){
+              parser_add_error(@2.begin.line, @2.begin.column,
+                           "member '" + $3 + "' not found in class or its base classes");
+              $$ = nullptr;
             }
           }
-          if(!class_type){
-            parser_add_error(@2.begin.line, @2.begin.column,
-                           "member '" + $3 + "' not found in class or its base classes");
-            $$ = nullptr;
-          }
-        }
-        else if(base_type->kind == TypeKind::RECORD){
-          auto record_type = std::static_pointer_cast<RecordType>(base_type);
-          if (record_type->fields.find($3)!= record_type->fields.end()) {
-            TypePtr member_type = record_type->fields.at($3).type;
-            // Create a member access expression (could be a specialized AST node)
-            // For simplicity, we represent it as a binary expression with a special operator
-            $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
-          } else {
-            parser_add_error(@2.begin.line, @2.begin.column,
+          else if(base_type->kind == TypeKind::RECORD){
+            auto record_type = std::static_pointer_cast<RecordType>(base_type);
+            if (record_type->fields.find($3)!= record_type->fields.end()) {
+              TypePtr member_type = record_type->fields.at($3).type;
+              $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+            } else {
+              parser_add_error(@2.begin.line, @2.begin.column,
                            "member '" + $3 + "' not found in struct/union");
+              $$ = nullptr;
+            }
+          }
+          else {
+            parser_add_error(@1.begin.line, @1.begin.column,
+                         "member reference base type is not a structure or union");
             $$ = nullptr;
           }
         }
-        else {
-          parser_add_error(@1.begin.line, @1.begin.column,
-                         "member reference base type is not a structure or union");
-          $$ = nullptr;
-        }
+      else if($1->type == ASTNodeType::ENUM_IDENTIFIER_EXPR){
+          TypePtr enum_type = get_expression_type($1, @1, "enum member access");
+
+          if(enum_type && enum_type->kind == TypeKind::ENUM){
+
+            auto enum_ptr = std::static_pointer_cast<EnumType>(enum_type);
+            if(enum_ptr->enumerators.find($3) != enum_ptr->enumerators.end()){
+              TypePtr member_type = require_builtin("int", @2, "enum underlying type");
+              if(!member_type){
+                $$ = nullptr;
+              }
+              else{
+                LiteralValue literal = enum_ptr->enumerators.at($3);
+                ASTNodePtr enum_member = std::make_shared<LiteralExpr>(literal, enum_type);
+                $$ = enum_member;
+              }
+            }
+            else{
+              parser_add_error(@2.begin.line, @2.begin.column,
+                           "enumerator '" + $3 + "' not found in enum");
+              $$ = nullptr;
+            }
+          }
       }
       else {
-        parser_add_error(@1.begin.line, @1.begin.column,
+          parser_add_error(@1.begin.line, @1.begin.column,
                        "member access requires struct, union, or class type");
-        $$ = nullptr;
-        }
+          $$ = nullptr;
+      }
     }
     | postfix_expression ARROW_OP IDENTIFIER
     {
@@ -1367,8 +1608,6 @@ postfix_expression
             while(class_type){
               if (class_type->members.find($3)!= class_type->members.end()) {
                 TypePtr member_type = class_type->members.at($3).type.type;
-                // Create a member access expression (could be a specialized AST node)
-                // For simplicity, we represent it as a binary expression with a special operator
                 $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, member_type);
                 break;
               }
@@ -1395,8 +1634,6 @@ postfix_expression
             auto record_type = std::static_pointer_cast<RecordType>(base_type);
             if (record_type->fields.find($3)!= record_type->fields.end()) {
               TypePtr member_type = record_type->fields.at($3).type;
-              // Create a member access expression (could be a specialized AST node)
-              // For simplicity, we represent it as a binary expression with a special operator
               $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, member_type);
             } else {
               parser_add_error(@2.begin.line, @2.begin.column,
@@ -1442,7 +1679,9 @@ argument_expression_list
     }
     | argument_expression_list COMMA_OP assignment_expression
     {
-      //TODO: implement as a comma expression node
+      $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::COMMA_OP,
+                                  [](TypePtr l, TypePtr r) { return true; },
+                                  "any types");
     }
     ;
 
@@ -1466,8 +1705,8 @@ unary_expression
     | LOGICAL_NOT_OP cast_expression
       {
         $$ = handle_unary_operator($2, @1, Operator::LOGICAL_NOT,
-                                   [](TypePtr t) { return is_arithmetic_type(t); },
-                                   "an arithmetic type");
+                                   [](TypePtr t) { return is_bool_type(t); },
+                                   "a bool type");
       }
     | TILDE_OP cast_expression
       {
@@ -1764,8 +2003,8 @@ logical_and_expression
     | logical_and_expression LOGICAL_AND_OP inclusive_or_expression
       {
         $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LOGICAL_AND,
-                                    [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
-                                    "arithmetic types");
+                                    [](TypePtr l, TypePtr r) { return is_bool_type(l) && is_bool_type(r); },
+                                    "bool types");
       }
     ;
 
@@ -1777,8 +2016,8 @@ logical_or_expression
     | logical_or_expression LOGICAL_OR_OP logical_and_expression
       {
         $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::LOGICAL_OR,
-                                    [](TypePtr l, TypePtr r) { return is_arithmetic_type(l) && is_arithmetic_type(r); },
-                                    "arithmetic types");
+                                    [](TypePtr l, TypePtr r) { return is_bool_type(l) && is_bool_type(r); },
+                                    "bool types");
       }
     ;
 
@@ -1902,6 +2141,7 @@ declaration
             if (di.is_function) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
+                encountered_function_names.insert(di.name);
                 // Apply pointer levels to base type for return type
                 TypePtr return_type = base;
                 if (di.pointer_levels > 0) {
@@ -2429,11 +2669,35 @@ direct_declarator
         $$ = $1;
         $$.array_dims.push_back(0);
       }
-    | direct_declarator OPEN_BRACKET_OP INT_LITERAL CLOSE_BRACKET_OP
+    | direct_declarator OPEN_BRACKET_OP constant_expression CLOSE_BRACKET_OP
       {
         $$ = $1;
-        // TODO: add support for constant expressions (low-priority)
-        $$.array_dims.push_back($3);
+        if ($3->type == ASTNodeType::LITERAL_EXPR) {
+          auto literal = std::static_pointer_cast<LiteralExpr>($3);
+          auto expr_type = get_expression_type($3, @3, "array size expression");
+          if (expr_type && is_integral_type(expr_type)) {
+            int64_t value = std::visit([](auto&& arg) -> int64_t {
+                            using T = std::decay_t<decltype(arg)>;
+                            if constexpr (std::is_same_v<T, int64_t>)
+                                return arg;
+                            else if constexpr (std::is_same_v<T, uint64_t>)
+                                return static_cast<int64_t>(arg);
+                            else if constexpr (std::is_same_v<T, char>)
+                                return static_cast<int64_t>(arg);
+                            else
+                                throw std::runtime_error("Unexpected type in variant");
+                        }, literal->value);
+            $$.array_dims.push_back(value);
+          }
+          else{
+            parser_add_error(@3.begin.line, @3.begin.column, "array size expression must be an integral constant");
+            $$.array_dims.push_back(0);
+          }
+
+        } else {
+          // TODO: add support for constant expressions (low-priority)
+          $$.array_dims.push_back(0);
+        }
       }
     | direct_declarator OPEN_PAREN_OP CLOSE_PAREN_OP
       {
@@ -2546,24 +2810,150 @@ parameter_declaration
 
 abstract_declarator
     : pointer direct_abstract_declarator
+    {
+        $$ = $2;
+        $$.pointer_levels += $1;
+    }
     | pointer
+    {
+        $$ = DeclaratorInfo{};
+        $$.pointer_levels = $1;
+    }
     | direct_abstract_declarator
+    {
+        $$ = $1;
+    }
     ;
 
 direct_abstract_declarator
     : OPEN_PAREN_OP abstract_declarator CLOSE_PAREN_OP
+    {
+        $$ = $2;
+    }
     | OPEN_BRACKET_OP CLOSE_BRACKET_OP
+    {
+        $$ = DeclaratorInfo{};
+        $$.array_dims.push_back(0);
+    }
     | OPEN_BRACKET_OP constant_expression CLOSE_BRACKET_OP
+    {
+        $$ = DeclaratorInfo{};
+        if ($2->type == ASTNodeType::LITERAL_EXPR) {
+          auto literal = std::static_pointer_cast<LiteralExpr>($2);
+          auto expr_type = get_expression_type($2, @2, "array size expression");
+          if (expr_type && is_integral_type(expr_type)) {
+            int64_t value = std::visit([](auto&& arg) -> int64_t {
+                            using T = std::decay_t<decltype(arg)>;
+                            if constexpr (std::is_same_v<T, int64_t>)
+                                return arg;
+                            else if constexpr (std::is_same_v<T, uint64_t>)
+                                return static_cast<int64_t>(arg);
+                            else if constexpr (std::is_same_v<T, char>)
+                                return static_cast<int64_t>(arg);
+                            else
+                                throw std::runtime_error("Unexpected type in variant");
+                        }, literal->value);
+            $$.array_dims.push_back(value);
+          }
+          else{
+            parser_add_error(@2.begin.line, @2.begin.column, "array size expression must be an integral constant");
+            $$.array_dims.push_back(0);
+          }
+
+        } else {
+          // TODO: add support for constant expressions (low-priority)
+          $$.array_dims.push_back(0);
+        }
+    }
     | direct_abstract_declarator OPEN_BRACKET_OP CLOSE_BRACKET_OP
+    {
+        $$ = $1;
+        $$.array_dims.push_back(0);
+    }
     | direct_abstract_declarator OPEN_BRACKET_OP constant_expression CLOSE_BRACKET_OP
+    {
+        $$ = $1;
+        if ($3->type == ASTNodeType::LITERAL_EXPR) {
+          auto literal = std::static_pointer_cast<LiteralExpr>($3);
+          auto expr_type = get_expression_type($3, @3, "array size expression");
+          if (expr_type && is_integral_type(expr_type)) {
+            int64_t value = std::visit([](auto&& arg) -> int64_t {
+                            using T = std::decay_t<decltype(arg)>;
+                            if constexpr (std::is_same_v<T, int64_t>)
+                                return arg;
+                            else if constexpr (std::is_same_v<T, uint64_t>)
+                                return static_cast<int64_t>(arg);
+                            else if constexpr (std::is_same_v<T, char>)
+                                return static_cast<int64_t>(arg);
+                            else
+                                throw std::runtime_error("Unexpected type in variant");
+                        }, literal->value);
+            $$.array_dims.push_back(value);
+          }
+          else{
+            parser_add_error(@3.begin.line, @3.begin.column, "array size expression must be an integral constant");
+            $$.array_dims.push_back(0);
+          }
+
+        } else {
+          // TODO: add support for constant expressions (low-priority)
+          $$.array_dims.push_back(0);
+        }
+    }
     | OPEN_PAREN_OP CLOSE_PAREN_OP
+      {
+        $$ = DeclaratorInfo{};
+        $$.is_function = true;
+        $$.has_params = false;
+      }
     | OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+    {
+        $$ = DeclaratorInfo{};
+        $$.is_function = true;
+        $$.has_params = true;
+        $$.param_types = $2.types;
+        $$.param_names = $2.names;
+        $$.is_variadic = $2.variadic;
+    }
     | direct_abstract_declarator OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+    {
+        $$ = $1;
+        $$.is_function = true;
+        $$.has_params = true;
+        $$.param_types = $3.types;
+        $$.param_names = $3.names;
+        $$.is_variadic = $3.variadic;
+    }
     ;
 
 type_name
     : specifier_qualifier_list abstract_declarator
-      { $$ = $1; }
+      {
+        QualifiedType base = $1;
+        if (base.type) {
+          QualifiedType final_t;
+          if($2.pointer_levels){
+            final_t = apply_pointer_levels_or_error(base,
+                                                   $2.pointer_levels,
+                                                   "type name pointer",
+                                                   @1.begin.line,
+                                                   @1.begin.column);
+          }
+          else if(!$2.array_dims.empty()){
+            final_t = apply_array_dimensions_or_error(base,
+                                                     $2.array_dims,
+                                                     "type name array",
+                                                     @1.begin.line,
+                                                     @1.begin.column);
+          }
+          else {
+            final_t = base;
+          }
+          $$ = final_t.type;
+        } else {
+          $$ = nullptr;
+        }
+      }
     | specifier_qualifier_list
       { $$ = $1; }
     ;
@@ -2896,6 +3286,7 @@ function_definition
 			if (!di.is_function || di.name.empty()) {
 				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires a named function declarator");
 			} else {
+        encountered_function_names.insert(di.name);
 			  // Apply pointer levels to base type for return type
 			  TypePtr return_type = base;
 			  if (di.pointer_levels > 0) {
@@ -3086,9 +3477,10 @@ function_declaration_or_definition
     : declaration_specifiers declarator SEMICOLON_OP
       {
         const DeclaratorInfo &di = $2;
-  		TypePtr ret = $1;
+  		  TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
+            encountered_function_names.insert(di.name);
             TypePtr fn = make_function_type_or_error(ret,
                                                      di.param_types,
                                                      di.is_variadic,
@@ -3149,9 +3541,10 @@ function_declaration_or_definition
       compound_statement
       {
         const DeclaratorInfo &di = $2;
-  		TypePtr ret = $1;
+  		  TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
+            encountered_function_names.insert(di.name);
             TypePtr fn = make_function_type_or_error(ret,
                                                      di.param_types,
                                                      di.is_variadic,
