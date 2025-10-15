@@ -1,0 +1,60 @@
+// Test struct declarations and usage
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Rectangle {
+    struct Point top_left;
+    struct Point bottom_right;
+};
+
+struct Node {
+    int data;
+    struct Node* next;
+    struct Node* prev;
+};
+
+struct Person {
+    char name[50];
+    int age;
+    float height;
+};
+
+// Empty struct
+struct Empty {
+};
+
+// Struct with various types
+struct Complex {
+    int i;
+    float f;
+    char c;
+    bool b;
+    int* ptr;
+    int arr[10];
+};
+
+int main() {
+    struct Point p1;
+    struct Rectangle r;
+    struct Node n;
+    struct Person person;
+    struct Complex cplx;
+    
+    // Pointer to struct
+    struct Point* p_ptr;
+    struct Node* n_ptr;
+    
+    return 0;
+}
+
+// Functions with struct parameters
+int distance(struct Point p1, struct Point p2) {
+    return 0;
+}
+
+struct Node* create_node(int data) {
+    return 0;
+}

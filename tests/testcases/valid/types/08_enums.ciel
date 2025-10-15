@@ -1,0 +1,67 @@
+// Test enum declarations and usage
+
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+enum Status {
+    SUCCESS,
+    FAILURE,
+    PENDING
+};
+
+// Enum with explicit values
+enum Priority {
+    LOW = 0,
+    MEDIUM = 5,
+    HIGH = 10
+};
+
+enum Direction {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST
+};
+
+// Single value enum
+enum Flag {
+    ENABLED
+};
+
+int main() {
+    enum Color c;
+    enum Status s;
+    enum Priority p;
+    enum Direction d;
+    
+    // Assignment
+    c = RED;
+    c = GREEN;
+    c = BLUE;
+    
+    s = SUCCESS;
+    s = FAILURE;
+    
+    p = LOW;
+    p = HIGH;
+    
+    d = NORTH;
+    
+    // Pointer to enum
+    enum Color* c_ptr;
+    enum Status* s_ptr;
+    
+    return 0;
+}
+
+// Functions with enum parameters
+int process_color(enum Color c) {
+    return 0;
+}
+
+enum Status get_status(int code) {
+    return;
+}
