@@ -1,0 +1,69 @@
+// Test basic class features
+
+class Simple {
+    public:
+        int x;
+        void set_x(int val) { x = val; }
+};
+
+class WithPrivate {
+    private:
+        int priv;
+    public:
+        int pub;
+        void set_priv(int val) { priv = val; }
+};
+
+class WithProtected {
+    private:
+        int priv;
+    protected:
+        int prot;
+    public:
+        int pub;
+};
+
+class WithMethods {
+    private:
+        int data;
+    public:
+        void set_data(int val) { data = val; }
+        int get_data() { return data; }
+        void process() { data = data + 1; }
+};
+
+// Class with constructor
+class Point {
+    private:
+        int x;
+        int y;
+    public:
+        Point(int nx, int ny) { x = nx; y = ny; }
+        void move(int dx, int dy) { x = x + dx; y = y + dy; }
+};
+
+// Class with multiple methods
+class Counter {
+    private:
+        int count;
+    public:
+        Counter() { count = 0; }
+        void increment() { count = count + 1; }
+        void decrement() { count = count - 1; }
+        void reset() { count = 0; }
+        int get_count() { return count; }
+};
+
+int main() {
+    class Simple s;
+    class WithPrivate wp;
+    class WithProtected wpr;
+    class Point p;
+    class Counter c;
+    
+    // Pointers to classes
+    class Simple* s_ptr;
+    class Point* p_ptr;
+    
+    return 0;
+}
