@@ -1,0 +1,19 @@
+// Array type declarations
+
+int main() {
+    // Basic arrays
+    int arr1[10];
+    char arr2[20];
+    float arr3[5];
+    bool arr4[3];
+    
+    // Arrays of different sizes
+    int small[1];
+    int medium[100];
+    int large[1000];
+    
+    // Unsigned arrays
+    unsigned uarr[15];
+    
+    return 0;
+}

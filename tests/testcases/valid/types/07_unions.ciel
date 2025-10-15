@@ -1,0 +1,65 @@
+// Test union declarations and usage
+
+union Data {
+    int i;
+    float f;
+    char c;
+};
+
+union Value {
+    int intval;
+    unsigned uintval;
+    float floatval;
+    char charval;
+    bool boolval;
+};
+
+union Pointer {
+    int* iptr;
+    char* cptr;
+    float* fptr;
+    void* vptr;
+};
+
+// Union with arrays
+union Buffer {
+    char bytes[16];
+    int ints[4];
+    float floats[4];
+};
+
+// Nested union
+union Nested {
+    int x;
+    union Data d;
+};
+
+int main() {
+    union Data d;
+    union Value v;
+    union Pointer p;
+    union Buffer buf;
+    
+    // Assignment to union members
+    d.i = 10;
+    d.f = 3.14;
+    d.c = 'a';
+    
+    v.intval = 42;
+    v.floatval = 2.5;
+    
+    // Pointer to union
+    union Data* d_ptr;
+    union Value* v_ptr;
+    
+    return 0;
+}
+
+// Functions with union parameters
+int process_data(union Data d) {
+    return 0;
+}
+
+union Value* create_value() {
+    return 0;
+}

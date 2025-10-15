@@ -1,0 +1,58 @@
+// Test typedef declarations
+
+// Basic type aliases
+typedef int Integer;
+typedef char Character;
+typedef float Real;
+typedef unsigned Counter;
+typedef bool Flag;
+
+// Pointer typedefs
+typedef int* IntPtr;
+typedef char* String;
+typedef float** FloatPtrPtr;
+
+// Struct typedef
+typedef struct Point {
+    int x;
+    int y;
+} Point;
+
+typedef struct Node {
+    int data;
+    struct Node* next;
+} Node;
+
+// Union typedef
+typedef union Data {
+    int i;
+    float f;
+    char c;
+} Data;
+
+// Enum typedef
+typedef enum Color {
+    RED,
+    GREEN,
+    BLUE
+} Color;
+
+// Array typedefs
+typedef int IntArray[10];
+typedef char Matrix[5][5];
+
+// Function pointer typedef (if supported)
+// typedef int (*FuncPtr)(int, int);
+
+int main() {
+    // Using typedefs
+    Integer x = 10;
+    String s = 0;
+    Point p;
+    Node n;
+    Data d;
+    Color c;
+    IntArray arr;
+    
+    return 0;
+}

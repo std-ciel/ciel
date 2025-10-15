@@ -1,0 +1,43 @@
+// Test multi-dimensional arrays
+
+int main() {
+    // 2D arrays
+    int matrix2d[3][4];
+    char grid[10][10];
+    float table[5][5];
+    
+    // 3D arrays
+    int cube[3][3][3];
+    char space[10][10][10];
+    bool flags[2][2][2];
+    
+    // 4D arrays
+    int tensor[2][3][4][5];
+    
+    // Mixed dimensions
+    int small_2d[2][2];
+    int large_2d[100][100];
+    
+    // Arrays of pointers
+    int* ptr_array[10];
+    char** string_array[5];
+    
+    // Pointers to arrays
+    int (*array_ptr)[10];
+    char (*grid_ptr)[5][5];
+    
+    return 0;
+}
+
+// Functions with multi-dimensional array parameters
+int process_matrix(int matrix[3][4]) {
+    return 0;
+}
+
+char* get_cell(char grid[10][10], int x, int y) {
+    return 0;
+}
+
+int*** create_3d_array(int x, int y, int z) {
+    return 0;
+}
