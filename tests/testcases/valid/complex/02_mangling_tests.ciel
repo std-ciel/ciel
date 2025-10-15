@@ -1,0 +1,102 @@
+// Test name mangling scenarios
+
+// Overloaded functions with different parameter counts
+int process(int x) {
+    return x;
+}
+
+int process(int x, int y) {
+    return x + y;
+}
+
+int process(int x, int y, int z) {
+    return x + y + z;
+}
+
+// Overloaded with different parameter types
+float calculate(float x) {
+    return x;
+}
+
+float calculate(int x) {
+    return x;
+}
+
+float calculate(int x, float y) {
+    return x + y;
+}
+
+// Overloaded with pointer parameters
+int* transform(int* ptr) {
+    return ptr;
+}
+
+int** transform(int** ptr) {
+    return ptr;
+}
+
+char* transform(char* str) {
+    return str;
+}
+
+// Overloaded with struct parameters
+struct Point {
+    int x;
+    int y;
+};
+
+struct Point move(struct Point p) {
+    return;
+}
+
+struct Point move(struct Point p, int dx, int dy) {
+    return;
+}
+
+// Overloaded with mixed types
+void execute(int x, char c) {
+    return;
+}
+
+void execute(char c, int x) {
+    return;
+}
+
+void execute(float f, int x, char c) {
+    return;
+}
+
+// Overloaded with unsigned/signed variations
+int add(int a, int b) {
+    return a + b;
+}
+
+unsigned add(unsigned a, unsigned b) {
+    return a + b;
+}
+
+
+// Overloaded with various pointer depths
+int* allocate(int size) {
+    return 0;
+}
+
+int** allocate(int rows, int cols) {
+    return 0;
+}
+
+int*** allocate(int x, int y, int z) {
+    return 0;
+}
+
+// Class member functions (should have different mangling)
+class Calculator {
+    public:
+        int add(int a, int b);
+        float add(float a, float b);
+        int multiply(int a, int b);
+};
+
+int main() {
+    return 0;
+}

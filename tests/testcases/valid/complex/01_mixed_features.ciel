@@ -1,0 +1,128 @@
+// Complex test combining multiple features
+
+typedef int Integer;
+typedef char* String;
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Node {
+    int data;
+    struct Node* next;
+};
+
+union Data {
+    int i;
+    float f;
+    char c;
+};
+
+enum Status {
+    OK,
+    ERROR,
+    PENDING
+};
+
+class Shape {
+    protected:
+        int x;
+        int y;
+    public:
+        Shape(int nx, int ny);
+        void move(int dx, int dy);
+};
+
+class Rectangle : public Shape {
+    private:
+        int width;
+        int height;
+    public:
+        Rectangle(int x, int y, int w, int h);
+        int area();
+};
+
+// Complex function return types
+struct Point* create_point(Integer x, Integer y) {
+    return 0;
+}
+
+struct Node** create_list(int size, ...) {
+    return 0;
+}
+
+union Data process_data(union Data d, enum Status* status) {
+    return;
+}
+
+class Rectangle* make_rectangle(int x, int y, int w, int h) {
+    return 0;
+}
+
+// Functions with multiple pointer levels
+Integer*** create_3d_int_array(int x, int y, int z) {
+    return 0;
+}
+
+struct Point*** allocate_point_grid(int rows, int cols) {
+    return 0;
+}
+
+// Complex control flow
+int complex_logic(int x, int y, bool flag) {
+    int result = 0;
+    
+    if (x > y) {
+        if (flag) {
+            result = 1;
+            goto success;
+        } else {
+            result = -1;
+        }
+    } else {
+        switch (x) {
+            case 0:
+                result = 10;
+                break;
+            case 1:
+                result = 20;
+                break;
+            default:
+                result = 30;
+                break;
+        }
+    }
+    
+    while (result) {
+        result = result - 1;
+    }
+    
+success:
+    return result;
+}
+
+// Multi-dimensional arrays with complex types
+struct Point** matrix_of_points(int rows, int cols) {
+    return 0;
+}
+
+int process_matrix(int matrix[10][10], int rows, int cols) {
+    return 0;
+}
+
+int main() {
+    Integer x = 10;
+    String s = 0;
+    struct Point p;
+    struct Node* n;
+    union Data d;
+    enum Status st;
+    class Shape* shape;
+    class Rectangle* rect;
+    
+    int arr[5][5];
+    struct Point* point_grid[10][10];
+    
+    return 0;
+}
