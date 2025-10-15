@@ -1,0 +1,32 @@
+// Basic variable declarations and literals
+
+int main() {
+    // Integer literals
+    int a = 0;
+    int b = 42;
+    int c = 123456;
+    
+    // Character literals
+    char ch1 = 'a';
+    char ch2 = 'Z';
+    char ch3 = '0';
+    
+    // Boolean literals
+    bool flag1 = true;
+    bool flag2 = false;
+    
+    // Float literals
+    float f1 = 0.0;
+    float f2 = 3.14;
+    float f3 = 123.456;
+    
+    // Unsigned
+    unsigned u1 = 0;
+    unsigned u2 = 999;
+    
+    // Signed
+    signed s1 = -5;
+    signed s2 = 100;
+    
+    return 0;
+}
