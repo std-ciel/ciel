@@ -2380,49 +2380,15 @@ function_declaration_or_definition
         parser_state.reset_decl();
         if (parser_state.in_function()) parser_state.pop_function();
       }
-    | /* constructor */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+    | /* constructor with params */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
       { /* push function context (void return) before body */
         TypePtr ret = require_builtin("void", @1, "constructor return type");
         if (ret) { parser_state.push_function(ret); }
       }
       compound_statement
       {
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          // Optional check: name matches class
-          std::string expected = parser_state.current_class_type->debug_name();
-          std::string got = std::string("class ") + $1;
-          if (expected != got) {
-            std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
-          }
-          TypePtr ret = require_builtin("void", @1, "constructor return type");
-          const auto &plist = $3;
-
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   plist.types,
-                                                   plist.variadic,
-                                                   "constructor definition",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $1,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          if (!mangled.has_value()) {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "unable to mangle constructor '" + $1 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-            add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-        }
+        const auto &plist = $3;
+        handle_constructor_definition($1, plist.types, plist.names, plist.variadic, $6, @1);
         if (parser_state.in_function()) parser_state.pop_function();
       }
   | /* constructor without params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP
@@ -2432,42 +2398,10 @@ function_declaration_or_definition
       }
       compound_statement
       {
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->debug_name();
-          std::string got = std::string("class ") + $1;
-          if (expected != got) {
-            std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
-          }
-          TypePtr ret = require_builtin("void", @1, "constructor return type");
-          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   params,
-                                                   variadic,
-                                                   "constructor definition",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $1,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          if (!mangled.has_value()) {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "unable to mangle constructor '" + $1 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-
-          add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-          if (parser_state.in_function()) parser_state.pop_function();
-        }
+        std::vector<QualifiedType> empty_params;
+        std::vector<std::string> empty_names;
+        handle_constructor_definition($1, empty_params, empty_names, false, $5, @1);
+        if (parser_state.in_function()) parser_state.pop_function();
       }
   | /* destructor */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP
       { /* push function context (void) before body */
@@ -2476,205 +2410,52 @@ function_declaration_or_definition
       }
       compound_statement
       {
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->debug_name();
-          std::string got = std::string("class ") + $2;
-          if (expected != got) {
-            std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
-          }
-          TypePtr ret = require_builtin("void", @1, "destructor return type");
-          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   params,
-                                                   variadic,
-                                                   "destructor definition",
-                                                   @1.begin.line,
-                                                   @2.begin.column);
-
-          FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $2,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type)
-            );
-          if (!mangled.has_value()) {
-            parser_add_error(@2.begin.line,
-                             @2.begin.column,
-                             "unable to mangle destructor '~" + $2 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-            add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-        }
+        handle_destructor_definition($2, $6, @2);
         if (parser_state.in_function()) parser_state.pop_function();
       }
-  | /* operator overload def */ IDENTIFIER OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+  | /* operator overload def with params */ type_name OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
       { /* push function context before body */
-        TypePtr ret = type_factory.lookup($1).value_or(nullptr);
-        if (ret) { parser_state.push_function(ret); }
+        if ($1) { parser_state.push_function($1); }
       }
       compound_statement
       {
-		std::string expected = parser_state.current_class_type ? parser_state.current_class_type->debug_name() : std::string{};
-		std::string got = std::string("class ") + $1;
-		if (expected != got) {
-		  std::cerr << "Warning: operator overload function name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
-		}
-		TypePtr ret = type_factory.lookup($1).value_or(nullptr);
-        if (ret && !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          const auto &plist = $5;
-          std::string opname = $3;
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   plist.types,
-                                                   plist.variadic,
-                                                   "operator definition",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          FunctionMeta meta(FunctionKind::OPERATOR, plist.names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $3,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          if (!mangled.has_value()) {
-            parser_add_error(@3.begin.line,
-                             @3.begin.column,
-                             "unable to mangle operator '" + $3 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-
-            add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-        }
+        const auto &plist = $5;
+        handle_operator_overload_definition(
+            $1, $3, plist.types, plist.names, plist.variadic,
+            $8, @1, @3);
+        
         parser_state.reset_decl();
         if (parser_state.in_function()) parser_state.pop_function();
       }
-    | /* constructor decl */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP SEMICOLON_OP
+  | /* operator overload def without params */ type_name OPERATOR operator_token OPEN_PAREN_OP CLOSE_PAREN_OP
+      { /* push function context before body */
+        if ($1) { parser_state.push_function($1); }
+      }
+      compound_statement
       {
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->debug_name();
-          std::string got = std::string("class ") + $1;
-          if (expected != got) {
-            std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
-          }
-          const auto &plist = $3;
-          TypePtr ret = require_builtin("void", @1, "constructor return type");
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   plist.types,
-                                                   plist.variadic,
-                                                   "constructor declaration",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          FunctionMeta meta(FunctionKind::CONSTRUCTOR, plist.names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $1,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          if (!mangled.has_value()) {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "unable to mangle constructor '" + $1 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-
-          add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-        }
+        std::vector<QualifiedType> empty_params;
+        std::vector<std::string> empty_names;
+        handle_operator_overload_definition(
+            $1, $3, empty_params, empty_names, false,
+            $7, @1, @3);
+        
+        parser_state.reset_decl();
+        if (parser_state.in_function()) parser_state.pop_function();
+      }
+    | /* constructor decl with params */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP SEMICOLON_OP
+      {
+        const auto &plist = $3;
+        handle_constructor_declaration($1, plist.types, plist.names, plist.variadic, @1);
       }
     | /* constructor decl no params */ IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
       {
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->debug_name();
-          std::string got = std::string("class ") + $1;
-          if (expected != got) {
-            std::cerr << "Warning: constructor name '" << $1 << "' does not match enclosing class '" << expected << "'\n";
-          }
-          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr ret = require_builtin("void", @1, "constructor return type");
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   params,
-                                                   variadic,
-                                                   "constructor declaration",
-                                                   @1.begin.line,
-                                                   @1.begin.column);
-          FunctionMeta meta(FunctionKind::CONSTRUCTOR, names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $1,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          if (!mangled.has_value()) {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "unable to mangle constructor '" + $1 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-
-            add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-        }
+        std::vector<QualifiedType> empty_params;
+        std::vector<std::string> empty_names;
+        handle_constructor_declaration($1, empty_params, empty_names, false, @1);
       }
     | /* destructor decl */ TILDE_OP IDENTIFIER OPEN_PAREN_OP CLOSE_PAREN_OP SEMICOLON_OP
       {
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
-          std::string expected = parser_state.current_class_type->debug_name();
-          std::string got = std::string("class ") + $2;
-          if (expected != got) {
-            std::cerr << "Warning: destructor name '~" << $2 << "' does not match enclosing class '" << expected << "'\n";
-          }
-          std::vector<QualifiedType> params; std::vector<std::string> names; bool variadic = false;
-          TypePtr ret = require_builtin("void", @1, "destructor return type");
-
-          TypePtr fn = make_function_type_or_error(ret,
-                                                   params,
-                                                   variadic,
-                                                   "destructor declaration",
-                                                   @1.begin.line,
-                                                   @2.begin.column);
-
-          FunctionMeta meta(FunctionKind::DESTRUCTOR, names, parser_state.current_class_type);
-
-          auto mangled = mangle_function_name(
-            $2,
-            *std::static_pointer_cast<FunctionType>(fn),
-            meta,
-            *std::static_pointer_cast<ClassType>(parser_state.current_class_type));
-          if (!mangled.has_value()) {
-            parser_add_error(@2.begin.line,
-                             @2.begin.column,
-                             "unable to mangle destructor '~" + $2 + "'");
-          } else {
-            auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
-
-          add_symbol_if_valid(*mangled,
-                                QualifiedType(fn, Qualifier::NONE),
-                                @1,
-                                std::optional<FunctionMeta>{meta});
-          }
-        }
+        handle_destructor_declaration($2, @2);
       }
     ;
 
