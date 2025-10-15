@@ -1,0 +1,44 @@
+// Test that function parameters are accessible in function body
+
+// Forward declarations
+int add(int x, int y);
+int multiply(int a, int b);
+int complex_calculation(int num, int multiplier, int offset);
+int deref_and_add(int *ptr, int value);
+
+int add(int x, int y) {
+    return x + y;
+}
+
+int multiply(int a, int b) {
+    int result;
+    result = a * b;
+    return result;
+}
+
+int complex_calculation(int num, int multiplier, int offset) {
+    int temp;
+    temp = num * multiplier;
+    temp = temp + offset;
+    return temp;
+}
+
+// Test with pointers
+int deref_and_add(int *ptr, int value) {
+    int result;
+    result = *ptr + value;
+    return result;
+}
+
+int main() {
+    int x;
+    int y;
+    int z;
+    int *p;
+    
+    x = add(5, 3);
+    y = multiply(4, 7);
+    z = complex_calculation(10, 2, 5);
+    
+    return 0;
+}
