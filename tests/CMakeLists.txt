@@ -18,7 +18,8 @@ target_include_directories(unit_tests PRIVATE ${CMAKE_SOURCE_DIR}/include)
 add_test(NAME unit_tests COMMAND unit_tests)
 
 
-file(GLOB VALID_SAMPLE_FILES
+# Collect valid test files from root and subdirectories
+file(GLOB_RECURSE VALID_SAMPLE_FILES
     RELATIVE ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/tests/testcases/valid/*.ciel
 )
@@ -26,14 +27,26 @@ file(GLOB VALID_SAMPLE_FILES
 foreach(sample_rel ${VALID_SAMPLE_FILES})
     get_filename_component(sample_abs "${CMAKE_SOURCE_DIR}/${sample_rel}" ABSOLUTE)
     get_filename_component(sample_name "${sample_abs}" NAME_WE)
+    
+    # Get the directory path relative to valid/ for better test naming
+    string(REGEX REPLACE "^tests/testcases/valid/" "" rel_path "${sample_rel}")
+    string(REGEX REPLACE "/[^/]+\\.ciel$" "" test_category "${rel_path}")
+    string(REGEX REPLACE "/" "_" test_category_clean "${test_category}")
+    
+    # Create test name with category prefix if in subdirectory
+    if(test_category_clean STREQUAL "")
+        set(test_prefix "")
+    else()
+        set(test_prefix "${test_category_clean}_")
+    endif()
 
     add_test(
-        NAME lexer_valid_${sample_name}
+        NAME lexer_valid_${test_prefix}${sample_name}
         COMMAND $<TARGET_FILE:cielc> -l ${sample_abs}
     )
 
     add_test(
-        NAME parser_valid_${sample_name}
+        NAME parser_valid_${test_prefix}${sample_name}
         COMMAND $<TARGET_FILE:cielc> -p ${sample_abs}
     )
 endforeach()
