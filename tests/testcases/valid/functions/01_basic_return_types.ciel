@@ -10,7 +10,7 @@ int func_int() {
     return 42;
 }
 
-signed func_signed() {
+int func_signed() {
     return -10;
 }
 

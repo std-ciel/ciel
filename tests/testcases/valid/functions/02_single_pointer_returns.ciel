@@ -21,7 +21,7 @@ unsigned* func_unsigned_ptr() {
     return 0;
 }
 
-signed* func_signed_ptr() {
+int* func_signed_ptr() {
     return 0;
 }
 

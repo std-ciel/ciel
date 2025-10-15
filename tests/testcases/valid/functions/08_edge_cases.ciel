@@ -28,11 +28,11 @@ void*** all_pointers(int* p1, char** p2, float*** p3) {
 }
 
 // Combinations of signed/unsigned
-signed* func_signed_ret(signed s, unsigned u) {
+int* func_signed_ret(int s, unsigned u) {
     return 0;
 }
 
-unsigned** func_unsigned_ret(unsigned* up, signed* sp) {
+unsigned** func_unsigned_ret(unsigned* up, int* sp) {
     return 0;
 }
 

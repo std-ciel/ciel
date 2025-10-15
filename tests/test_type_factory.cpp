@@ -48,10 +48,6 @@ TEST_F(TypeFactoryTest, BuiltinTypesInitialization)
     auto unsigned_type = factory->lookup("unsigned");
     ASSERT_TRUE(unsigned_type.has_value());
     EXPECT_EQ(unsigned_type.value()->debug_name(), "unsigned");
-
-    auto signed_type = factory->lookup("signed");
-    ASSERT_TRUE(signed_type.has_value());
-    EXPECT_EQ(signed_type.value()->debug_name(), "signed");
 }
 
 // Test lookup of non-existent type
@@ -367,8 +363,7 @@ TEST_F(TypeFactoryTest, AllBuiltinTypeKinds)
         {"char", BuiltinTypeKind::CHAR},
         {"int", BuiltinTypeKind::INT},
         {"float", BuiltinTypeKind::FLOAT},
-        {"unsigned", BuiltinTypeKind::UNSIGNED},
-        {"signed", BuiltinTypeKind::SIGNED}};
+        {"unsigned", BuiltinTypeKind::UNSIGNED}};
 
     for (const auto &test : builtin_tests) {
         auto type = factory->lookup(test.name);

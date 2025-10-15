@@ -9,7 +9,6 @@ void*** decl_void_triple_ptr();
 // With various parameter types
 unsigned* decl_with_unsigned(unsigned x, unsigned* ptr);
 bool** decl_with_bool(bool b, bool* pb);
-signed*** decl_with_signed(signed s, signed** pps);
 
 // Void return declarations
 void decl_void_no_params();

@@ -6,7 +6,6 @@ int main() {
     
     // Integer types
     int i = 0;
-    signed s = 0;
     unsigned u = 0;
     
     // Character type
