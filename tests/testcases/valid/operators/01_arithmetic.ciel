@@ -1,0 +1,35 @@
+// Arithmetic operators
+
+int main() {
+    int a = 10;
+    int b = 3;
+    int result;
+    
+    // Basic arithmetic
+    result = a + b;
+    result = a - b;
+    result = a * b;
+    result = a / b;
+    result = a % b;
+    
+    // Unary operators
+    result = +a;
+    result = -b;
+    
+    // Compound expressions
+    result = a + b * 2;
+    result = (a + b) * 2;
+    result = a * b + a / b;
+    
+    // Float arithmetic
+    float f1 = 5.5;
+    float f2 = 2.5;
+    float fresult;
+    
+    fresult = f1 + f2;
+    fresult = f1 - f2;
+    fresult = f1 * f2;
+    fresult = f1 / f2;
+    
+    return 0;
+}

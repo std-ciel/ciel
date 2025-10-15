@@ -1,0 +1,33 @@
+// Comparison and logical operators
+
+int main() {
+    int a = 10;
+    int b = 20;
+    bool result;
+    
+    // Comparison operators
+    result = a == b;
+    result = a != b;
+    result = a < b;
+    result = a <= b;
+    result = a > b;
+    result = a >= b;
+    
+    // Logical operators
+    bool flag1 = true;
+    bool flag2 = false;
+    
+    result = flag1 && flag2;
+    result = flag1 || flag2;
+    result = !flag1;
+    
+    // Combined expressions
+    result = (a < b) && flag1;
+    result = (a == b) || (a > b);
+    result = !(a < b);
+    
+    // Complex conditions
+    result = (a < b) && (b < 30) || flag2;
+    
+    return 0;
+}

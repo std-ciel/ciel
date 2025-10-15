@@ -1,0 +1,35 @@
+// Bitwise operators
+
+int main() {
+    int a = 12;
+    int b = 5;
+    int result;
+    
+    // Bitwise AND, OR, XOR
+    result = a & b;
+    result = a | b;
+    result = a ^ b;
+    
+    // Bitwise NOT
+    result = ~a;
+    
+    // Shift operators
+    result = a << 2;
+    result = b >> 1;
+    
+    // Combined bitwise operations
+    result = (a & b) | (a ^ b);
+    result = (a << 1) | (b >> 1);
+    
+    // Unsigned bitwise
+    unsigned u1 = 15;
+    unsigned u2 = 7;
+    unsigned uresult;
+    
+    uresult = u1 & u2;
+    uresult = u1 | u2;
+    uresult = u1 ^ u2;
+    uresult = ~u1;
+    
+    return 0;
+}
