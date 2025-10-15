@@ -80,6 +80,10 @@
     std::unordered_set<std::string> defined_types;
     std::unordered_map<std::string, std::pair<int, int>> forward_decl_locations; // type name -> (line, column)
 
+    std::vector<QualifiedType> pending_param_types;
+    std::vector<std::string> pending_param_names;
+    bool has_pending_params = false;
+
     void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
     void pop_ctx() {
       if (!ctx_stack.empty()) {
@@ -523,6 +527,26 @@
                            "duplicate parameter name '" + name + "' in function definition");
         }
       }
+    }
+  }
+
+  static void prepare_parameters_for_scope(const std::vector<QualifiedType>& param_types,
+                                            const std::vector<std::string>& param_names) {
+    parser_state.pending_param_types = param_types;
+    parser_state.pending_param_names = param_names;
+    parser_state.has_pending_params = true;
+  }
+
+  static void add_pending_parameters_to_scope(const yy::location& loc) {
+    if (parser_state.has_pending_params) {
+      for (size_t i = 0; i < parser_state.pending_param_names.size(); ++i) {
+        if (!parser_state.pending_param_names[i].empty() && i < parser_state.pending_param_types.size()) {
+          add_symbol_if_valid(parser_state.pending_param_names[i], parser_state.pending_param_types[i], loc);
+        }
+      }
+      parser_state.has_pending_params = false;
+      parser_state.pending_param_types.clear();
+      parser_state.pending_param_names.clear();
     }
   }
 
