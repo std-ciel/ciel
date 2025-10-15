@@ -964,6 +964,8 @@
     switch (node->type) {
     case ASTNodeType::IDENTIFIER_EXPR:
       return true;
+    case ASTNodeType::MEMBER_EXPR:
+      return true;
     case ASTNodeType::UNARY_EXPR: {
       auto unary = std::static_pointer_cast<UnaryExpr>(node);
       // Dereference operator produces an lvalue
@@ -1274,7 +1276,7 @@ postfix_expression
         $$ = nullptr;
       }
       else if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
-          std::string enum_name = std::string("enum ") + std::static_pointer_cast<IdentifierExpr>($1)->symbol->get_name();
+        std::string enum_name = std::static_pointer_cast<IdentifierExpr>($1)->symbol->get_type().debug_name();
           auto type_ptr_opt = type_factory.lookup(enum_name);
 
           if (type_ptr_opt.has_value() && type_ptr_opt.value()->kind == TypeKind::ENUM) {
