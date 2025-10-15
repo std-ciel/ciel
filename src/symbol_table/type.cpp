@@ -124,11 +124,64 @@ bool are_types_equal(TypePtr a, TypePtr b)
     return a->mangled_name() == b->mangled_name();
 }
 
-bool is_integral_or_enum_non_bool(TypePtr type) {
-    if (!type) return false;
+bool is_integral_or_enum_non_bool(TypePtr type)
+{
+    if (!type)
+        return false;
     // enum is also considered integral
     if (is_integral_type(type)) {
-      return !is_bool_type(type); // exclude bool
+        return !is_bool_type(type); // exclude bool
     }
     return false;
+}
+
+bool is_user_defined_type(TypePtr type)
+{
+    if (!type)
+        return false;
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return false;
+    return (canonical->kind == TypeKind::CLASS ||
+            canonical->kind == TypeKind::RECORD ||
+            canonical->kind == TypeKind::ENUM);
+}
+
+bool is_complete_type(TypePtr type)
+{
+    if (!type)
+        return false;
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return false;
+
+    switch (canonical->kind) {
+    case TypeKind::BUILTIN:
+        return true; // Builtin types are always complete
+    case TypeKind::POINTER:
+        return true; // Pointers are always complete
+    case TypeKind::ARRAY: {
+        auto array_type = std::static_pointer_cast<ArrayType>(canonical);
+        // An array is complete if its element type is complete and it has a
+        // known size
+        return is_complete_type(array_type->element_type.type) &&
+               array_type->size != 0;
+    }
+    case TypeKind::FUNCTION:
+        return true;
+    case TypeKind::RECORD: {
+        auto record_type = std::static_pointer_cast<RecordType>(canonical);
+        return record_type->is_defined;
+    }
+    case TypeKind::ENUM: {
+        auto enum_type = std::static_pointer_cast<EnumType>(canonical);
+        return enum_type->is_defined;
+    }
+    case TypeKind::CLASS: {
+        auto class_type = std::static_pointer_cast<ClassType>(canonical);
+        return class_type->is_defined;
+    }
+    default:
+        return false;
+    }
 }
