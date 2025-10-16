@@ -1,0 +1,20 @@
+// Error: Checking if 'this' is null (always invalid in non-static context)
+
+class MyClass {
+    public:
+        int value;
+
+        bool is_valid() {
+            if (this == 0) {  // Error: 'this' cannot be null in valid method call
+                return false;
+            }
+            return true;
+        }
+};
+
+int main() {
+    class MyClass obj;
+    obj.value = 10;
+    bool valid = obj.is_valid();
+    return 0;
+}

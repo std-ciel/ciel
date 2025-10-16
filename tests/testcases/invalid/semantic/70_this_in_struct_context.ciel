@@ -1,0 +1,18 @@
+// Error: 'this' used in struct (if structs don't support methods)
+
+struct Point {
+    int x;
+    int y;
+
+    void set_coords(int a, int b) {
+        this->x = a;  // Error: 'this' not available in struct
+        this->y = b;
+        return;
+    }
+};
+
+int main() {
+    Point p;
+    p.set_coords(5, 10);
+    return p.x;
+}

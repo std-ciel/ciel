@@ -1,0 +1,18 @@
+// Error: Dereferencing 'this' to use it as value
+
+class MyClass {
+    public:
+        int value;
+
+        class MyClass get_copy() {
+            return *this;  // Error: Dereferencing this (if not allowed in language)
+        }
+};
+
+int main() {
+    class MyClass obj;
+    class MyClass copy;
+    obj.value = 10;
+    copy = obj.get_copy();
+    return 0;
+}

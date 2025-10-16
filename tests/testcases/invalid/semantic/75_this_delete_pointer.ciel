@@ -1,0 +1,18 @@
+// Error: Attempting to delete 'this' pointer
+
+class MyClass {
+    public:
+        int value;
+
+        void self_destruct() {
+            delete this;  // Error: Dangerous/invalid to delete 'this'
+            return;
+        }
+};
+
+int main() {
+    class MyClass obj;
+    obj.value = 10;
+    obj.self_destruct();
+    return 0;
+}

@@ -1,0 +1,23 @@
+// Error: Using 'this' as lvalue in assignment
+
+class MyClass {
+    public:
+        int value;
+
+        void swap_this(class MyClass* other) {
+            class MyClass* temp;
+            temp = this;
+            this = other;  // Error: Cannot assign to 'this'
+            other = temp;
+            return;
+        }
+};
+
+int main() {
+    class MyClass obj1;
+    class MyClass obj2;
+    obj1.value = 10;
+    obj2.value = 20;
+    obj1.swap_this(&obj2);
+    return 0;
+}

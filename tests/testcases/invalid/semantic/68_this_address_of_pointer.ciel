@@ -1,0 +1,18 @@
+// Error: Taking address of 'this' (this is already a pointer)
+
+class MyClass {
+    public:
+        int value;
+
+        class MyClass** get_address() {
+            return &this;  // Error: 'this' is already a pointer
+        }
+};
+
+int main() {
+    class MyClass obj;
+    obj.value = 42;
+    class MyClass** ptr;
+    ptr = obj.get_address();
+    return 0;
+}

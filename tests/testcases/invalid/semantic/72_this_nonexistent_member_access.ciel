@@ -1,0 +1,16 @@
+// Error: 'this' used to access non-existent member
+
+class MyClass {
+    public:
+        int value;
+
+        int get_something() {
+            return this->nonexistent;  // Error: member doesn't exist
+        }
+};
+
+int main() {
+    class MyClass obj;
+    obj.value = 10;
+    return obj.get_something();
+}

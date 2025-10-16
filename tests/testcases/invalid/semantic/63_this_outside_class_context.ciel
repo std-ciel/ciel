@@ -1,0 +1,12 @@
+// Error: 'this' used outside of a class context
+
+int global_var = 10;
+
+int get_value() {
+    return this->global_var;  // Error: 'this' outside class
+}
+
+int main() {
+    int x = this->global_var;  // Error: 'this' in main
+    return x;
+}

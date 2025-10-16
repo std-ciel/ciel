@@ -1,0 +1,11 @@
+// Error: 'this' used in global function
+
+int calculate(int x, int y) {
+    int result = this->x + this->y;  // Error: 'this' in global function
+    return result;
+}
+
+int main() {
+    int value = calculate(10, 20);
+    return value;
+}

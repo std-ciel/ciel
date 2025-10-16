@@ -1,0 +1,19 @@
+// Error: 'this' used in nested function inside class method
+
+class MyClass {
+    public:
+        int value;
+
+        int process() {
+            int helper() {
+                return this->value;  // Error: 'this' in nested function
+            }
+            return helper();
+        }
+};
+
+int main() {
+    class MyClass obj;
+    obj.value = 42;
+    return obj.process();
+}

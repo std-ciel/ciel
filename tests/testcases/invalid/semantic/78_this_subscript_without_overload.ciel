@@ -1,0 +1,16 @@
+// Error: Using subscript operator on 'this' incorrectly
+
+class MyClass {
+    public:
+        int value;
+
+        int get_indexed() {
+            return this[0];  // Error: Cannot use [] on 'this' without overload
+        }
+};
+
+int main() {
+    class MyClass obj;
+    obj.value = 42;
+    return obj.get_indexed();
+}

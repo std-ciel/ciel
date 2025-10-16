@@ -1,0 +1,18 @@
+// Error: Casting 'this' to incompatible type
+
+class MyClass {
+    public:
+        int value;
+
+        int* get_as_int_ptr() {
+            return (int*)this;  // Error: Invalid cast of 'this' to int*
+        }
+};
+
+int main() {
+    class MyClass obj;
+    int* ptr;
+    obj.value = 42;
+    ptr = obj.get_as_int_ptr();
+    return *ptr;
+}

@@ -1,0 +1,20 @@
+// Error: 'this' used in static method
+
+class MyClass {
+    private:
+        int value;
+
+    public:
+        MyClass(int v) {
+            value = v;
+        }
+
+        static int get_default() {
+            return this->value;  // Error: 'this' in static method
+        }
+};
+
+int main() {
+    int x = MyClass::get_default();
+    return x;
+}

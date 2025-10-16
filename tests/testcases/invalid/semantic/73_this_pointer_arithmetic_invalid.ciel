@@ -1,0 +1,23 @@
+// Error: Performing arithmetic on 'this' pointer inappropriately
+
+class MyClass {
+    public:
+        int value;
+
+        class MyClass* get_next() {
+            return this + 1;  // Error: Invalid pointer arithmetic on 'this'
+        }
+
+        void increment_this() {
+            this++;  // Error: Cannot increment 'this'
+            return;
+        }
+};
+
+int main() {
+    class MyClass obj;
+    class MyClass* next;
+    obj.value = 10;
+    next = obj.get_next();
+    return 0;
+}
