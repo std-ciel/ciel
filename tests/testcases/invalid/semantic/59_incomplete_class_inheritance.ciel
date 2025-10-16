@@ -1,0 +1,8 @@
+// Test: Incomplete type used as base class in inheritance
+// Expected: Error - base class must be complete before inheritance
+
+class ForwardDeclaredClass;
+
+class Derived : public ForwardDeclaredClass {
+    int member;
+};

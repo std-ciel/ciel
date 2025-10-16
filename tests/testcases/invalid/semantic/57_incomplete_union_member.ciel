@@ -1,0 +1,9 @@
+// Test: Incomplete type used as union member
+// Expected: Error - incomplete type cannot be used as union member
+
+struct ForwardDeclaredStruct;
+
+union Container {
+    struct ForwardDeclaredStruct member;
+    int alternative;
+};

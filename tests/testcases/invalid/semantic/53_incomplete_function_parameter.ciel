@@ -1,0 +1,6 @@
+// Test: Incomplete type used as function parameter
+// Expected: Error - incomplete type cannot be used as function parameter
+
+struct ForwardDeclaredStruct;
+
+void process(struct ForwardDeclaredStruct param);

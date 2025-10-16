@@ -1,0 +1,6 @@
+// Test: Incomplete enum used as function parameter
+// Expected: Error - incomplete enum cannot be used as function parameter
+
+enum ForwardDeclaredEnum;
+
+void process(enum ForwardDeclaredEnum value);

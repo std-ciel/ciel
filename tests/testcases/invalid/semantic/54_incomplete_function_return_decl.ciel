@@ -1,0 +1,6 @@
+// Test: Incomplete type used as function return type (declaration)
+// Expected: Error - incomplete type cannot be used as function return type
+
+struct ForwardDeclaredStruct;
+
+struct ForwardDeclaredStruct getObject();

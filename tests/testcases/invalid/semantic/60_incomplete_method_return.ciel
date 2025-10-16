@@ -1,0 +1,9 @@
+// Test: Incomplete type used as method return type
+// Expected: Error - incomplete type cannot be used as method return type
+
+struct ForwardDeclaredStruct;
+
+class MyClass {
+    public:
+        struct ForwardDeclaredStruct getValue();
+};

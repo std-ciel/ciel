@@ -1,0 +1,9 @@
+// Test: Incomplete type used as class data member
+// Expected: Error - incomplete type cannot be used as class member
+
+struct ForwardDeclaredStruct;
+
+class Container {
+    private:
+        struct ForwardDeclaredStruct member;
+};

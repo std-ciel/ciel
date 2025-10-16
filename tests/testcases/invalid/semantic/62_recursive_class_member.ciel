@@ -1,0 +1,8 @@
+// Test: Class with itself as a data member (INVALID)
+// Expected: Error - class cannot have itself as a non-pointer member
+
+class Node {
+    private:
+        int value;
+        class Node next;  // ERROR: recursive member
+};

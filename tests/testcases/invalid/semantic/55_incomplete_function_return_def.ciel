@@ -1,0 +1,7 @@
+// Test: Incomplete type used as function return type (definition)
+// Expected: Error - incomplete type cannot be used as function return type
+
+struct ForwardDeclaredStruct;
+
+struct ForwardDeclaredStruct makeObject() {
+}

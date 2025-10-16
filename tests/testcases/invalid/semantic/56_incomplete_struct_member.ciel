@@ -1,0 +1,8 @@
+// Test: Incomplete type used as struct member
+// Expected: Error - incomplete type cannot be used as struct member
+
+struct ForwardDeclaredStruct;
+
+struct Container {
+    struct ForwardDeclaredStruct member;
+};
