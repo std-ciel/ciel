@@ -54,6 +54,16 @@
 
   enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION, SWITCH, LOOP };
 
+  enum class TypeUsageContext {
+    VARIABLE_DECLARATION,
+    FUNCTION_RETURN_TYPE,
+    FUNCTION_PARAMETER,
+    CLASS_DATA_MEMBER,
+    STRUCT_UNION_MEMBER,
+    CLASS_INHERITANCE,
+    OPERATOR_OVERLOAD_RETURN
+  };
+
   struct GlobalParserState {
     std::vector<ContextKind> ctx_stack = {ContextKind::GLOBAL};
     Access current_access = Access::PRIVATE;
@@ -491,15 +501,63 @@
     return true;
   }
 
-  // Check if a type is complete and emit an error if not
-  static bool check_complete_type(TypePtr type, const yy::location& loc, const std::string& context) {
+
+  static bool is_in_member_function_of_class() {
+    if (!parser_state.current_class_type) {
+      return false;
+    }
+    
+    bool has_class = false;
+    bool has_function = false;
+    for (auto ctx : parser_state.ctx_stack) {
+      if (ctx == ContextKind::CLASS) has_class = true;
+      if (ctx == ContextKind::FUNCTION) has_function = true;
+    }
+    return has_class && has_function;
+  }
+
+  static std::string type_usage_context_to_string(TypeUsageContext ctx) {
+    switch (ctx) {
+      case TypeUsageContext::VARIABLE_DECLARATION: return "variable declaration";
+      case TypeUsageContext::FUNCTION_RETURN_TYPE: return "function return type";
+      case TypeUsageContext::FUNCTION_PARAMETER: return "function parameter";
+      case TypeUsageContext::CLASS_DATA_MEMBER: return "class data member";
+      case TypeUsageContext::STRUCT_UNION_MEMBER: return "struct/union member";
+      case TypeUsageContext::CLASS_INHERITANCE: return "class inheritance";
+      case TypeUsageContext::OPERATOR_OVERLOAD_RETURN: return "operator overload return type";
+      default: return "unknown context";
+    }
+  }
+
+  static bool check_complete_type(TypePtr type, const yy::location& loc, TypeUsageContext usage_ctx) {
     if (!type) {
       return false;
     }
 
+    // Special case: allow using the current class type within its own definition in specific contexts
+    bool is_data_member_context = (usage_ctx == TypeUsageContext::CLASS_DATA_MEMBER || 
+                                    usage_ctx == TypeUsageContext::STRUCT_UNION_MEMBER);
+    
+    if (!is_data_member_context && parser_state.current_class_type) {
+      // Check if the type matches the current class being defined
+      if (type->debug_name() == parser_state.current_class_type->debug_name()) {
+        // Allow in function signatures (return types, parameters) and local variables inside member functions
+        bool is_function_signature = (usage_ctx == TypeUsageContext::FUNCTION_RETURN_TYPE || 
+                                       usage_ctx == TypeUsageContext::FUNCTION_PARAMETER ||
+                                       usage_ctx == TypeUsageContext::OPERATOR_OVERLOAD_RETURN);
+        bool is_local_variable_in_member = (usage_ctx == TypeUsageContext::VARIABLE_DECLARATION && 
+                                             is_in_member_function_of_class());
+        
+        if (is_function_signature || is_local_variable_in_member) {
+          return true; // Allow self-reference in these contexts
+        }
+      }
+    }
+
     if (!is_complete_type(type)) {
       parser_add_error(loc.begin.line, loc.begin.column,
-                       "incomplete type '" + type->debug_name() + "' used in " + context);
+                       "incomplete type '" + type->debug_name() + "' used in " + 
+                       type_usage_context_to_string(usage_ctx));
       return false;
     }
     return true;
