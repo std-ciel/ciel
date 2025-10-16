@@ -27,16 +27,16 @@ class Base {
     protected:
         int id;
     public:
-        Base(int i) { id = i; }
-        int get_id() { return id; }
+        Base(int i) { this->id = i; }
+        int get_id() { return this->id; }
 };
 
 class Derived : public Base {
     private:
         int value;
     public:
-        Derived(int i, int v) { id = i; value = v; }
-        int get_value() { return value; }
+        Derived(int i, int v) { this->id = i; this->value = v; }
+        int get_value() { return this->value; }
 };
 
 // Functions with extreme parameter combinations
@@ -55,7 +55,7 @@ union Value** process_values(union Value* vals, int count, bool* flags, ...) {
 // Complex nested control flow
 int ultra_complex(int x, int y, int z) {
     int result = 0;
-    
+
     if (x != 0) {
         int i = 0;
         while (i != 0) {
@@ -100,10 +100,10 @@ int ultra_complex(int x, int y, int z) {
                 goto outer_exit;
         }
     }
-    
+
 inner_exit:
     result = result * 2;
-    
+
 outer_exit:
     return result;
 }
@@ -138,11 +138,11 @@ class Matrix {
         int rows;
         int cols;
     public:
-        Matrix(int r, int c) {}
+        Matrix(int r, int c) { this->rows = r; this->cols = c; }
         class Matrix operator+(class Matrix other) { return other; }
         class Matrix operator-(class Matrix other) { return other; }
         class Matrix operator*(class Matrix other) { return other; }
-        int* operator[](int index) { return data; }
+        int** operator[](int index) { return this->data; }
         bool operator==(class Matrix other) { bool result = 1 == 1; return result; }
 };
 
@@ -162,10 +162,10 @@ int main() {
     enum Type t;
     class Derived* d;
     struct Point grid[3][3][3];
-    
+
     int****  hyper;
     struct Node*** tree;
     IntPtrPtrPtr ultra;
-    
+
     return 0;
 }
