@@ -1,0 +1,87 @@
+// Test struct pointer member access
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Node {
+    int value;
+    struct Node* next;
+    struct Node* prev;
+};
+
+struct Person {
+    char* name;
+    int age;
+    struct Person* spouse;
+};
+
+struct Tree {
+    int data;
+    struct Tree* left;
+    struct Tree* right;
+    struct Tree* parent;
+};
+
+int main() {
+    // Basic pointer member access
+    struct Point* p_ptr;
+    p_ptr->x = 10;
+    p_ptr->y = 20;
+    int x_val = p_ptr->x;
+    int y_val = p_ptr->y;
+
+    // Linked list pointer access
+    struct Node* head;
+    head->value = 100;
+    head->next = (struct Node *)0;
+    head->prev = (struct Node *)0;
+
+    int head_val = head->value;
+    struct Node* next_node = head->next;
+
+    // Chained pointer access
+    struct Node* second;
+    head->next = second;
+    second->value = 200;
+    int second_val = head->next->value;
+
+    // Person with pointer members
+    struct Person* person_ptr;
+    person_ptr->name = (char *)0;
+    person_ptr->age = 25;
+    person_ptr->spouse = (struct Person *)0;
+
+    char* name = person_ptr->name;
+    int age = person_ptr->age;
+    struct Person* spouse = person_ptr->spouse;
+
+    // Tree traversal pointer access
+    struct Tree* root;
+    root->data = 50;
+    root->left = (struct Tree *)0;
+    root->right = (struct Tree *)0;
+    root->parent = (struct Tree *)0;
+
+    struct Tree* left_child;
+    root->left = left_child;
+    left_child->data = 25;
+    left_child->parent = root;
+
+    int root_data = root->data;
+    int left_data = root->left->data;
+
+    // Deep chaining
+    struct Tree* right_child;
+    root->right = right_child;
+    right_child->right = (struct Tree *)0;
+
+    struct Tree* deep_node;
+    root->right->right = deep_node;
+    deep_node->data = 100;
+
+    int deep_val = root->right->right->data;
+
+    return 0;
+}

@@ -1,0 +1,72 @@
+// Test array access
+
+int main() {
+    // Basic array access
+    int arr[10];
+    arr[0] = 5;
+    arr[1] = 10;
+    arr[9] = 95;
+
+    int first = arr[0];
+    int second = arr[1];
+    int last = arr[9];
+
+    // Array access with variables
+    int index = 5;
+    arr[index] = 50;
+    int value = arr[index];
+
+    // Array access in expressions
+    int sum = arr[0] + arr[1];
+    int diff = arr[9] - arr[0];
+    arr[2] = arr[0] + arr[1];
+
+    // Character arrays
+    char str[20];
+    str[0] = 'H';
+    str[1] = 'e';
+    str[2] = 'l';
+    str[3] = 'l';
+    str[4] = 'o';
+
+    char first_char = str[0];
+    char second_char = str[1];
+
+    // Float arrays
+    float floats[5];
+    floats[0] = 1.5;
+    floats[1] = 2.5;
+    floats[4] = 5.5;
+
+    float f1 = floats[0];
+    float f2 = floats[1];
+
+    // Boolean arrays
+    bool flags[8];
+    flags[0] = true;
+    flags[1] = false;
+    flags[7] = true;
+
+    bool flag0 = flags[0];
+    bool flag7 = flags[7];
+
+    // Pointer arrays
+    int* ptrs[5];
+    ptrs[0] = (int *)0;
+    ptrs[1] = (int *)0;
+    ptrs[4] = (int *)0;
+
+    int* ptr0 = ptrs[0];
+    int* ptr4 = ptrs[4];
+
+    // Array access with expressions as index
+    int i = 2;
+    int j = 3;
+    arr[i + j] = 100;
+    int val = arr[i + j];
+
+    arr[i * 2] = 200;
+    int val2 = arr[i * 2];
+
+    return 0;
+}

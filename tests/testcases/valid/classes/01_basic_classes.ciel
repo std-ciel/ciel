@@ -1,0 +1,125 @@
+// Test basic class declarations and method calls
+
+class Calculator {
+    private:
+        int value;
+
+    public:
+        Calculator(int v) {
+            value = v;
+        }
+
+        int get_value() {
+            return value;
+        }
+
+        void set_value(int v) {
+            value = v;
+            return;
+        }
+
+        int add(int x) {
+            return value + x;
+        }
+
+        int multiply(int x) {
+            return value * x;
+        }
+};
+
+class Point {
+    private:
+        int x;
+        int y;
+
+    public:
+        Point(int nx, int ny) {
+            x = nx;
+            y = ny;
+        }
+
+        int get_x() {
+            return x;
+        }
+
+        int get_y() {
+            return y;
+        }
+
+        void set_x(int nx) {
+            x = nx;
+            return;
+        }
+
+        void set_y(int ny) {
+            y = ny;
+            return;
+        }
+
+        void move(int dx, int dy) {
+            x = x + dx;
+            y = y + dy;
+            return;
+        }
+};
+
+class Counter {
+    private:
+        int count;
+
+    public:
+        Counter() {
+            count = 0;
+        }
+
+        void increment() {
+            count = count + 1;
+            return;
+        }
+
+        void decrement() {
+            count = count - 1;
+            return;
+        }
+
+        int get_count() {
+            return count;
+        }
+
+        void reset() {
+            count = 0;
+            return;
+        }
+};
+
+int main() {
+    // Create objects and call methods
+    class Calculator calc;
+    int val = calc.get_value();
+    calc.set_value(100);
+    int sum = calc.add(50);
+    int product = calc.multiply(2);
+
+    // Point object method calls
+    class Point p;
+    int px = p.get_x();
+    int py = p.get_y();
+    p.set_x(10);
+    p.set_y(20);
+    p.move(5, 5);
+
+    // Counter object method calls
+    class Counter counter;
+    counter.increment();
+    counter.increment();
+    counter.decrement();
+    int current = counter.get_count();
+    counter.reset();
+
+    // Chained method calls
+    class Point p2;
+    p2.set_x(p.get_x());
+    p2.set_y(p.get_y());
+
+    return 0;
+}

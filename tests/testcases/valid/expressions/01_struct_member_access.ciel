@@ -1,0 +1,90 @@
+// Test struct member access
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Rectangle {
+    struct Point top_left;
+    struct Point bottom_right;
+    int width;
+    int height;
+};
+
+struct Person {
+    char name[50];
+    int age;
+    float height;
+    bool employed;
+};
+
+struct Node {
+    int data;
+    struct Node* next;
+    struct Node* prev;
+};
+
+struct Complex {
+    float real;
+    float imag;
+};
+
+int main() {
+    // Basic member access
+    struct Point p;
+    p.x = 10;
+    p.y = 20;
+    int px = p.x;
+    int py = p.y;
+
+    // Nested struct member access
+    struct Rectangle rect;
+    rect.top_left.x = 0;
+    rect.top_left.y = 0;
+    rect.bottom_right.x = 100;
+    rect.bottom_right.y = 50;
+    rect.width = 100;
+    rect.height = 50;
+
+    int tl_x = rect.top_left.x;
+    int br_y = rect.bottom_right.y;
+
+    // Member access with various types
+    struct Person person;
+    person.age = 30;
+    person.height = 5.9;
+    person.employed = true;
+
+    int age = person.age;
+    float ht = person.height;
+    bool emp = person.employed;
+
+    // Member access with pointers
+    struct Node node;
+    node.data = 42;
+    node.next = (struct Node *)0;
+    node.prev = (struct Node *)0;
+
+    int node_data = node.data;
+    struct Node* next_ptr = node.next;
+
+    // Member access in expressions
+    struct Complex c1;
+    c1.real = 3.0;
+    c1.imag = 4.0;
+
+    struct Complex c2;
+    c2.real = 1.0;
+    c2.imag = 2.0;
+
+    float sum_real = c1.real + c2.real;
+    float sum_imag = c1.imag + c2.imag;
+
+    // Member access with assignment from another struct
+    struct Point p2;
+    p2.x = p.x;
+    p2.y = p.y;
+
+    return 0;
+}

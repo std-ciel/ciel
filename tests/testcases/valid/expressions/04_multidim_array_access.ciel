@@ -1,0 +1,66 @@
+// Test multi-dimensional array access
+
+int main() {
+    // 2D array access
+    int matrix[3][4];
+    matrix[0][0] = 1;
+    matrix[0][1] = 2;
+    matrix[1][0] = 5;
+    matrix[2][3] = 12;
+
+    int val00 = matrix[0][0];
+    int val01 = matrix[0][1];
+    int val23 = matrix[2][3];
+
+    // 2D array access with variables
+    int row = 1;
+    int col = 2;
+    matrix[row][col] = 99;
+    int value = matrix[row][col];
+
+    // Character 2D arrays
+    char grid[10][10];
+    grid[0][0] = 'A';
+    grid[5][5] = 'M';
+    grid[9][9] = 'Z';
+
+    char top_left = grid[0][0];
+    char center = grid[5][5];
+    char bottom_right = grid[9][9];
+
+    // 3D array access
+    int cube[3][3][3];
+    cube[0][0][0] = 1;
+    cube[1][1][1] = 14;
+    cube[2][2][2] = 27;
+
+    int corner = cube[0][0][0];
+    int center_val = cube[1][1][1];
+    int far_corner = cube[2][2][2];
+
+    // 3D array with variables
+    int x = 1;
+    int y = 2;
+    int z = 1;
+    cube[x][y][z] = 50;
+    int val3d = cube[x][y][z];
+
+    // Float 2D array
+    float table[5][5];
+    table[0][0] = 1.1;
+    table[2][3] = 2.3;
+    table[4][4] = 4.4;
+
+    float f00 = table[0][0];
+    float f23 = table[2][3];
+
+    // 2D array access in expressions
+    int sum = matrix[0][0] + matrix[1][1];
+    matrix[2][2] = matrix[0][0] + matrix[1][1];
+
+    // 3D array access in expressions
+    int sum3d = cube[0][0][0] + cube[1][1][1] + cube[2][2][2];
+    cube[1][2][1] = cube[0][0][0] + cube[1][1][1];
+
+    return 0;
+}

@@ -1,0 +1,105 @@
+// Test combinations of struct member access and array access
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Line {
+    struct Point start;
+    struct Point end;
+};
+
+struct Grid {
+    int data[10][10];
+    int rows;
+    int cols;
+};
+
+struct Student {
+    char name[50];
+    int grades[5];
+    float gpa;
+};
+
+struct Matrix {
+    float values[3][3];
+    int size;
+};
+
+int main() {
+    // Array of structs
+    struct Point points[5];
+    points[0].x = 10;
+    points[0].y = 20;
+    points[1].x = 30;
+    points[1].y = 40;
+
+    int p0x = points[0].x;
+    int p1y = points[1].y;
+
+    // Struct with array members
+    struct Student student;
+    student.grades[0] = 90;
+    student.grades[1] = 85;
+    student.grades[2] = 95;
+    student.grades[3] = 88;
+    student.grades[4] = 92;
+    student.gpa = 3.8;
+
+    int grade0 = student.grades[0];
+    int grade4 = student.grades[4];
+    float gpa = student.gpa;
+
+    // Nested struct with arrays
+    struct Grid grid;
+    grid.rows = 10;
+    grid.cols = 10;
+    grid.data[0][0] = 1;
+    grid.data[5][5] = 25;
+    grid.data[9][9] = 81;
+
+    int val00 = grid.data[0][0];
+    int val55 = grid.data[5][5];
+
+    // 2D array of structs
+    struct Point point_grid[3][3];
+    point_grid[0][0].x = 0;
+    point_grid[0][0].y = 0;
+    point_grid[1][1].x = 10;
+    point_grid[1][1].y = 10;
+    point_grid[2][2].x = 20;
+    point_grid[2][2].y = 20;
+
+    int pg00x = point_grid[0][0].x;
+    int pg11y = point_grid[1][1].y;
+
+    // Struct with 2D array member
+    struct Matrix mat;
+    mat.size = 3;
+    mat.values[0][0] = 1.0;
+    mat.values[0][1] = 2.0;
+    mat.values[1][0] = 3.0;
+    mat.values[2][2] = 9.0;
+
+    float m00 = mat.values[0][0];
+    float m22 = mat.values[2][2];
+
+    // Array of structs with nested structs
+    struct Line lines[10];
+    lines[0].start.x = 0;
+    lines[0].start.y = 0;
+    lines[0].end.x = 10;
+    lines[0].end.y = 10;
+
+    int line0_start_x = lines[0].start.x;
+    int line0_end_y = lines[0].end.y;
+
+    // Complex access patterns
+    int sum_grades = student.grades[0] + student.grades[1] + student.grades[2];
+    student.grades[3] = student.grades[0] + student.grades[1];
+
+    int diagonal_sum = grid.data[0][0] + grid.data[1][1] + grid.data[2][2];
+
+    return 0;
+}

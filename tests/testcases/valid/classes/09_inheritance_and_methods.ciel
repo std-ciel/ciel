@@ -1,0 +1,161 @@
+// Test inheritance and method calls
+
+class Animal {
+    protected:
+        int age;
+        char* name;
+
+    public:
+        Animal(int a) {
+            age = a;
+            name = (char *)0;
+        }
+
+        int get_age() {
+            return age;
+        }
+
+        void set_age(int a) {
+            age = a;
+            return;
+        }
+
+        void make_sound() {
+            return;
+        }
+};
+
+class Dog : public Animal {
+    private:
+        int breed;
+
+    public:
+        Dog(int a, int b) {
+            age = a;
+            breed = b;
+        }
+
+        void bark() {
+            return;
+        }
+
+        int get_breed() {
+            return breed;
+        }
+
+        void make_sound() {
+            return;
+        }
+};
+
+class Cat : public Animal {
+    private:
+        bool indoor;
+
+    public:
+        Cat(int a, bool i) {
+            age = a;
+            indoor = i;
+        }
+
+        void meow() {
+            return;
+        }
+
+        bool is_indoor() {
+            return indoor;
+        }
+};
+
+class Shape {
+    protected:
+        int x;
+        int y;
+
+    public:
+        Shape(int nx, int ny) {
+            x = nx;
+            y = ny;
+        }
+
+        void move(int dx, int dy) {
+            x = x + dx;
+            y = y + dy;
+            return;
+        }
+
+        int area() {
+            return 0;
+        }
+};
+
+class Rectangle : public Shape {
+    private:
+        int width;
+        int height;
+
+    public:
+        Rectangle(int nx, int ny, int w, int h) {
+            x = nx;
+            y = ny;
+            width = w;
+            height = h;
+        }
+
+        int area() {
+            return width * height;
+        }
+
+        int perimeter() {
+            return 2 * (width + height);
+        }
+};
+
+class Circle : public Shape {
+    private:
+        int radius;
+
+    public:
+        Circle(int nx, int ny, int r) {
+            x = nx;
+            y = ny;
+            radius = r;
+        }
+
+        int area() {
+            return 3 * radius * radius;
+        }
+
+        int get_radius() {
+            return radius;
+        }
+};
+
+int main() {
+    // Test Animal hierarchy
+    class Dog dog;
+    dog.set_age(5);
+    int dog_age = dog.get_age();
+    dog.bark();
+    dog.make_sound();
+    int breed = dog.get_breed();
+
+    class Cat cat;
+    cat.set_age(3);
+    int cat_age = cat.get_age();
+    cat.meow();
+    bool is_indoor_cat = cat.is_indoor();
+
+    // Test Shape hierarchy
+    class Rectangle rect;
+    rect.move(10, 20);
+    int rect_area = rect.area();
+    int rect_perimeter = rect.perimeter();
+
+    class Circle circ;
+    circ.move(5, 5);
+    int circ_area = circ.area();
+    int radius = circ.get_radius();
+
+    return 0;
+}

@@ -1,0 +1,78 @@
+// Test pointer array access and arithmetic
+
+struct Point {
+    int x;
+    int y;
+};
+
+int main() {
+    // Pointer to array
+    int arr[10];
+    int* ptr;
+    ptr = arr;
+
+    ptr[0] = 5;
+    ptr[1] = 10;
+    ptr[5] = 50;
+
+    int val0 = ptr[0];
+    int val5 = ptr[5];
+
+    // Array of pointers with access
+    int* ptr_array[5];
+    ptr_array[0] = (int *)0;
+    ptr_array[1] = (int *)0;
+    ptr_array[4] = (int *)0;
+
+    int* p0 = ptr_array[0];
+    int* p4 = ptr_array[4];
+
+    // Pointer to pointer with array access
+    int** pp;
+    pp[0] = (int *)0;
+    pp[1] = (int *)0;
+
+    int* pp0 = pp[0];
+    int* pp1 = pp[1];
+
+    // Character pointer array access
+    char* str;
+    str[0] = 'H';
+    str[1] = 'i';
+    str[2] = '\0';
+
+    char c0 = str[0];
+    char c1 = str[1];
+
+    // Array of character pointers
+    char* strings[5];
+    strings[0] = (char *)0;
+    strings[1] = (char *)0;
+    strings[4] = (char *)0;
+
+    char* s0 = strings[0];
+    char* s4 = strings[4];
+
+    // Struct pointer array access
+    struct Point* points[10];
+    points[0] = (struct Point *)0;
+    points[5] = (struct Point *)0;
+
+    struct Point* pt0 = points[0];
+    struct Point* pt5 = points[5];
+
+    // Pointer to struct array
+    struct Point point_arr[5];
+    struct Point* pstruct;
+    pstruct = point_arr;
+
+    pstruct[0].x = 10;
+    pstruct[0].y = 20;
+    pstruct[1].x = 30;
+    pstruct[1].y = 40;
+
+    int px0 = pstruct[0].x;
+    int py1 = pstruct[1].y;
+
+    return 0;
+}

@@ -1,0 +1,43 @@
+class Counter {
+    private:
+        int value;
+
+    public:
+        Counter(int v) {
+            value = v;
+        }
+
+        // Increment/Decrement
+        class Counter operator++() {
+            class Counter result;
+            return result;
+        }
+
+        class Counter operator--() {
+            class Counter result;
+            return result;
+        }
+
+        // Assignment operators
+        class Counter operator+=(int x) {
+            class Counter result;
+            return result;
+        }
+
+        class Counter operator-=(int x) {
+            class Counter result;
+            return result;
+        }
+};
+
+int main() {
+    class Counter cnt;
+
+    class Counter incremented = ++cnt;
+    class Counter decremented = --cnt;
+
+    class Counter added = (cnt += 5);
+    class Counter subtracted = (cnt -= 3);
+
+    return 0;
+}
