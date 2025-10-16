@@ -7,16 +7,16 @@ class Animal {
 
     public:
         Animal(int a) {
-            age = a;
-            name = (char *)0;
+            this->age = a;
+            this->name = (char *)0;
         }
 
         int get_age() {
-            return age;
+            return this->age;
         }
 
         void set_age(int a) {
-            age = a;
+            this->age = a;
             return;
         }
 
@@ -31,8 +31,8 @@ class Dog : public Animal {
 
     public:
         Dog(int a, int b) {
-            age = a;
-            breed = b;
+            this->age = a;
+            this->breed = b;
         }
 
         void bark() {
@@ -40,7 +40,7 @@ class Dog : public Animal {
         }
 
         int get_breed() {
-            return breed;
+            return this->breed;
         }
 
         void make_sound() {
@@ -54,8 +54,8 @@ class Cat : public Animal {
 
     public:
         Cat(int a, bool i) {
-            age = a;
-            indoor = i;
+            this->age = a;
+            this->indoor = i;
         }
 
         void meow() {
@@ -63,7 +63,7 @@ class Cat : public Animal {
         }
 
         bool is_indoor() {
-            return indoor;
+            return this->indoor;
         }
 };
 
@@ -74,13 +74,13 @@ class Shape {
 
     public:
         Shape(int nx, int ny) {
-            x = nx;
-            y = ny;
+            this->x = nx;
+            this->y = ny;
         }
 
         void move(int dx, int dy) {
-            x = x + dx;
-            y = y + dy;
+            this->x = this->x + dx;
+            this->y = this->y + dy;
             return;
         }
 
@@ -96,18 +96,18 @@ class Rectangle : public Shape {
 
     public:
         Rectangle(int nx, int ny, int w, int h) {
-            x = nx;
-            y = ny;
-            width = w;
-            height = h;
+            this->x = nx;
+            this->y = ny;
+            this->width = w;
+            this->height = h;
         }
 
         int area() {
-            return width * height;
+            return this->width * this->height;
         }
 
         int perimeter() {
-            return 2 * (width + height);
+            return 2 * (this->width + this->height);
         }
 };
 
@@ -117,17 +117,17 @@ class Circle : public Shape {
 
     public:
         Circle(int nx, int ny, int r) {
-            x = nx;
-            y = ny;
-            radius = r;
+            this->x = nx;
+            this->y = ny;
+            this->radius = r;
         }
 
         int area() {
-            return 3 * radius * radius;
+            return 3 * this->radius * this->radius;
         }
 
         int get_radius() {
-            return radius;
+            return this->radius;
         }
 };
 

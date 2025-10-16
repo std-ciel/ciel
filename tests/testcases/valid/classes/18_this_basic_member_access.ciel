@@ -1,0 +1,29 @@
+// Test basic usage of 'this' to access class members
+
+class Point {
+    public:
+        int x;
+        int y;
+
+        int get_x() {
+            return this->x;
+        }
+
+        int get_y() {
+            return this->y;
+        }
+
+        void set_coordinates(int a, int b) {
+            this->x = a;
+            this->y = b;
+            return;
+        }
+};
+
+int main() {
+    class Point p;
+    p.x = 10;
+    p.y = 20;
+    int result = p.get_x() + p.get_y();
+    return result;
+}

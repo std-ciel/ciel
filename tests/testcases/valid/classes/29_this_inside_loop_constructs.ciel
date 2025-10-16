@@ -1,0 +1,38 @@
+// Test 'this' usage inside loops
+
+class Accumulator {
+    public:
+        int total;
+
+        void add_range(int start, int end) {
+            int i = start;
+            while (i <= end) {
+                this->total = this->total + i;
+                i = i + 1;
+            }
+            return;
+        }
+
+        void multiply_by(int times) {
+            int original = this->total;
+            int i = 1;
+            this->total = 0;
+            while (i < times) {
+                this->total = this->total + original;
+                i = i + 1;
+            }
+            return;
+        }
+
+        int get_total() {
+            return this->total;
+        }
+};
+
+int main() {
+    class Accumulator acc;
+    acc.total = 0;
+    acc.add_range(1, 10);
+    acc.multiply_by(2);
+    return acc.get_total();
+}

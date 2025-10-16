@@ -7,25 +7,25 @@ class Node {
 
     public:
         Node(int v) {
-            value = v;
-            next = (class Node *)0;
+            this->value = v;
+            this->next = (class Node *)0;
         }
 
         int get_value() {
-            return value;
+            return this->value;
         }
 
         void set_value(int v) {
-            value = v;
+            this->value = v;
             return;
         }
 
         class Node* get_next() {
-            return next;
+            return this->next;
         }
 
         void set_next(class Node* n) {
-            next = n;
+            this->next = n;
             return;
         }
 };
@@ -37,21 +37,21 @@ class LinkedList {
 
     public:
         LinkedList() {
-            head = (class Node *)0;
-            size = 0;
+            this->head = (class Node *)0;
+            this->size = 0;
         }
 
         void add(int value) {
-            size = size + 1;
+            this->size = this->size + 1;
             return;
         }
 
         int get_size() {
-            return size;
+            return this->size;
         }
 
         class Node* get_head() {
-            return head;
+            return this->head;
         }
 
         int get_at(int index) {
@@ -67,9 +67,9 @@ class Matrix {
 
     public:
         Matrix(int r, int c) {
-            rows = r;
-            cols = c;
-            data = (int **)0;
+            this->rows = r;
+            this->cols = c;
+            this->data = (int **)0;
         }
 
         int get(int row, int col) {

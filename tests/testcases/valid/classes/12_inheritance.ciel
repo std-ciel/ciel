@@ -7,7 +7,7 @@ class Base {
         int base_protected;
     public:
         int base_public;
-        void base_method() { base_public = 0; }
+        void base_method() { this->base_public = 0; }
 };
 
 class Derived : public Base {
@@ -15,12 +15,12 @@ class Derived : public Base {
         int derived_private;
     public:
         int derived_public;
-        void derived_method() { derived_public = 0; }
+        void derived_method() { this->derived_public = 0; }
 };
 
 class ProtectedDerived : protected Base {
     public:
-        void method() { base_public = 1; }
+        void method() { this->base_public = 1; }
 };
 
 class PrivateDerived : private Base {
@@ -31,7 +31,7 @@ class PrivateDerived : private Base {
 // Multiple levels of inheritance
 class GrandChild : public Derived {
     public:
-        void grandchild_method() { derived_public = 2; }
+        void grandchild_method() { this->derived_public = 2; }
 };
 
 // Classes with constructors
@@ -40,8 +40,8 @@ class Point {
         int x;
         int y;
     public:
-        Point(int nx, int ny) { x = nx; y = ny; }
-        void set(int nx, int ny) { x = nx; y = ny; }
+        Point(int nx, int ny) { this->x = nx; this->y = ny; }
+        void set(int nx, int ny) { this->x = nx; this->y = ny; }
 };
 
 class Rectangle : public Point {
@@ -49,18 +49,18 @@ class Rectangle : public Point {
         int width;
         int height;
     public:
-        Rectangle(int x, int y, int w, int h) { width = w; height = h; }
-        int area() { return width * height; }
+        Rectangle(int x, int y, int w, int h) { this->width = w; this->height = h; }
+        int area() { return this->width * this->height; }
 };
 
 int main() {
     class Base b;
     class Derived d;
     class GrandChild gc;
-    
+
     // Pointers
     class Base* b_ptr;
     class Derived* d_ptr;
-    
+
     return 0;
 }

@@ -1,0 +1,38 @@
+// Test 'this' usage in conditional statements
+
+class Validator {
+    public:
+        int min_value;
+        int max_value;
+        int current;
+
+        bool is_valid(int value) {
+            if (value >= this->min_value) {
+                if (value <= this->max_value) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void set_if_valid(int value) {
+            if (this->is_valid(value)) {
+                this->current = value;
+            }
+            return;
+        }
+
+        int get_current() {
+            return this->current;
+        }
+};
+
+int main() {
+    class Validator v;
+    v.min_value = 0;
+    v.max_value = 100;
+    v.current = 0;
+    v.set_if_valid(50);
+    bool check = v.is_valid(150);
+    return v.get_current();
+}

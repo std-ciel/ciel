@@ -6,24 +6,24 @@ class Calculator {
 
     public:
         Calculator(int v) {
-            value = v;
+            this->value = v;
         }
 
         int get_value() {
-            return value;
+            return this->value;
         }
 
         void set_value(int v) {
-            value = v;
+            this->value = v;
             return;
         }
 
         int add(int x) {
-            return value + x;
+            return this->value + x;
         }
 
         int multiply(int x) {
-            return value * x;
+            return this->value * x;
         }
 };
 
@@ -34,31 +34,31 @@ class Point {
 
     public:
         Point(int nx, int ny) {
-            x = nx;
-            y = ny;
+            this->x = nx;
+            this->y = ny;
         }
 
         int get_x() {
-            return x;
+            return this->x;
         }
 
         int get_y() {
-            return y;
+            return this->y;
         }
 
         void set_x(int nx) {
-            x = nx;
+            this->x = nx;
             return;
         }
 
         void set_y(int ny) {
-            y = ny;
+            this->y = ny;
             return;
         }
 
         void move(int dx, int dy) {
-            x = x + dx;
-            y = y + dy;
+            this->x = this->x + dx;
+            this->y = this->y + dy;
             return;
         }
 };
@@ -69,25 +69,25 @@ class Counter {
 
     public:
         Counter() {
-            count = 0;
+            this->count = 0;
         }
 
         void increment() {
-            count = count + 1;
+            this->count = this->count + 1;
             return;
         }
 
         void decrement() {
-            count = count - 1;
+            this->count = this->count - 1;
             return;
         }
 
         int get_count() {
-            return count;
+            return this->count;
         }
 
         void reset() {
-            count = 0;
+            this->count = 0;
             return;
         }
 };

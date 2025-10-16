@@ -1,0 +1,38 @@
+// Test 'this' in nested method calls and complex expressions
+
+class Counter {
+    public:
+        int count;
+
+        int get_count() {
+            return this->count;
+        }
+
+        void set_count(int c) {
+            this->count = c;
+            return;
+        }
+
+        void increment() {
+            this->set_count(this->get_count() + 1);
+            return;
+        }
+
+        void add(int value) {
+            this->set_count(this->get_count() + value);
+            return;
+        }
+
+        int double_count() {
+            return this->count * 2;
+        }
+};
+
+int main() {
+    class Counter c;
+    c.count = 5;
+    c.increment();
+    c.add(10);
+    int result = c.double_count();
+    return result;
+}

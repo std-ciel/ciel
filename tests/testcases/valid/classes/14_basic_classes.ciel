@@ -3,7 +3,7 @@
 class Simple {
     public:
         int x;
-        void set_x(int val) { x = val; }
+        void set_x(int val) { this->x = val; }
 };
 
 class WithPrivate {
@@ -11,7 +11,7 @@ class WithPrivate {
         int priv;
     public:
         int pub;
-        void set_priv(int val) { priv = val; }
+        void set_priv(int val) { this->priv = val; }
 };
 
 class WithProtected {
@@ -27,9 +27,9 @@ class WithMethods {
     private:
         int data;
     public:
-        void set_data(int val) { data = val; }
-        int get_data() { return data; }
-        void process() { data = data + 1; }
+        void set_data(int val) { this->data = val; }
+        int get_data() { return this->data; }
+        void process() { this->data = this->data + 1; }
 };
 
 // Class with constructor
@@ -38,8 +38,8 @@ class Point {
         int x;
         int y;
     public:
-        Point(int nx, int ny) { x = nx; y = ny; }
-        void move(int dx, int dy) { x = x + dx; y = y + dy; }
+        Point(int nx, int ny) { this->x = nx; this->y = ny; }
+        void move(int dx, int dy) { this->x = this->x + dx; this->y = this->y + dy; }
 };
 
 // Class with multiple methods
@@ -47,11 +47,11 @@ class Counter {
     private:
         int count;
     public:
-        Counter() { count = 0; }
-        void increment() { count = count + 1; }
-        void decrement() { count = count - 1; }
-        void reset() { count = 0; }
-        int get_count() { return count; }
+        Counter() { this->count = 0; }
+        void increment() { this->count = this->count + 1; }
+        void decrement() { this->count = this->count - 1; }
+        void reset() { this->count = 0; }
+        int get_count() { return this->count; }
 };
 
 int main() {
@@ -60,10 +60,10 @@ int main() {
     class WithProtected wpr;
     class Point p;
     class Counter c;
-    
+
     // Pointers to classes
     class Simple* s_ptr;
     class Point* p_ptr;
-    
+
     return 0;
 }

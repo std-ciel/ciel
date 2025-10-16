@@ -1,0 +1,32 @@
+// Test 'this' with both explicit and implicit member access
+
+class Mixed {
+    public:
+        int value;
+        int multiplier;
+
+        int calculate() {
+            // Mix of this and implicit access
+            int temp = value * 2;
+            return temp + this->multiplier;
+        }
+
+        void update(int v) {
+            value = v;
+            this->multiplier = v + 1;
+            return;
+        }
+
+        int get_value() {
+            return this->value;
+        }
+};
+
+int main() {
+    class Mixed m;
+    m.value = 5;
+    m.multiplier = 3;
+    int result = m.calculate();
+    m.update(10);
+    return m.get_value();
+}

@@ -1,0 +1,41 @@
+// Test 'this' in inherited class methods
+
+class Base {
+    public:
+        int base_value;
+
+        int get_base() {
+            return this->base_value;
+        }
+
+        void set_base(int v) {
+            this->base_value = v;
+            return;
+        }
+};
+
+class Derived : Base {
+    public:
+        int derived_value;
+
+        int get_derived() {
+            return this->derived_value;
+        }
+
+        void set_derived(int v) {
+            this->derived_value = v;
+            return;
+        }
+
+        int get_sum() {
+            return this->get_base() + this->derived_value;
+        }
+};
+
+int main() {
+    class Derived d;
+    d.base_value = 10;
+    d.derived_value = 20;
+    int result = d.get_sum();
+    return result;
+}

@@ -1,0 +1,35 @@
+// Test 'this' pointer comparison
+
+class Entity {
+    public:
+        int id;
+
+        bool is_same(class Entity* other) {
+            if (other == this) {
+                return true;
+            }
+            return false;
+        }
+
+        bool has_id(int check_id) {
+            if (this->id == check_id) {
+                return true;
+            }
+            return false;
+        }
+
+        int get_id() {
+            return this->id;
+        }
+};
+
+int main() {
+    class Entity e1;
+    class Entity e2;
+    e1.id = 42;
+    e2.id = 99;
+    bool same = e1.is_same(&e1);
+    bool different = e1.is_same(&e2);
+    bool has = e1.has_id(42);
+    return e1.get_id();
+}

@@ -1,0 +1,38 @@
+// Test returning 'this' from methods
+
+class FluentInterface {
+    public:
+        int x;
+        int y;
+
+        class FluentInterface* set_x(int value) {
+            this->x = value;
+            return this;
+        }
+
+        class FluentInterface* set_y(int value) {
+            this->y = value;
+            return this;
+        }
+
+        class FluentInterface* reset() {
+            this->x = 0;
+            this->y = 0;
+            return this;
+        }
+
+        int sum() {
+            return this->x + this->y;
+        }
+};
+
+int main() {
+    class FluentInterface obj;
+    class FluentInterface* p;
+    obj.x = 0;
+    obj.y = 0;
+    p = obj.set_x(15);
+    p = p->set_y(25);
+    int result = p->sum();
+    return result;
+}

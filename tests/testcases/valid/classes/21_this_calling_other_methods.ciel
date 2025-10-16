@@ -1,0 +1,39 @@
+// Test 'this' to call other methods of the same class
+
+class Calculator {
+    public:
+        int value;
+
+        void increment() {
+            this->value = this->value + 1;
+            return;
+        }
+
+        void add(int x) {
+            this->value = this->value + x;
+            return;
+        }
+
+        void increment_by_one() {
+            this->increment();
+            return;
+        }
+
+        void add_twice(int x) {
+            this->add(x);
+            this->add(x);
+            return;
+        }
+
+        int get_value() {
+            return this->value;
+        }
+};
+
+int main() {
+    class Calculator calc;
+    calc.value = 10;
+    calc.increment_by_one();
+    calc.add_twice(5);
+    return calc.get_value();
+}

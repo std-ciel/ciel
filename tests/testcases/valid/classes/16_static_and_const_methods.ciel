@@ -46,8 +46,8 @@ class Logger {
 
     public:
         Logger(int level) {
-            log_level = level;
-            prefix = (char *)0;
+            this->log_level = level;
+            this->prefix = (char *)0;
         }
 
         void log(char* message) {
@@ -67,7 +67,7 @@ class Logger {
         }
 
         int get_level() {
-            return log_level;
+            return this->log_level;
         }
 };
 

@@ -1,0 +1,29 @@
+// Test 'this' usage with parameter name shadowing
+
+class Rectangle {
+    public:
+        int width;
+        int height;
+
+        void set_dimensions(int width, int height) {
+            this->width = width;
+            this->height = height;
+            return;
+        }
+
+        int area() {
+            return this->width * this->height;
+        }
+
+        int perimeter() {
+            return 2 * (this->width + this->height);
+        }
+};
+
+int main() {
+    class Rectangle rect;
+    rect.set_dimensions(5, 10);
+    int a = rect.area();
+    int p = rect.perimeter();
+    return a + p;
+}

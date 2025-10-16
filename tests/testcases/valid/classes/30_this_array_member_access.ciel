@@ -1,0 +1,39 @@
+// Test 'this' with array members
+
+class ArrayHolder {
+    public:
+        int* values;
+        int size;
+
+        void set_value(int index, int value) {
+            if (index >= 0) {
+                if (index < this->size) {
+                    this->values[index] = value;
+                }
+            }
+            return;
+        }
+
+        int get_value(int index) {
+            if (index >= 0) {
+                if (index < this->size) {
+                    return this->values[index];
+                }
+            }
+            return 0;
+        }
+
+        int get_size() {
+            return this->size;
+        }
+};
+
+int main() {
+    class ArrayHolder holder;
+    holder.size = 5;
+    holder.values = new int[5];
+    holder.set_value(0, 42);
+    holder.set_value(1, 99);
+    int result = holder.get_value(0) + holder.get_value(1);
+    return result;
+}

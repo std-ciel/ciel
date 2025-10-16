@@ -1,0 +1,32 @@
+// Test 'this' in method chaining pattern
+
+class Builder {
+    public:
+        int value;
+        int multiplier;
+
+        class Builder* set_value(int v) {
+            this->value = v;
+            return this;
+        }
+
+        class Builder* set_multiplier(int m) {
+            this->multiplier = m;
+            return this;
+        }
+
+        int build() {
+            return this->value * this->multiplier;
+        }
+};
+
+int main() {
+    class Builder b;
+    b.value = 0;
+    b.multiplier = 1;
+    class Builder* ptr;
+    ptr = b.set_value(10);
+    ptr = ptr->set_multiplier(5);
+    int result = ptr->build();
+    return result;
+}
