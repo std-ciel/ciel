@@ -12,34 +12,39 @@ typedef int* IntPtr;
 typedef char* String;
 typedef float** FloatPtrPtr;
 
-// Struct typedef
-typedef struct Point {
+struct Point {
     int x;
     int y;
-} Point;
+};
 
-typedef struct Node {
+struct Node {
     int data;
     struct Node* next;
-} Node;
+};
 
-// Union typedef
-typedef union Data {
+union Data {
     int i;
     float f;
     char c;
-} Data;
+};
 
-// Enum typedef
-typedef enum Color {
+enum Color {
     RED,
     GREEN,
     BLUE
-} Color;
+};
 
-// Array typedefs
-typedef int IntArray[10];
-typedef char Matrix[5][5];
+// Struct typedef
+typedef struct Point Point;
+
+typedef struct Node Node;
+
+// Union typedef
+typedef union Data Data;
+
+// Enum typedef
+typedef enum Color Color;
+
 
 // Function pointer typedef (if supported)
 // typedef int (*FuncPtr)(int, int);
@@ -52,7 +57,6 @@ int main() {
     Node n;
     Data d;
     Color c;
-    IntArray arr;
     
     return 0;
 }
