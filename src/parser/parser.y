@@ -4118,6 +4118,7 @@ operator_token
     | COMMA_OP        { $$ = ","; }
     | LOGICAL_AND_OP { $$ = "&&"; }
     | LOGICAL_OR_OP  { $$ = "||"; }
+    | LOGICAL_NOT_OP { $$ = "!"; }
     | NEW             { $$ = " new"; }
     | DELETE          { $$ = " delete"; }
     ;
