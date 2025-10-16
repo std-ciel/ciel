@@ -973,6 +973,20 @@
       TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
       return std::make_shared<CallExpr>(overload, operands, result_type);
     } else {
+      if (op_symbol == "&" && operands.size() == 1) {
+        // Special case: address-of operator can always be applied to class types
+        QualifiedType ptr = apply_pointer_levels_or_error(
+            QualifiedType(operand_type, Qualifier::NONE),
+            1,
+            "address-of operator",
+            loc.begin.line,
+            loc.begin.column);
+        if (ptr.type == nullptr) {
+          return std::nullopt;
+        }
+        TypePtr result_type = ptr.type;
+        return std::make_shared<UnaryExpr>(Operator::ADDRESS_OF, operands[0], result_type);
+      }
       parser_add_error(loc.begin.line,
                        loc.begin.column,
                        "No operator" + op_symbol + " overload found for type '" + operand_type->debug_name() + "'");
@@ -3919,6 +3933,16 @@ function_declaration_or_definition
             if (di.pointer_levels == 0 && ret) {
               check_complete_type(ret, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
             }
+
+            if (ret && di.pointer_levels > 0) {
+              QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(ret, Qualifier::NONE),
+                                                               di.pointer_levels,
+                                                               "member function pointer declarator",
+                                                               @1.begin.line,
+                                                               @2.begin.column);
+              ret = qt.type;
+            }
+
             encountered_function_names.insert(di.name);
             TypePtr fn = make_function_type_or_error(ret,
                                                      di.param_types,
@@ -4000,6 +4024,7 @@ function_declaration_or_definition
             if (di.pointer_levels == 0 && ret) {
               check_complete_type(ret, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
             }
+
             encountered_function_names.insert(di.name);
             TypePtr fn = make_function_type_or_error(ret,
                                                      di.param_types,
