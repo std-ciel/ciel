@@ -1,4 +1,6 @@
 #include <argparse/argparse.hpp>
+#include <csignal>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 
@@ -11,8 +13,58 @@
 
 void print_parse_results();
 
+void print_lexer_errors()
+{
+    if (lexer_had_errors()) {
+        auto errors = lexer_get_errors();
+        std::cerr << "\n┌─────────────────────────┐\n";
+        std::cerr << "│   LEXICAL ERRORS        │\n";
+        std::cerr << "└─────────────────────────┘\n";
+        for (const auto &e : errors) {
+            std::cerr << "Lexer Error: " << e.message << " at line " << e.line;
+            if (e.column > 0) {
+                std::cerr << ":" << e.column;
+            }
+            std::cerr << "\n";
+        }
+    }
+}
+
+void print_parser_errors()
+{
+    if (parser_had_errors()) {
+        auto errors = parser_get_errors();
+        std::cerr << "\n┌─────────────────────────┐\n";
+        std::cerr << "│   PARSING ERRORS        │\n";
+        std::cerr << "└─────────────────────────┘\n";
+        for (const auto &e : errors) {
+            std::cerr << "Parser Error: " << e.message << " at line " << e.line;
+            if (e.column > 0) {
+                std::cerr << ":" << e.column;
+            }
+            std::cerr << "\n";
+        }
+    }
+}
+
+void sigsegv_handler(int signum)
+{
+    std::cerr << "\n┌─────────────────────────────────────┐\n";
+    std::cerr << "│   FATAL ERROR: SEGMENTATION FAULT   │\n";
+    std::cerr << "└─────────────────────────────────────┘\n";
+
+    // Print lexer and parser errors if any
+    print_lexer_errors();
+    print_parser_errors();
+
+    std::exit(EXIT_FAILURE);
+}
+
 int main(int argc, char *argv[])
 {
+    // Register signal handler for segmentation faults
+    std::signal(SIGSEGV, sigsegv_handler);
+
     argparse::ArgumentParser program("cielc", "1.0.0");
 
     program.add_description("Ciel language compiler");
@@ -105,17 +157,7 @@ int main(int argc, char *argv[])
     }
 
     if (lexer_had_errors()) {
-        auto errors = lexer_get_errors();
-        std::cerr << "\n┌─────────────────────────┐\n";
-        std::cerr << "│   LEXICAL ERRORS        │\n";
-        std::cerr << "└─────────────────────────┘\n";
-        for (const auto &e : errors) {
-            std::cerr << "Lexer Error: " << e.message << " at line " << e.line;
-            if (e.column > 0) {
-                std::cerr << ":" << e.column;
-            }
-            std::cerr << "\n";
-        }
+        print_lexer_errors();
         lexer_clear_errors();
         return 1;
     }
@@ -136,17 +178,7 @@ int main(int argc, char *argv[])
     }
 
     if (parser_had_errors()) {
-        auto errors = parser_get_errors();
-        std::cerr << "\n┌─────────────────────────┐\n";
-        std::cerr << "│   PARSING ERRORS        │\n";
-        std::cerr << "└─────────────────────────┘\n";
-        for (const auto &e : errors) {
-            std::cerr << "Parser Error: " << e.message << " at line " << e.line;
-            if (e.column > 0) {
-                std::cerr << ":" << e.column;
-            }
-            std::cerr << "\n";
-        }
+        print_parser_errors();
         parser_clear_errors();
         return 1;
     }
