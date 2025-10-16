@@ -34,3 +34,9 @@ void* func_many_params(int a, int b, int c, int d, int e, int f) {
 unsigned* func_unsigned_params(unsigned x, unsigned* ptr) {
     return (unsigned*)0;
 }
+
+int main(){
+    bool*** b;
+    func_mixed_params((int**)0,'a',(float*)0,b);
+    return 0;
+}

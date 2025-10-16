@@ -15,7 +15,7 @@ int func_signed() {
 }
 
 unsigned func_unsigned() {
-    return 100;
+    return (unsigned)100;
 }
 
 // Character types
@@ -31,4 +31,15 @@ bool func_bool() {
 // Floating point type
 float func_float() {
     return 3.14;
+}
+
+int main(){
+    func_void();
+    func_int();
+    func_signed();
+    func_char();
+    func_bool();
+    func_float();
+
+    return 0;
 }

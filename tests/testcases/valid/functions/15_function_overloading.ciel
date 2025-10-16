@@ -298,5 +298,6 @@ int varFunc(int x, ...) {
 }
 
 int main() {
+    varFunc(5,6,7,10,9);
     return 0;
 }

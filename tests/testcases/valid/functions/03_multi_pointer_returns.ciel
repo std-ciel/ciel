@@ -39,3 +39,8 @@ unsigned** func_unsigned_double_ptr() {
 bool*** func_bool_triple_ptr() {
     return (bool***)0;
 }
+
+int main(){
+    func_int_quad_ptr();
+    return 0;
+}

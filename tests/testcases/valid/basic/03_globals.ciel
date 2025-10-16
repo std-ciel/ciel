@@ -1,0 +1,10 @@
+// Test global variable declarations and initializations
+int global_x = 10;
+int global_y = 20;
+float global_pi = 3.14;
+bool global_flag = true;
+
+int main() {
+    int local_z = global_x + global_y;
+    return local_z;
+}

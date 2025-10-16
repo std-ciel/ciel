@@ -1,5 +1,16 @@
 // Basic variable declarations and literals
 
+int add(int a,int b){
+    return a+b;
+}
+
+int func(int a){
+    return a;
+}
+
+int x = 5;
+int h = 0;
+
 int main() {
     // Integer literals
     int a = 0;

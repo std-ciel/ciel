@@ -28,3 +28,15 @@ int* func_signed_ptr() {
 void* func_void_ptr() {
     return (void*)0;
 }
+
+int main(){
+    func_int_ptr();
+    func_char_ptr();
+    func_float_ptr();
+    func_bool_ptr();
+    func_unsigned_ptr();
+    func_signed_ptr();
+    func_void_ptr();
+
+    return 0;
+}
