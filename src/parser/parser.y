@@ -1268,8 +1268,12 @@
 
 
 open_brace
-  : OPEN_BRACE_OP { symbol_table.enter_scope(); parser_state.push_ctx(ContextKind::BLOCK); }
-  ;
+    : OPEN_BRACE_OP { 
+        symbol_table.enter_scope(); 
+        parser_state.push_ctx(ContextKind::BLOCK);
+        add_pending_parameters_to_scope(@1);
+      }
+    ;
 
 close_brace
   : CLOSE_BRACE_OP { symbol_table.exit_scope(); parser_state.pop_ctx(); check_forward_declarations(); }
@@ -3547,6 +3551,7 @@ function_definition
 		    ret_t = qt.type;
 		  }
 		  parser_state.push_function(ret_t);
+		  prepare_parameters_for_scope(di.param_types, di.param_names);
 		}
 	 } compound_statement {
 		auto base = $1;
@@ -3813,7 +3818,10 @@ function_declaration_or_definition
       { /* enter function context before parsing body if this is a method */
         TypePtr ret = $1;
         const DeclaratorInfo &di = $2;
-        if (ret && di.is_function) { parser_state.push_function(ret); }
+        if (ret && di.is_function) {
+          parser_state.push_function(ret);
+          prepare_parameters_for_scope(di.param_types, di.param_names);
+        }
       }
       compound_statement
       {
@@ -3877,7 +3885,11 @@ function_declaration_or_definition
     | /* constructor with params */ IDENTIFIER OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
       { /* push function context (void return) before body */
         TypePtr ret = require_builtin("void", @1, "constructor return type");
-        if (ret) { parser_state.push_function(ret); }
+        if (ret) {
+          parser_state.push_function(ret);
+          const auto &plist = $3;
+          prepare_parameters_for_scope(plist.types, plist.names);
+        }
       }
       compound_statement
       {
@@ -3909,7 +3921,11 @@ function_declaration_or_definition
       }
   | /* operator overload def with params */ type_name OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
       { /* push function context before body */
-        if ($1) { parser_state.push_function($1); }
+        if ($1) {
+          parser_state.push_function($1);
+          const auto &plist = $5;
+          prepare_parameters_for_scope(plist.types, plist.names);
+        }
       }
       compound_statement
       {
