@@ -670,7 +670,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        parser_state.ctx_stack.back() != ContextKind::CLASS ||
+        in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -724,7 +724,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        parser_state.ctx_stack.back() != ContextKind::CLASS ||
+        in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -784,7 +784,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        parser_state.ctx_stack.back() != ContextKind::CLASS ||
+        in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -833,7 +833,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        parser_state.ctx_stack.back() != ContextKind::CLASS ||
+        in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -3949,7 +3949,7 @@ function_declaration_or_definition
       {
         const DeclaratorInfo &di = $2;
   		  TypePtr ret = $1;
-        if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
+        if (!parser_state.ctx_stack.empty() && in_class() && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
             if (di.pointer_levels == 0 && ret) {
               check_complete_type(ret, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
