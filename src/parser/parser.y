@@ -624,6 +624,8 @@
       return;
     }
 
+    check_complete_type(return_type, loc_ret, TypeUsageContext::OPERATOR_OVERLOAD_RETURN);
+
     TypePtr fn = make_function_type_or_error(
         return_type,
         param_types,
@@ -2469,6 +2471,10 @@ declaration
                   return_type = qt.type;
                 }
 
+                if (di.pointer_levels == 0 && return_type) {
+                  check_complete_type(return_type, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
+                }
+
                 TypePtr fn = make_function_type_or_error(return_type,
                                                          di.param_types,
                                                          di.is_variadic,
@@ -2647,6 +2653,7 @@ init_declarator
             }
             else {
               final_t = base;
+              check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
             add_symbol_if_valid(di.name, final_t, @1);
@@ -2687,6 +2694,7 @@ init_declarator
             }
             else {
               final_t = base;
+              check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
             add_symbol_if_valid(di.name, final_t, @1);
@@ -2742,10 +2750,19 @@ struct_or_union_specifier
         // Mark as defined
         parser_state.defined_types.insert(full_name);
 
-        // Create the aggregate type in the current (outer) scope
-        auto rec = type_factory.make<RecordType>(tag, is_union, true);
-        $$ = unwrap_type_or_error(rec, "struct/union definition", @1.begin.line, @2.begin.column);
-        // Create a dedicated member scope and add members as symbols
+        // Check if a forward declaration already exists (e.g., from self-referential pointers)
+        auto found = type_factory.lookup(full_name);
+        TypePtr rec;
+        if (found.has_value()) {
+          rec = found.value();
+          auto record_type = std::static_pointer_cast<RecordType>(rec);
+          record_type->is_defined = true;
+        } else {
+          rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
+        }
+        
+        $$ = rec;
+
         symbol_table.enter_scope();
         auto record_type = std::static_pointer_cast<RecordType>($$);
         for (const auto &kv : $4) {
@@ -2855,6 +2872,9 @@ struct_declaration
                                                          "struct field array",
                                                          @1.begin.line,
                                                          @1.begin.column);
+                if (di.array_dims.empty()) {
+                  check_complete_type(final_t.type, @1, TypeUsageContext::STRUCT_UNION_MEMBER);
+                }
               }
 
               // TODO handle errors
@@ -3103,6 +3123,7 @@ parameter_declaration
           }
           else {
             t = base;
+            check_complete_type(t.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
           }
 
           $$.type = t;
@@ -3115,6 +3136,7 @@ parameter_declaration
         $$ = ParamDeclInfo{};
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
+          check_complete_type(base.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
           $$.type = base;
         }
         $$.name = std::string{};
@@ -3123,7 +3145,11 @@ parameter_declaration
     | declaration_specifiers
       {
         $$ = ParamDeclInfo{};
-        $$.type = parser_state.current_decl_base_type;
+        QualifiedType base_type = parser_state.current_decl_base_type;
+        if (base_type.type) {
+          check_complete_type(base_type.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
+        }
+        $$.type = base_type;
         $$.name = std::string{};
         parser_state.reset_decl();
       }
@@ -3635,6 +3661,10 @@ function_definition
 			                                                     @2.begin.column);
 			    return_type = qt.type;
 			  }
+			  
+			  if (di.pointer_levels == 0 && return_type) {
+			    check_complete_type(return_type, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
+			  }
 
 			  // Build function type
       TypePtr fn = make_function_type_or_error(return_type,
@@ -3701,6 +3731,10 @@ class_specifier_tail
     }
     class_open_brace class_member_list class_close_brace
     {
+
+      if (parser_state.current_class_type) {
+        std::static_pointer_cast<ClassType>(parser_state.current_class_type)->is_defined = true;
+      }
       $$ = parser_state.current_class_type;
       parser_state.current_class_type = nullptr;
       parser_state.parent_class_type = nullptr;
@@ -3721,6 +3755,10 @@ class_specifier_tail
     {
       std::string full_name = std::string("class ") + $1;
       parser_state.defined_types.insert(full_name);
+
+      if (parser_state.current_class_type) {
+        std::static_pointer_cast<ClassType>(parser_state.current_class_type)->is_defined = true;
+      }
 
       $$ = parser_state.current_class_type;
       parser_state.current_class_type = nullptr;
@@ -3749,7 +3787,7 @@ class_specifier_tail
       // empty anonymous class
       std::ostringstream os;
       os << "<anon-class@" << symbol_table.get_current_scope_id() << ":" << (anon_class_counter++) << ">";
-      TypePtr t = unwrap_type_or_error(type_factory.make<ClassType>(os.str(), parser_state.parent_class_type, parser_state.inherited_access, false), "empty anonymous class", @1.begin.line, @1.begin.column);
+      TypePtr t = unwrap_type_or_error(type_factory.make<ClassType>(os.str(), parser_state.parent_class_type, parser_state.inherited_access, true), "empty anonymous class", @1.begin.line, @1.begin.column);
       $$ = t;
       parser_state.parent_class_type = nullptr;
     } // to allow empty classes
@@ -3770,8 +3808,12 @@ inheritance_specifier
     std::string full = std::string("class ") + name;
     auto opt = type_factory.lookup(full);
     if (opt.has_value() && opt.value()->kind == TypeKind::CLASS) {
-      parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
-      parser_state.inherited_access = $1;
+      if (!check_complete_type(opt.value(), @2, TypeUsageContext::CLASS_INHERITANCE)) {
+        parser_state.parent_class_type = nullptr;
+      } else {
+        parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
+        parser_state.inherited_access = $1;
+      }
     } else {
       parser_add_error(@2.begin.line, @2.begin.column, "unknown class name '" + name + "' for inheritance");
       parser_state.parent_class_type = nullptr;
@@ -3782,8 +3824,12 @@ inheritance_specifier
     std::string full = std::string("class ") + name;
     auto opt = type_factory.lookup(full);
     if (opt.has_value() && opt.value()->kind == TypeKind::CLASS) {
-      parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
-      parser_state.inherited_access = Access::PRIVATE; // default
+      if (!check_complete_type(opt.value(), @1, TypeUsageContext::CLASS_INHERITANCE)) {
+        parser_state.parent_class_type = nullptr;
+      } else {
+        parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
+        parser_state.inherited_access = Access::PRIVATE; // default
+      }
     } else {
       parser_add_error(@1.begin.line, @1.begin.column, "unknown class name '" + name + "' for inheritance");
       parser_state.parent_class_type = nullptr;
@@ -3818,6 +3864,9 @@ function_declaration_or_definition
   		  TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
+            if (di.pointer_levels == 0 && ret) {
+              check_complete_type(ret, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
+            }
             encountered_function_names.insert(di.name);
             TypePtr fn = make_function_type_or_error(ret,
                                                      di.param_types,
@@ -3859,6 +3908,9 @@ function_declaration_or_definition
                                                        "member array declarator",
                                                        @1.begin.line,
                                                        @1.begin.column);
+              if (di.array_dims.empty()) {
+                check_complete_type(final_t.type, @1, TypeUsageContext::CLASS_DATA_MEMBER);
+              }
             }
 
             // TODO error handling
@@ -3885,6 +3937,9 @@ function_declaration_or_definition
   		  TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
+            if (di.pointer_levels == 0 && ret) {
+              check_complete_type(ret, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
+            }
             encountered_function_names.insert(di.name);
             TypePtr fn = make_function_type_or_error(ret,
                                                      di.param_types,
