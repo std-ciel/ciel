@@ -32,10 +32,11 @@ void SymbolTable::exit_scope()
     current_scope_level--;
 }
 
-Result<bool, SymbolTableError> SymbolTable::add_symbol(const std::string &name,
-                             QualifiedType type,
-                             StorageClass storage_class,
-                             std::optional<FunctionMeta> function_meta)
+Result<bool, SymbolTableError>
+SymbolTable::add_symbol(const std::string &name,
+                        QualifiedType type,
+                        StorageClass storage_class,
+                        std::optional<FunctionMeta> function_meta)
 {
     auto scope_iter = scopes.find(current_scope_id);
     if (scope_iter == scopes.end()) {
@@ -97,6 +98,21 @@ SymbolTable::lookup_symbol(const std::string &name) const
             if (symbol_iter != scope.symbols.end()) {
                 return symbol_iter->second;
             }
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<SymbolPtr>
+SymbolTable::lookup_operator(const std::string &mangled_name) const
+{
+    for (const auto &scope_pair : scopes) {
+        const Scope &scope = scope_pair.second;
+        auto symbol_iter = scope.symbols.find(mangled_name);
+
+        if (symbol_iter != scope.symbols.end()) {
+            return symbol_iter->second;
         }
     }
 

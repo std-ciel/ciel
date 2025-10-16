@@ -209,16 +209,6 @@
     for (const auto& p : in) { types.push_back(p.type); names.push_back(p.name); }
   }
 
-  static TypePtr pointer_from(TypePtr base, const yy::location& loc)
-  {
-    if (!base) {
-      return nullptr;
-    }
-
-    auto result = type_factory.pointer_from(base);
-    return unwrap_type_or_error(result, "pointer creation", loc.begin.line, loc.begin.column);
-  }
-
   static TypePtr dereference_pointer(TypePtr pointer_type, const yy::location& loc, const std::string& context)
   {
     if (!pointer_type) {
@@ -418,6 +408,12 @@
     }
     return false;
   }
+  static bool in_class() {
+    for(auto it = parser_state.ctx_stack.rbegin(); it != parser_state.ctx_stack.rend(); ++it) {
+      if(*it == ContextKind::CLASS) return true;
+    }
+    return false;
+  }
   static bool in_loop_or_switch() { return in_loop() || in_switch(); }
 
   // -------- Function definition semantic helpers --------
@@ -506,7 +502,7 @@
     if (!parser_state.current_class_type) {
       return false;
     }
-    
+
     bool has_class = false;
     bool has_function = false;
     for (auto ctx : parser_state.ctx_stack) {
@@ -535,19 +531,19 @@
     }
 
     // Special case: allow using the current class type within its own definition in specific contexts
-    bool is_data_member_context = (usage_ctx == TypeUsageContext::CLASS_DATA_MEMBER || 
+    bool is_data_member_context = (usage_ctx == TypeUsageContext::CLASS_DATA_MEMBER ||
                                     usage_ctx == TypeUsageContext::STRUCT_UNION_MEMBER);
-    
+
     if (!is_data_member_context && parser_state.current_class_type) {
       // Check if the type matches the current class being defined
       if (type->debug_name() == parser_state.current_class_type->debug_name()) {
         // Allow in function signatures (return types, parameters) and local variables inside member functions
-        bool is_function_signature = (usage_ctx == TypeUsageContext::FUNCTION_RETURN_TYPE || 
+        bool is_function_signature = (usage_ctx == TypeUsageContext::FUNCTION_RETURN_TYPE ||
                                        usage_ctx == TypeUsageContext::FUNCTION_PARAMETER ||
                                        usage_ctx == TypeUsageContext::OPERATOR_OVERLOAD_RETURN);
-        bool is_local_variable_in_member = (usage_ctx == TypeUsageContext::VARIABLE_DECLARATION && 
+        bool is_local_variable_in_member = (usage_ctx == TypeUsageContext::VARIABLE_DECLARATION &&
                                              is_in_member_function_of_class());
-        
+
         if (is_function_signature || is_local_variable_in_member) {
           return true; // Allow self-reference in these contexts
         }
@@ -556,7 +552,7 @@
 
     if (!is_complete_type(type)) {
       parser_add_error(loc.begin.line, loc.begin.column,
-                       "incomplete type '" + type->debug_name() + "' used in " + 
+                       "incomplete type '" + type->debug_name() + "' used in " +
                        type_usage_context_to_string(usage_ctx));
       return false;
     }
@@ -567,8 +563,8 @@
   static void check_unnamed_parameters(const std::vector<std::string>& param_names, const yy::location& loc) {
     for (size_t i = 0; i < param_names.size(); ++i) {
       if (param_names[i].empty()) {
-        parser_add_error(loc.begin.line, loc.begin.column, 
-                         "function definition cannot have unnamed parameters (parameter " + 
+        parser_add_error(loc.begin.line, loc.begin.column,
+                         "function definition cannot have unnamed parameters (parameter " +
                          std::to_string(i + 1) + ")");
       }
     }
@@ -581,7 +577,7 @@
       const std::string& name = param_names[i];
       if (!name.empty()) {
         if (!seen_names.insert(name).second) {
-          parser_add_error(loc.begin.line, loc.begin.column, 
+          parser_add_error(loc.begin.line, loc.begin.column,
                            "duplicate parameter name '" + name + "' in function definition");
         }
       }
@@ -619,7 +615,7 @@
       const yy::location& loc_op)
   {
     if (!return_type || parser_state.ctx_stack.empty() ||
-        parser_state.ctx_stack.back() != ContextKind::CLASS ||
+        !in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -902,11 +898,16 @@
                                 false);
     }
 
-    return mangle_function_name(op_symbol, function_type, meta, *std::static_pointer_cast<ClassType>(left_type));
-
+    auto mangled = mangle_function_name(op_symbol, function_type, meta, *std::static_pointer_cast<ClassType>(left_type));
+    if (!mangled.has_value()) {
+      std::cerr << "Warning: unable to mangle operator '" << op_symbol << "'\n";
+      return std::nullopt;
+    }
+    return mangled;
   }
 
   static SymbolPtr get_operator_overload(TypePtr left_type, const std::string& op_symbol, TypePtr right_type = nullptr) {
+
     if (!left_type) {
       return nullptr;
     }
@@ -917,7 +918,8 @@
       return nullptr;
     }
 
-    auto sym_opt = symbol_table.lookup_symbol(mangled_name.value());
+    symbol_table.print_symbols();
+    auto sym_opt = symbol_table.lookup_operator(mangled_name.value());
     if (sym_opt.has_value()) {
       return sym_opt.value();
     }
@@ -1327,8 +1329,8 @@
 
 
 open_brace
-    : OPEN_BRACE_OP { 
-        symbol_table.enter_scope(); 
+    : OPEN_BRACE_OP {
+        symbol_table.enter_scope();
         parser_state.push_ctx(ContextKind::BLOCK);
         add_pending_parameters_to_scope(@1);
       }
@@ -1428,16 +1430,16 @@ postfix_expression
     {
       if($1->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR){
         std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>($1)->function_name;
-        FunctionType non_variadic(QualifiedType(), {}, false);
-        FunctionType variadic(QualifiedType(), {}, true);
+        FunctionType non_variadic(QualifiedType{}, {}, false);
+        FunctionType variadic(QualifiedType{}, {}, true);
 
         FunctionMeta meta{};
 
         auto non_variadic_mangled_name = mangle_function_name(function_name, non_variadic, meta, std::nullopt).value();
         auto variadic_mangled_name = mangle_function_name(function_name, variadic, meta, std::nullopt).value();
 
-        auto non_variadic_symbol = symbol_table.lookup_symbol(non_variadic_mangled_name);
-        auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled_name);
+        auto non_variadic_symbol = symbol_table.lookup_operator(non_variadic_mangled_name);
+        auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled_name);
 
         if (!non_variadic_symbol.has_value() && !variadic_symbol.has_value()) {
           parser_add_error(@1.begin.line,
@@ -1492,7 +1494,7 @@ postfix_expression
             // Try non-variadic version
             auto non_variadic_mangled = mangle_function_name(function_name, non_variadic, meta, *current_class);
             if (non_variadic_mangled.has_value()) {
-              auto non_variadic_symbol = symbol_table.lookup_symbol(non_variadic_mangled.value());
+              auto non_variadic_symbol = symbol_table.lookup_operator(non_variadic_mangled.value());
               if (non_variadic_symbol.has_value()) {
                 func_symbol = non_variadic_symbol.value();
                 break;
@@ -1503,7 +1505,7 @@ postfix_expression
             if (!func_symbol) {
               auto variadic_mangled = mangle_function_name(function_name, variadic, meta, *current_class);
               if (variadic_mangled.has_value()) {
-                auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled.value());
+                auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
                 if (variadic_symbol.has_value()) {
                   func_symbol = variadic_symbol.value();
                   break;
@@ -1618,7 +1620,7 @@ postfix_expression
         FunctionType exact_match(QualifiedType(), arg_types, false);
         auto exact_mangled = mangle_function_name(function_name, exact_match, meta, std::nullopt);
         if (exact_mangled.has_value()) {
-          auto exact_symbol = symbol_table.lookup_symbol(exact_mangled.value());
+          auto exact_symbol = symbol_table.lookup_operator(exact_mangled.value());
           if (exact_symbol.has_value()) {
             func_symbol = exact_symbol.value();
           }
@@ -1629,7 +1631,7 @@ postfix_expression
           FunctionType variadic_match(QualifiedType(), arg_types, true);
           auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, std::nullopt);
           if (variadic_mangled.has_value()) {
-            auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled.value());
+            auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
             if (variadic_symbol.has_value()) {
               func_symbol = variadic_symbol.value();
             }
@@ -1644,7 +1646,7 @@ postfix_expression
 
             auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, std::nullopt);
             if (reduced_mangled.has_value()) {
-              auto reduced_symbol = symbol_table.lookup_symbol(reduced_mangled.value());
+              auto reduced_symbol = symbol_table.lookup_operator(reduced_mangled.value());
               if (reduced_symbol.has_value()) {
                 func_symbol = reduced_symbol.value();
                 break;
@@ -1658,7 +1660,7 @@ postfix_expression
           FunctionType empty_variadic(QualifiedType(), {}, true);
           auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, std::nullopt);
           if (empty_mangled.has_value()) {
-            auto empty_symbol = symbol_table.lookup_symbol(empty_mangled.value());
+            auto empty_symbol = symbol_table.lookup_operator(empty_mangled.value());
             if (empty_symbol.has_value()) {
               func_symbol = empty_symbol.value();
             }
@@ -1700,7 +1702,7 @@ postfix_expression
             FunctionType exact_match(QualifiedType(), arg_types, false);
             auto exact_mangled = mangle_function_name(function_name, exact_match, meta, *current_class);
             if (exact_mangled.has_value()) {
-              auto exact_symbol = symbol_table.lookup_symbol(exact_mangled.value());
+              auto exact_symbol = symbol_table.lookup_operator(exact_mangled.value());
               if (exact_symbol.has_value()) {
                 func_symbol = exact_symbol.value();
                 break;
@@ -1712,7 +1714,7 @@ postfix_expression
               FunctionType variadic_match(QualifiedType(), arg_types, true);
               auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, *current_class);
               if (variadic_mangled.has_value()) {
-                auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled.value());
+                auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
                 if (variadic_symbol.has_value()) {
                   func_symbol = variadic_symbol.value();
                   break;
@@ -1728,7 +1730,7 @@ postfix_expression
 
                 auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, *current_class);
                 if (reduced_mangled.has_value()) {
-                  auto reduced_symbol = symbol_table.lookup_symbol(reduced_mangled.value());
+                  auto reduced_symbol = symbol_table.lookup_operator(reduced_mangled.value());
                   if (reduced_symbol.has_value()) {
                     func_symbol = reduced_symbol.value();
                     break;
@@ -1742,7 +1744,7 @@ postfix_expression
               FunctionType empty_variadic(QualifiedType(), {}, true);
               auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, *current_class);
               if (empty_mangled.has_value()) {
-                auto empty_symbol = symbol_table.lookup_symbol(empty_mangled.value());
+                auto empty_symbol = symbol_table.lookup_operator(empty_mangled.value());
                 if (empty_symbol.has_value()) {
                   func_symbol = empty_symbol.value();
                   break;
@@ -1809,6 +1811,8 @@ postfix_expression
       TypePtr base_type = get_expression_type($1, @1, "member access");
 
       if (!base_type) {
+        parser_add_error(@1.begin.line, @1.begin.column,
+                     "member access base type could not be determined");
         $$ = nullptr;
       }
       else if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
@@ -2760,7 +2764,7 @@ struct_or_union_specifier
         } else {
           rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
         }
-        
+
         $$ = rec;
 
         symbol_table.enter_scope();
@@ -3649,7 +3653,7 @@ function_definition
 			  // Validate function parameters
 			  check_unnamed_parameters(di.param_names, @2);
 			  check_duplicate_parameter_names(di.param_names, @2);
-			  
+
         encountered_function_names.insert(di.name);
 			  // Apply pointer levels to base type for return type
 			  TypePtr return_type = base;
@@ -3661,7 +3665,7 @@ function_definition
 			                                                     @2.begin.column);
 			    return_type = qt.type;
 			  }
-			  
+
 			  if (di.pointer_levels == 0 && return_type) {
 			    check_complete_type(return_type, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
 			  }

@@ -49,6 +49,8 @@ class SymbolTable {
 
     std::optional<SymbolPtr> lookup_symbol(const std::string &name) const;
 
+    std::optional<SymbolPtr> lookup_operator(const std::string &mangled_name) const;
+
     ScopeID get_current_scope_id() const
     {
         return current_scope_id;
