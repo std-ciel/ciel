@@ -999,20 +999,9 @@
     }
 
     // Check for operator overload in class types
-    if (is_class_type(operand_type)) {
-      SymbolPtr overload = get_operator_overload(operand_type, op_symbol);
-      if (overload) {
-        TypePtr function_type = overload->get_type().type;
-        TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-        std::vector<ASTNodePtr> args = {operand};
-        return std::make_shared<CallExpr>(overload, args, result_type);
-      } else {
-        parser_add_error(loc.begin.line,
-                         loc.begin.column,
-                         "No operator" + op_symbol + " overload found for type '" + operand_type->debug_name() + "'");
-        return nullptr;
-      }
+    auto overload_result = try_operator_overload(operand_type, op_symbol, {operand}, loc, op_name);
+    if (overload_result.has_value()) {
+      return overload_result.value();
     }
 
     // Validate builtin type
@@ -1059,20 +1048,9 @@
     }
 
     // Check for operator overload in class types
-    if (is_class_type(left_type)) {
-      SymbolPtr overload = get_operator_overload(left_type, op_symbol, right_type);
-      if (overload) {
-        TypePtr function_type = overload->get_type().type;
-        TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-
-        std::vector<ASTNodePtr> args = {left, right};
-        return std::make_shared<CallExpr>(overload, args, result_type);
-      } else {
-        parser_add_error(op_loc.begin.line,
-                         op_loc.begin.column,
-                         "No operator" + op_symbol + " overload found for type '" + left_type->debug_name() + "'");
-        return nullptr;
-      }
+    auto overload_result = try_operator_overload(left_type, op_symbol, {left, right}, op_loc, op_name, right_type);
+    if (overload_result.has_value()) {
+      return overload_result.value();
     }
 
     // Validate builtin types
@@ -1174,6 +1152,13 @@
 
     if (!lhs_type || !rhs_type) {
       return nullptr;
+    }
+
+    // Check for operator overload in class types
+    std::string op_symbol = get_operator_string(op_enum);
+    auto overload_result = try_operator_overload(lhs_type, op_symbol, {lhs, rhs}, op_loc, op_name, rhs_type);
+    if (overload_result.has_value()) {
+      return overload_result.value();
     }
 
     // For compound assignment operators, check type compatibility
