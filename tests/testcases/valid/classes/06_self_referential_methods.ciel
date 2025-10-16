@@ -1,0 +1,11 @@
+// Test: Class using itself in member function signatures
+// Expected: No errors - class can use itself in method parameters and return types
+
+class Node {
+    private:
+        int value;
+    public:
+        class Node getNext();
+        void setNext(class Node n);
+        class Node* getNextPtr();
+};

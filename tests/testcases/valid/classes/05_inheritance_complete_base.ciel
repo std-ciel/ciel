@@ -1,0 +1,17 @@
+// Test: Class inheritance with complete base class
+// Expected: No errors - base class is complete
+
+class Base {
+    private:
+        int value;
+    public:
+        int getValue();
+};
+
+class Derived : public Base {
+    private:
+        float extra;
+};
+
+// Using the derived class
+class Derived d_var;
