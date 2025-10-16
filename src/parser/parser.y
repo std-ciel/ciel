@@ -39,6 +39,7 @@
     std::vector<QualifiedType> param_types;
     std::vector<std::string> param_names;
     bool is_variadic = false;
+    ASTNodePtr initializer = nullptr;  // Added to store initializer expression
   };
 
   struct ParamDeclInfo {
@@ -169,6 +170,11 @@
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
   std::unordered_set<std::string> encountered_function_names;
+  
+  // External reference to the global parsed_translation_unit
+  extern std::vector<ASTNodePtr> parsed_translation_unit;
+  extern SymbolTable global_symbol_table;
+  extern TypeFactory global_type_factory;
 
   void check_forward_declarations(){
      for (const auto& type_name : parser_state.forward_declared_types) {
@@ -1310,7 +1316,7 @@
 %type <ParamDeclInfo> parameter_declaration
 %type <std::string> operator_token
 
-%type <ASTNodePtr> statement compound_statement block_item
+%type <ASTNodePtr> statement compound_statement block_item declaration initializer
 %type <ASTNodePtr> expression_statement selection_statement iteration_statement jump_statement
 %type <ASTNodePtr> labeled_statement
 %type <std::vector<ASTNodePtr>> block_item_list translation_unit
@@ -2513,6 +2519,7 @@ constant_expression
 declaration
     : declaration_specifiers SEMICOLON_OP
       {
+        $$ = nullptr;
         parser_state.reset_decl();
       }
     | declaration_specifiers init_declarator_list SEMICOLON_OP
@@ -2520,6 +2527,9 @@ declaration
         // Use $1 directly instead of parser_state.current_decl_base_type
         // because parameter parsing may have reset it
         TypePtr base = $1;
+        
+        // Collect assignment statements for declarations with initializers
+        std::vector<ASTNodePtr> init_stmts;
 
         if (base) {
           for (auto &di : $2) {
@@ -2567,13 +2577,41 @@ declaration
                                     std::optional<FunctionMeta>{meta});
 
               }
+            } else {
+              // Non-function declarator - check for initializer
+              if (di.initializer && !di.name.empty()) {
+                // Look up the symbol that was just added
+                auto sym = symbol_table.lookup_symbol(di.name);
+                if (sym.has_value()) {
+                  // Create an identifier expression for the variable
+                  auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
+                  // Create an assignment expression: var = initializer
+                  auto assign_expr = std::make_shared<AssignmentExpr>(
+                    Operator::ASSIGN,
+                    id_expr,
+                    di.initializer,
+                    sym.value()->get_type().type
+                  );
+                  init_stmts.push_back(assign_expr);
+                }
+              }
             }
           }
         }
+        
+        // If we have any initialization statements, return a BlockStmt containing them
+        // Otherwise return nullptr
+        if (!init_stmts.empty()) {
+          $$ = std::make_shared<BlockStmt>(init_stmts);
+        } else {
+          $$ = nullptr;
+        }
+        
         parser_state.reset_decl();
       }
     | TYPEDEF type_specifier pointer_opt TYPE_NAME SEMICOLON_OP
       {
+        $$ = nullptr;
         size_t ptrs = $3;
         TypePtr base = $2;
         if (base){
@@ -2694,6 +2732,7 @@ init_declarator
     : declarator ASSIGN_OP initializer
       {
         $$ = $1;
+        $$.initializer = $3;  // Store the initializer expression
         const DeclaratorInfo &di = $1;
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
@@ -3385,9 +3424,9 @@ type_name
     ;
 
 initializer
-    : assignment_expression
-    | OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
-    | OPEN_BRACE_OP initializer_list COMMA_OP CLOSE_BRACE_OP
+    : assignment_expression { $$ = $1; }
+    | OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP { $$ = nullptr; /* TODO: handle aggregate initializers */ }
+    | OPEN_BRACE_OP initializer_list COMMA_OP CLOSE_BRACE_OP { $$ = nullptr; /* TODO: handle aggregate initializers */ }
     ;
 
 initializer_list
@@ -3417,7 +3456,7 @@ statement
     | selection_statement { $$ = $1; }
     | iteration_statement { $$ = $1; }
     | jump_statement { $$ = $1; }
-	  | declaration   { $$ = nullptr;  } // TODO: handle declarations in statements
+	  | declaration   { $$ = $1;  } // Now returns BlockStmt with initializer assignments
     ;
 
 labeled_statement
@@ -3672,17 +3711,21 @@ jump_statement
     ;
 
 translation_unit
-    : external_declaration { $$ = std::vector<ASTNodePtr>{ $1 }; }
+    : external_declaration { 
+        $$ = std::vector<ASTNodePtr>{ $1 }; 
+        parsed_translation_unit = $$;
+    }
     | translation_unit external_declaration
     {
         $$ = std::move($1);
         $$.push_back($2);
+        parsed_translation_unit = $$;
     }
     ;
 
 external_declaration
     : function_definition { $$ = std::move($1); }
-    | declaration { $$ = nullptr; }
+    | declaration { $$ = std::move($1); }  // Pass through the declaration AST node
     ;
 
 function_definition

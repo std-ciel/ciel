@@ -40,22 +40,36 @@ add_library(ciel_parser STATIC
     src/lexer/print_tokens.cpp
     src/parser/token_converter.cpp
     src/parser/parser_errors.cpp
+    src/parser/parser_helper.cpp
     src/symbol_table/symbol_table.cpp
     src/symbol_table/symbol.cpp
     src/symbol_table/type.cpp
     src/symbol_table/type_factory.cpp
     src/symbol_table/mangling.cpp
+    src/tac/tac.cpp
+    src/tac/tac_generator.cpp
+    src/tac/tac_utils.cpp
 )
 
 target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/token
     ${CMAKE_SOURCE_DIR}/include/lexer
     ${CMAKE_SOURCE_DIR}/include/parser
+    ${CMAKE_SOURCE_DIR}/include/symbol_table
+    ${CMAKE_SOURCE_DIR}/include/tac
+    ${CMAKE_SOURCE_DIR}/include/ast
     ${CMAKE_CURRENT_BINARY_DIR})
+
 target_compile_definitions(ciel_parser PUBLIC )
 
 add_executable(cielc src/main.cpp)
 target_link_libraries(cielc PRIVATE ciel_parser argparse)
+
+target_include_directories(cielc PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/parser
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/tac
+)
 
 if(UNIT_TESTING)
   enable_testing()

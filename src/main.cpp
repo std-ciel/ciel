@@ -7,8 +7,11 @@
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
 #include "parser.hpp"
+#include "parser/parser.hpp"
 #include "parser/parser_errors.hpp"
+#include "parser/parser_helper.hpp"
 #include "print_tokens.hpp"
+#include "tac/tac_generator.hpp"
 #include "tokens.hpp"
 
 void print_parse_results();
@@ -150,6 +153,32 @@ int main(int argc, char *argv[])
 
         if (parse_result == 0) {
             std::cout << "Parsing completed successfully" << std::endl;
+
+            // Generate TAC after successful parsing
+            if (!parser_only && !debug_mode) {
+                try {
+                    std::cout << "\n┌─────────────────────┐\n";
+                    std::cout << "│ TAC GENERATION      │\n";
+                    std::cout << "└─────────────────────┘\n";
+
+                    auto translation_unit = get_parsed_translation_unit();
+                    auto &symbol_table = get_symbol_table();
+                    auto &type_factory = get_type_factory();
+
+                    TACGenerator tac_gen(symbol_table, type_factory);
+                    tac_gen.generate(translation_unit);
+
+                    std::cout << "TAC generation completed successfully\n\n";
+
+                    // Print the generated TAC
+                    tac_gen.get_program().print();
+
+                } catch (const std::exception &e) {
+                    std::cerr << "\nTAC generation error: " << e.what()
+                              << std::endl;
+                    return 1;
+                }
+            }
         } else {
             std::cout << "Parsing failed with errors" << std::endl;
             parse_failed = true;
@@ -184,11 +213,35 @@ int main(int argc, char *argv[])
     }
 
     if (parser_only || debug_mode || (!lexer_only && !parser_only)) {
-        if (debug_mode || parser_only) {
+        if (debug_mode) {
             std::cout << "\n┌─────────────────────┐\n";
             std::cout << "│   PARSING RESULTS   │\n";
             std::cout << "└─────────────────────┘\n";
             print_parse_results();
+        }
+
+        // Generate TAC in debug mode
+        if (debug_mode && !parse_failed) {
+            try {
+                std::cout << "\n┌─────────────────────┐\n";
+                std::cout << "│ TAC GENERATION      │\n";
+                std::cout << "└─────────────────────┘\n";
+
+                auto translation_unit = get_parsed_translation_unit();
+                auto &symbol_table = get_symbol_table();
+                auto &type_factory = get_type_factory();
+
+                TACGenerator tac_gen(symbol_table, type_factory);
+                tac_gen.generate(translation_unit);
+
+                std::cout << "TAC generation completed successfully\n\n";
+                tac_gen.get_program().print();
+
+            } catch (const std::exception &e) {
+                std::cerr << "\nTAC generation error: " << e.what()
+                          << std::endl;
+                return 1;
+            }
         }
     }
 

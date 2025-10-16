@@ -1,0 +1,1182 @@
+#include "tac/tac_generator.hpp"
+#include "tac/tac_utils.hpp"
+#include <stdexcept>
+
+TACGenerator::TACGenerator(SymbolTable &st, TypeFactory &tf)
+    : symbol_table(st), type_factory(tf)
+{
+}
+
+void TACGenerator::emit(TACInstructionPtr instr)
+{
+    if (current_block) {
+        current_block->add_instruction(instr);
+    }
+}
+
+void TACGenerator::emit_label(const std::string &label)
+{
+    auto label_instr =
+        std::make_shared<TACInstruction>(TACOpcode::LABEL,
+                                         TACOperand(),
+                                         TACOperand::label(label));
+    emit(label_instr);
+}
+
+void TACGenerator::emit_goto(const std::string &label)
+{
+    auto goto_instr =
+        std::make_shared<TACInstruction>(TACOpcode::GOTO,
+                                         TACOperand(),
+                                         TACOperand::label(label));
+    emit(goto_instr);
+}
+
+std::string TACGenerator::new_temp(TypePtr type)
+{
+    if (current_function) {
+        return current_function->new_temp(type);
+    }
+    throw std::runtime_error("No current function to generate temp");
+}
+
+std::string TACGenerator::new_label(const std::string &prefix)
+{
+    if (current_function) {
+        return current_function->new_label(prefix);
+    }
+    throw std::runtime_error("No current function to generate label");
+}
+
+TACOpcode TACGenerator::operator_to_tac_opcode(Operator op)
+{
+    switch (op) {
+    // Arithmetic operators
+    case Operator::ADD:
+        return TACOpcode::ADD;
+    case Operator::SUBTRACT:
+        return TACOpcode::SUB;
+    case Operator::MULTIPLY:
+        return TACOpcode::MUL;
+    case Operator::DIVIDE:
+        return TACOpcode::DIV;
+    case Operator::MODULO:
+        return TACOpcode::MOD;
+
+    // Bitwise operators
+    case Operator::BITWISE_AND:
+        return TACOpcode::AND;
+    case Operator::BITWISE_OR:
+        return TACOpcode::OR;
+    case Operator::BITWISE_XOR:
+        return TACOpcode::XOR;
+    case Operator::BITWISE_NOT:
+        return TACOpcode::NOT;
+    case Operator::LEFT_SHIFT:
+        return TACOpcode::SHL;
+    case Operator::RIGHT_SHIFT:
+        return TACOpcode::SHR;
+
+    // Logical operators
+    case Operator::LOGICAL_AND:
+        return TACOpcode::LAND;
+    case Operator::LOGICAL_OR:
+        return TACOpcode::LOR;
+    case Operator::LOGICAL_NOT:
+        return TACOpcode::LNOT;
+
+    // Relational operators
+    case Operator::EQUAL:
+        return TACOpcode::EQ;
+    case Operator::NOT_EQUAL:
+        return TACOpcode::NE;
+    case Operator::LESS_THAN:
+        return TACOpcode::LT;
+    case Operator::LESS_EQUAL:
+        return TACOpcode::LE;
+    case Operator::GREATER_THAN:
+        return TACOpcode::GT;
+    case Operator::GREATER_EQUAL:
+        return TACOpcode::GE;
+
+    // Unary operators
+    case Operator::UNARY_MINUS:
+        return TACOpcode::NEG;
+    case Operator::ADDRESS_OF:
+        return TACOpcode::ADDR_OF;
+    case Operator::POINTER_DEREF:
+        return TACOpcode::DEREF;
+
+    // Compound assignment operators - map to their base operations
+    case Operator::ADD_ASSIGN:
+        return TACOpcode::ADD;
+    case Operator::SUBTRACT_ASSIGN:
+        return TACOpcode::SUB;
+    case Operator::MULTIPLY_ASSIGN:
+        return TACOpcode::MUL;
+    case Operator::DIVIDE_ASSIGN:
+        return TACOpcode::DIV;
+    case Operator::MODULO_ASSIGN:
+        return TACOpcode::MOD;
+    case Operator::BITWISE_AND_ASSIGN:
+        return TACOpcode::AND;
+    case Operator::BITWISE_OR_ASSIGN:
+        return TACOpcode::OR;
+    case Operator::BITWISE_XOR_ASSIGN:
+        return TACOpcode::XOR;
+    case Operator::LEFT_SHIFT_ASSIGN:
+        return TACOpcode::SHL;
+    case Operator::RIGHT_SHIFT_ASSIGN:
+        return TACOpcode::SHR;
+
+    default:
+        return TACOpcode::NOP;
+    }
+}
+
+TACOperand TACGenerator::generate_expression(ASTNodePtr node)
+{
+    if (!node)
+        return TACOperand();
+
+    switch (node->type) {
+    case ASTNodeType::LITERAL_EXPR: {
+        auto *lit = static_cast<LiteralExpr *>(node.get());
+        if (std::holds_alternative<int64_t>(lit->value)) {
+            return TACOperand::constant_int(std::get<int64_t>(lit->value),
+                                            lit->expr_type);
+        } else if (std::holds_alternative<uint64_t>(lit->value)) {
+            return TACOperand::constant_int(
+                static_cast<int64_t>(std::get<uint64_t>(lit->value)),
+                lit->expr_type);
+        } else if (std::holds_alternative<double>(lit->value)) {
+            return TACOperand::constant_float(std::get<double>(lit->value),
+                                              lit->expr_type);
+        } else if (std::holds_alternative<char>(lit->value)) {
+            return TACOperand::constant_int(
+                static_cast<int64_t>(std::get<char>(lit->value)),
+                lit->expr_type);
+        } else if (std::holds_alternative<bool>(lit->value)) {
+            return TACOperand::constant_int(std::get<bool>(lit->value) ? 1 : 0,
+                                            lit->expr_type);
+        } else if (std::holds_alternative<std::string>(lit->value)) {
+            // String literals need special handling - create a global string
+            // constant
+            std::string str_label = new_label("str");
+            // Add string to program's string constants (would need extension to
+            // TACProgram)
+            return TACOperand::label(str_label);
+        }
+        return TACOperand();
+    }
+
+    case ASTNodeType::IDENTIFIER_EXPR: {
+        auto *id = static_cast<IdentifierExpr *>(node.get());
+        return TACOperand::symbol(id->symbol, id->expr_type);
+    }
+
+    case ASTNodeType::ENUM_IDENTIFIER_EXPR: {
+        auto *enum_id = static_cast<EnumIdentifierExpr *>(node.get());
+        // Enum identifiers are constant integers
+        // Would need to look up the enum value from the type
+        return TACOperand::constant_int(0, enum_id->expr_type); // Placeholder
+    }
+
+    case ASTNodeType::BINARY_EXPR:
+        return generate_binary_op(static_cast<BinaryExpr *>(node.get()));
+
+    case ASTNodeType::UNARY_EXPR:
+        return generate_unary_op(static_cast<UnaryExpr *>(node.get()));
+
+    case ASTNodeType::ASSIGNMENT_EXPR:
+        return generate_assignment(static_cast<AssignmentExpr *>(node.get()));
+
+    case ASTNodeType::CALL_EXPR:
+        return generate_call(static_cast<CallExpr *>(node.get()));
+
+    case ASTNodeType::TERNARY_EXPR:
+        return generate_ternary(static_cast<TernaryExpr *>(node.get()));
+
+    case ASTNodeType::CAST_EXPR: {
+        auto *cast = static_cast<CastExpr *>(node.get());
+        auto operand = generate_expression(cast->expression);
+        auto result_temp = new_temp(cast->target_type);
+        auto result = TACOperand::temporary(result_temp, cast->target_type);
+
+        auto instr =
+            std::make_shared<TACInstruction>(TACOpcode::CAST, result, operand);
+        instr->comment = "Cast to " + cast->target_type->debug_name();
+        emit(instr);
+
+        return result;
+    }
+
+    case ASTNodeType::MEMBER_EXPR: {
+        auto *member = static_cast<MemberExpr *>(node.get());
+        auto base = generate_expression(member->object);
+
+        // Get base type from expression
+        auto base_type_result = get_expression_type(member->object);
+        if (!base_type_result.is_ok()) {
+            throw std::runtime_error(
+                "Cannot determine base type for member access");
+        }
+        TypePtr base_type = base_type_result.value();
+
+        // Handle pointer dereference for -> operator
+        if (member->op == Operator::MEMBER_ACCESS_PTR) {
+            // Dereference pointer first
+            auto deref_temp = new_temp(base_type);
+            auto deref_result = TACOperand::temporary(deref_temp, base_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::DEREF,
+                                                  deref_result,
+                                                  base));
+            base = deref_result;
+
+            // Get pointed-to type - use pointee member of PointerType
+            if (auto ptr_type =
+                    std::dynamic_pointer_cast<PointerType>(base_type)) {
+                base_type = ptr_type->pointee.type;
+            }
+        }
+
+        return generate_member_access(base, member->member_name, base_type);
+    }
+
+    case ASTNodeType::NEW_EXPR: {
+        auto *new_expr = static_cast<NewExpr *>(node.get());
+        size_t size = calculate_type_size(new_expr->allocated_type);
+
+        // Call malloc or allocation function
+        auto size_operand = TACOperand::constant_int(size, nullptr);
+        auto result_temp = new_temp(new_expr->expr_type);
+        auto result = TACOperand::temporary(result_temp, new_expr->expr_type);
+
+        // Emit allocation call
+        auto alloc_instr =
+            std::make_shared<TACInstruction>(TACOpcode::CALL,
+                                             result,
+                                             TACOperand::label("malloc"),
+                                             size_operand);
+        alloc_instr->comment =
+            "Allocate " + new_expr->allocated_type->debug_name();
+        emit(alloc_instr);
+
+        return result;
+    }
+
+    case ASTNodeType::DELETE_EXPR: {
+        auto *delete_expr = static_cast<DeleteExpr *>(node.get());
+        auto operand = generate_expression(delete_expr->operand);
+
+        // Call free or deallocation function
+        auto free_instr =
+            std::make_shared<TACInstruction>(TACOpcode::CALL,
+                                             TACOperand(),
+                                             TACOperand::label("free"),
+                                             operand);
+        free_instr->comment = "Deallocate memory";
+        emit(free_instr);
+
+        return TACOperand(); // Delete doesn't produce a value
+    }
+
+    default:
+        throw std::runtime_error("Unhandled expression type in TAC generation");
+    }
+}
+
+TACOperand TACGenerator::generate_binary_op(BinaryExpr *expr)
+{
+    // Handle short-circuit evaluation for logical operators
+    if (expr->op == Operator::LOGICAL_AND || expr->op == Operator::LOGICAL_OR) {
+        auto result_temp = new_temp(expr->expr_type);
+        auto result = TACOperand::temporary(result_temp, expr->expr_type);
+
+        auto short_circuit_label = new_label("short_circuit");
+        auto end_label = new_label("end_logical");
+
+        auto left = generate_expression(expr->left);
+
+        if (expr->op == Operator::LOGICAL_AND) {
+            // If left is false, short-circuit to false
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::IF_FALSE,
+                TACOperand(),
+                left,
+                TACOperand::label(short_circuit_label)));
+
+            auto right = generate_expression(expr->right);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                  result,
+                                                  right));
+            emit_goto(end_label);
+
+            emit_label(short_circuit_label);
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::ASSIGN,
+                result,
+                TACOperand::constant_int(0, expr->expr_type)));
+        } else {
+            // If left is true, short-circuit to true
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::IF_TRUE,
+                TACOperand(),
+                left,
+                TACOperand::label(short_circuit_label)));
+
+            auto right = generate_expression(expr->right);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                  result,
+                                                  right));
+            emit_goto(end_label);
+
+            emit_label(short_circuit_label);
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::ASSIGN,
+                result,
+                TACOperand::constant_int(1, expr->expr_type)));
+        }
+
+        emit_label(end_label);
+        return result;
+    }
+
+    // Handle comma operator - evaluate left for side effects, return right
+    if (expr->op == Operator::COMMA_OP) {
+        generate_expression(expr->left); // Evaluate for side effects
+        return generate_expression(expr->right);
+    }
+
+    // Handle array subscript operator
+    if (expr->op == Operator::SUBSCRIPT_OP) {
+        auto base = generate_expression(expr->left);
+        auto index = generate_expression(expr->right);
+
+        // Calculate address: base + (index * element_size)
+        auto base_type_result = get_expression_type(expr->left);
+        TypePtr element_type = expr->expr_type;
+        size_t element_size = calculate_type_size(element_type);
+
+        auto size_operand = TACOperand::constant_int(element_size, nullptr);
+        auto offset_temp = new_temp(nullptr);
+        auto offset = TACOperand::temporary(offset_temp, nullptr);
+
+        emit(std::make_shared<TACInstruction>(TACOpcode::MUL,
+                                              offset,
+                                              index,
+                                              size_operand));
+
+        auto addr_temp = new_temp(nullptr);
+        auto addr = TACOperand::temporary(addr_temp, nullptr);
+        emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                              addr,
+                                              base,
+                                              offset));
+
+        // Load from calculated address
+        auto result_temp = new_temp(element_type);
+        auto result = TACOperand::temporary(result_temp, element_type);
+        emit(std::make_shared<TACInstruction>(TACOpcode::LOAD, result, addr));
+
+        return result;
+    }
+
+    // Regular binary operations
+    auto left = generate_expression(expr->left);
+    auto right = generate_expression(expr->right);
+
+    auto result_temp = new_temp(expr->expr_type);
+    auto result = TACOperand::temporary(result_temp, expr->expr_type);
+
+    auto opcode = operator_to_tac_opcode(expr->op);
+    auto instr = std::make_shared<TACInstruction>(opcode, result, left, right);
+    emit(instr);
+
+    return result;
+}
+
+TACOperand TACGenerator::generate_unary_op(UnaryExpr *expr)
+{
+    // Handle pre/post increment and decrement
+    if (expr->op == Operator::INCREMENT || expr->op == Operator::DECREMENT ||
+        expr->op == Operator::POST_INCREMENT ||
+        expr->op == Operator::POST_DECREMENT) {
+
+        auto operand = generate_expression(expr->operand);
+        auto one = TACOperand::constant_int(1, expr->expr_type);
+
+        TACOperand result;
+        if (expr->op == Operator::POST_INCREMENT ||
+            expr->op == Operator::POST_DECREMENT) {
+            // Post-increment/decrement: save old value, modify, return old
+            // value
+            auto old_value_temp = new_temp(expr->expr_type);
+            auto old_value =
+                TACOperand::temporary(old_value_temp, expr->expr_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                  old_value,
+                                                  operand));
+
+            auto opcode = (expr->op == Operator::POST_INCREMENT)
+                              ? TACOpcode::ADD
+                              : TACOpcode::SUB;
+            emit(std::make_shared<TACInstruction>(opcode,
+                                                  operand,
+                                                  operand,
+                                                  one));
+
+            result = old_value;
+        } else {
+            // Pre-increment/decrement: modify, return new value
+            auto opcode = (expr->op == Operator::INCREMENT) ? TACOpcode::ADD
+                                                            : TACOpcode::SUB;
+            emit(std::make_shared<TACInstruction>(opcode,
+                                                  operand,
+                                                  operand,
+                                                  one));
+            result = operand;
+        }
+
+        return result;
+    }
+
+    // Handle unary plus (no-op)
+    if (expr->op == Operator::UNARY_PLUS) {
+        return generate_expression(expr->operand);
+    }
+
+    // Other unary operations
+    auto operand = generate_expression(expr->operand);
+    auto result_temp = new_temp(expr->expr_type);
+    auto result = TACOperand::temporary(result_temp, expr->expr_type);
+
+    auto opcode = operator_to_tac_opcode(expr->op);
+    auto instr = std::make_shared<TACInstruction>(opcode, result, operand);
+    emit(instr);
+
+    return result;
+}
+
+TACOperand TACGenerator::generate_assignment(AssignmentExpr *expr)
+{
+    auto value = generate_expression(expr->value);
+
+    // Handle member assignment
+    if (expr->target->type == ASTNodeType::MEMBER_EXPR) {
+        auto *member = static_cast<MemberExpr *>(expr->target.get());
+        auto base = generate_expression(member->object);
+
+        auto base_type_result = get_expression_type(member->object);
+        if (!base_type_result.is_ok()) {
+            throw std::runtime_error(
+                "Cannot determine base type for member assignment");
+        }
+        TypePtr base_type = base_type_result.value();
+
+        // Handle pointer dereference for -> operator
+        if (member->op == Operator::MEMBER_ACCESS_PTR) {
+            auto deref_temp = new_temp(base_type);
+            auto deref_result = TACOperand::temporary(deref_temp, base_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::DEREF,
+                                                  deref_result,
+                                                  base));
+            base = deref_result;
+
+            // Get pointed-to type - use pointee member of PointerType
+            if (auto ptr_type =
+                    std::dynamic_pointer_cast<PointerType>(base_type)) {
+                base_type = ptr_type->pointee.type;
+            }
+        }
+
+        // Handle compound assignment operators
+        if (expr->op != Operator::ASSIGN) {
+            auto current =
+                generate_member_access(base, member->member_name, base_type);
+            auto opcode = operator_to_tac_opcode(expr->op);
+
+            auto temp_result = new_temp(expr->expr_type);
+            auto temp = TACOperand::temporary(temp_result, expr->expr_type);
+            emit(
+                std::make_shared<TACInstruction>(opcode, temp, current, value));
+            value = temp;
+        }
+
+        generate_member_store(base, member->member_name, base_type, value);
+        return value;
+    }
+
+    // Handle array subscript assignment
+    if (expr->target->type == ASTNodeType::BINARY_EXPR) {
+        auto *binary = static_cast<BinaryExpr *>(expr->target.get());
+        if (binary->op == Operator::SUBSCRIPT_OP) {
+            auto base = generate_expression(binary->left);
+            auto index = generate_expression(binary->right);
+
+            auto base_type_result = get_expression_type(binary->left);
+            size_t element_size = calculate_type_size(expr->expr_type);
+
+            auto size_operand = TACOperand::constant_int(element_size, nullptr);
+            auto offset_temp = new_temp(nullptr);
+            auto offset = TACOperand::temporary(offset_temp, nullptr);
+
+            emit(std::make_shared<TACInstruction>(TACOpcode::MUL,
+                                                  offset,
+                                                  index,
+                                                  size_operand));
+
+            auto addr_temp = new_temp(nullptr);
+            auto addr = TACOperand::temporary(addr_temp, nullptr);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                                  addr,
+                                                  base,
+                                                  offset));
+
+            // Handle compound assignment
+            if (expr->op != Operator::ASSIGN) {
+                auto current_temp = new_temp(expr->expr_type);
+                auto current =
+                    TACOperand::temporary(current_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                                      current,
+                                                      addr));
+
+                auto opcode = operator_to_tac_opcode(expr->op);
+
+                auto result_temp = new_temp(expr->expr_type);
+                auto result =
+                    TACOperand::temporary(result_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(opcode,
+                                                      result,
+                                                      current,
+                                                      value));
+                value = result;
+            }
+
+            emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                  addr,
+                                                  value));
+            return value;
+        }
+    }
+
+    // Simple variable assignment
+    auto target = generate_expression(expr->target);
+
+    // Handle compound assignment operators
+    if (expr->op != Operator::ASSIGN) {
+        auto opcode = operator_to_tac_opcode(expr->op);
+
+        auto temp_result = new_temp(expr->expr_type);
+        auto temp = TACOperand::temporary(temp_result, expr->expr_type);
+        emit(std::make_shared<TACInstruction>(opcode, temp, target, value));
+        value = temp;
+    }
+
+    emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN, target, value));
+    return target;
+}
+
+TACOperand TACGenerator::generate_call(CallExpr *expr)
+{
+    // Generate arguments in reverse order (right-to-left evaluation)
+    std::vector<TACOperand> args;
+    for (auto &arg : expr->arguments) {
+        args.push_back(generate_expression(arg));
+    }
+
+    // Emit PARAM instructions
+    for (auto it = args.rbegin(); it != args.rend(); ++it) {
+        emit(std::make_shared<TACInstruction>(TACOpcode::PARAM,
+                                              TACOperand(),
+                                              *it));
+    }
+
+    // Generate call
+    auto callee = TACOperand::symbol(expr->callee, nullptr);
+    TACOperand result;
+
+    if (expr->expr_type && !is_void_type(expr->expr_type)) {
+        auto result_temp = new_temp(expr->expr_type);
+        result = TACOperand::temporary(result_temp, expr->expr_type);
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::CALL,
+            result,
+            callee,
+            TACOperand::constant_int(args.size(), nullptr)));
+    } else {
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::CALL,
+            TACOperand(),
+            callee,
+            TACOperand::constant_int(args.size(), nullptr)));
+    }
+
+    return result;
+}
+
+TACOperand TACGenerator::generate_ternary(TernaryExpr *expr)
+{
+    auto condition = generate_expression(expr->condition);
+
+    auto true_label = new_label("ternary_true");
+    auto false_label = new_label("ternary_false");
+    auto end_label = new_label("ternary_end");
+
+    emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
+                                          TACOperand(),
+                                          condition,
+                                          TACOperand::label(false_label)));
+
+    // True branch
+    emit_label(true_label);
+    auto true_result = generate_expression(expr->true_branch);
+    auto result_temp = new_temp(expr->expr_type);
+    auto result = TACOperand::temporary(result_temp, expr->expr_type);
+    emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                          result,
+                                          true_result));
+    emit_goto(end_label);
+
+    // False branch
+    emit_label(false_label);
+    auto false_result = generate_expression(expr->false_branch);
+    emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                          result,
+                                          false_result));
+
+    emit_label(end_label);
+    return result;
+}
+
+TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
+                                                const std::string &member_name,
+                                                TypePtr base_type)
+{
+    // Get the record type (struct/union/class)
+    auto record_type = std::dynamic_pointer_cast<RecordType>(base_type);
+    if (!record_type) {
+        throw std::runtime_error("Member access on non-struct/class type");
+    }
+
+    // Get member offset
+    auto offset_opt = get_member_offset(record_type.get(), member_name);
+    if (!offset_opt.has_value()) {
+        throw std::runtime_error("Member '" + member_name +
+                                 "' not found in struct");
+    }
+
+    // FIXED: For unions, all members start at offset 0
+    size_t offset = 0;
+    if (!record_type->is_union) {
+        // Only use calculated offset for structs
+        offset = offset_opt.value();
+    }
+    // For unions, offset stays 0 for all members
+
+    // Get member type
+    TypePtr member_type = get_member_type(record_type.get(), member_name);
+    if (!member_type) {
+        throw std::runtime_error("Could not determine member type");
+    }
+
+    // Create temporary for result
+    std::string temp_name = new_temp(member_type);
+    TACOperand result = TACOperand::temporary(temp_name, member_type);
+
+    // Create operand with member info
+    TACOperand member_op = TACOperand::member_access(base_object,
+                                                     member_name,
+                                                     offset,
+                                                     member_type);
+
+    // Emit LOAD_MEMBER instruction: result = base.member
+    auto instr = std::make_shared<TACInstruction>(TACOpcode::LOAD_MEMBER,
+                                                  result,
+                                                  member_op);
+    instr->comment = "Load " + base_object.to_string() + "." + member_name;
+    emit(instr);
+
+    return result;
+}
+
+// Generate member store: obj.member = value
+void TACGenerator::generate_member_store(const TACOperand &base_object,
+                                         const std::string &member_name,
+                                         TypePtr base_type,
+                                         const TACOperand &value)
+{
+    // Get the record type (struct/union/class)
+    auto record_type = std::dynamic_pointer_cast<RecordType>(base_type);
+    if (!record_type) {
+        throw std::runtime_error("Member access on non-struct/class type");
+    }
+
+    // Get member offset
+    auto offset_opt = get_member_offset(record_type.get(), member_name);
+    if (!offset_opt.has_value()) {
+        throw std::runtime_error("Member '" + member_name +
+                                 "' not found in struct");
+    }
+
+    // FIXED: For unions, all members start at offset 0
+    size_t offset = 0;
+    if (!record_type->is_union) {
+        // Only use calculated offset for structs
+        offset = offset_opt.value();
+    }
+    // For unions, offset stays 0 for all members
+
+    // Get member type
+    TypePtr member_type = get_member_type(record_type.get(), member_name);
+
+    // Create member operand with offset info
+    TACOperand member_op = TACOperand::member_access(base_object,
+                                                     member_name,
+                                                     offset,
+                                                     member_type);
+
+    // Emit STORE_MEMBER instruction: base.member = value
+    auto instr = std::make_shared<TACInstruction>(TACOpcode::STORE_MEMBER,
+                                                  member_op,
+                                                  value);
+    instr->comment = "Store to " + base_object.to_string() + "." + member_name;
+    emit(instr);
+}
+
+void TACGenerator::generate_function(FunctionDef *func_def)
+{
+    // Create function
+    auto func_type = std::static_pointer_cast<FunctionType>(
+        func_def->function_symbol->get_type().type);
+
+    std::string mangled_name = func_def->function_symbol->get_name();
+
+    current_function = std::make_shared<TACFunction>(mangled_name,
+                                                     mangled_name,
+                                                     func_def->return_type);
+
+    // Create entry block
+    current_block = std::make_shared<TACBasicBlock>("entry");
+    current_function->entry_block = current_block;
+    current_function->add_block(current_block);
+
+    // Emit ENTER instruction
+    emit(std::make_shared<TACInstruction>(TACOpcode::ENTER));
+
+    // Add parameters
+    for (const auto &param : func_def->parameters) {
+        current_function->parameters.push_back(
+            TACOperand::symbol(param, param->get_type().type));
+    }
+
+    // Generate body
+    if (func_def->body) {
+        generate_statement(func_def->body);
+    }
+
+    // Create exit block if not already created
+    if (!current_function->exit_block) {
+        current_function->exit_block = std::make_shared<TACBasicBlock>("exit");
+        current_function->add_block(current_function->exit_block);
+    }
+
+    // Emit LEAVE and RETURN in exit block
+    current_block = current_function->exit_block;
+    emit(std::make_shared<TACInstruction>(TACOpcode::LEAVE));
+    emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+
+    // Add function to program
+    program.add_function(current_function);
+
+    // Clean up
+    current_function = nullptr;
+    current_block = nullptr;
+}
+
+void TACGenerator::generate_global_declaration(ASTNodePtr node)
+{
+    if (!node)
+        return;
+
+    // Global declarations with initializers come as BlockStmt containing
+    // AssignmentExpr nodes (similar to local variable initializations)
+    if (node->type == ASTNodeType::BLOCK_STMT) {
+        auto *block = static_cast<BlockStmt *>(node.get());
+
+        if (block->statements.empty())
+            return;
+
+        // Check if we need to create the global initialization function
+        // We create it once when we encounter the first global initialization
+        bool need_to_create_init_func =
+            !current_function || current_function->name != "__ciel_global_init";
+
+        if (need_to_create_init_func) {
+            // Create the global initialization function
+            auto void_type_opt = type_factory.get_builtin_type("void");
+            TypePtr void_type =
+                void_type_opt.has_value() ? void_type_opt.value() : nullptr;
+
+            current_function =
+                std::make_shared<TACFunction>("__ciel_global_init",
+                                              "__ciel_global_init",
+                                              void_type);
+
+            current_function->entry_block =
+                std::make_shared<TACBasicBlock>("entry");
+            current_function->exit_block =
+                std::make_shared<TACBasicBlock>("exit");
+            current_function->add_block(current_function->entry_block);
+            current_block = current_function->entry_block;
+
+            // Emit ENTER instruction
+            emit(std::make_shared<TACInstruction>(TACOpcode::ENTER));
+        }
+
+        // Generate TAC for each initialization statement
+        for (const auto &stmt : block->statements) {
+            if (stmt && stmt->type == ASTNodeType::ASSIGNMENT_EXPR) {
+                // Generate the assignment (this will emit the TAC)
+                generate_expression(stmt);
+            }
+        }
+    }
+
+    // Note: Plain declarations without initializers (like "int x;") come as
+    // nullptr from the parser, so there's nothing to generate for them
+}
+
+// NEW: Generate TAC for entire translation unit
+void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
+{
+    // First pass: process all global declarations
+    for (const auto &node : translation_unit) {
+        if (!node)
+            continue;
+
+        if (node->type != ASTNodeType::FUNCTION_DEF) {
+            // Handle global declarations
+            generate_global_declaration(node);
+        }
+    }
+
+    // Finalize global initialization function if it was created
+    if (current_function && current_function->name == "__ciel_global_init") {
+        // Add exit block and LEAVE/RETURN
+        current_block = current_function->exit_block;
+        emit(std::make_shared<TACInstruction>(TACOpcode::LEAVE));
+        emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+
+        current_function->add_block(current_function->exit_block);
+        program.add_function(current_function);
+
+        current_function = nullptr;
+        current_block = nullptr;
+    }
+
+    // Second pass: process all functions
+    for (const auto &node : translation_unit) {
+        if (!node)
+            continue;
+
+        if (node->type == ASTNodeType::FUNCTION_DEF) {
+            generate_function(static_cast<FunctionDef *>(node.get()));
+        }
+    }
+}
+
+void TACGenerator::generate_statement(ASTNodePtr node)
+{
+    if (!node)
+        return;
+
+    switch (node->type) {
+    case ASTNodeType::COMPOUND_STMT:
+    case ASTNodeType::BLOCK_STMT:
+        generate_block_stmt(static_cast<BlockStmt *>(node.get()));
+        break;
+
+    case ASTNodeType::IF_STMT:
+        generate_if_stmt(static_cast<IfStmt *>(node.get()));
+        break;
+
+    case ASTNodeType::ELSE_STMT: {
+        auto *stmt = static_cast<ElseStmt *>(node.get());
+        generate_statement(stmt->body);
+        break;
+    }
+
+    case ASTNodeType::WHILE_STMT:
+        generate_while_stmt(static_cast<WhileStmt *>(node.get()));
+        break;
+
+    case ASTNodeType::DO_WHILE_STMT: {
+        auto *stmt = static_cast<DoWhileStmt *>(node.get());
+        auto body_label = new_label("do_body");
+        auto cond_label = new_label("do_cond");
+        auto end_label = new_label("do_end");
+
+        loop_labels.push({end_label, cond_label});
+
+        emit_label(body_label);
+        generate_statement(stmt->body);
+
+        emit_label(cond_label);
+        auto condition = generate_expression(stmt->condition);
+        emit(std::make_shared<TACInstruction>(TACOpcode::IF_TRUE,
+                                              TACOperand(),
+                                              condition,
+                                              TACOperand::label(body_label)));
+
+        emit_label(end_label);
+        loop_labels.pop();
+        break;
+    }
+
+    case ASTNodeType::UNTIL_STMT: {
+        auto *stmt = static_cast<UntilStmt *>(node.get());
+        auto body_label = new_label("until_body");
+        auto cond_label = new_label("until_cond");
+        auto end_label = new_label("until_end");
+
+        loop_labels.push({end_label, cond_label});
+
+        emit_label(cond_label);
+        auto condition = generate_expression(stmt->condition);
+        emit(std::make_shared<TACInstruction>(TACOpcode::IF_TRUE,
+                                              TACOperand(),
+                                              condition,
+                                              TACOperand::label(end_label)));
+
+        emit_label(body_label);
+        generate_statement(stmt->body);
+        emit_goto(cond_label);
+
+        emit_label(end_label);
+        loop_labels.pop();
+        break;
+    }
+
+    case ASTNodeType::FOR_STMT:
+        generate_for_stmt(static_cast<ForStmt *>(node.get()));
+        break;
+
+    case ASTNodeType::SWITCH_STMT: {
+        auto *stmt = static_cast<SwitchStmt *>(node.get());
+        auto expr = generate_expression(stmt->expression);
+        auto end_label = new_label("switch_end");
+
+        loop_labels.push(
+            {end_label, ""}); // Switch allows break but not continue
+
+        std::vector<std::string> case_labels;
+        std::string default_label;
+
+        // Generate case labels
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            case_labels.push_back(new_label("case"));
+        }
+
+        if (stmt->default_case.has_value()) {
+            default_label = new_label("default");
+        }
+
+        // Generate comparisons for each case
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+            auto case_value = generate_expression(case_stmt->value);
+
+            auto cmp_temp = new_temp(nullptr);
+            auto cmp = TACOperand::temporary(cmp_temp, nullptr);
+            emit(std::make_shared<TACInstruction>(TACOpcode::EQ,
+                                                  cmp,
+                                                  expr,
+                                                  case_value));
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::IF_TRUE,
+                TACOperand(),
+                cmp,
+                TACOperand::label(case_labels[i])));
+        }
+
+        // Jump to default or end
+        if (!default_label.empty()) {
+            emit_goto(default_label);
+        } else {
+            emit_goto(end_label);
+        }
+
+        // Generate case bodies
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            emit_label(case_labels[i]);
+            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+            generate_statement(case_stmt->statement);
+            // Add implicit break (goto end) after each case to prevent
+            // fall-through This is necessary because the parser doesn't include
+            // break statements in the case's statement - they're separate
+            // statements in the enclosing compound block that get discarded
+            // TODO: Fix parser to properly associate breaks with their cases
+            emit_goto(end_label);
+        }
+
+        // Generate default case
+        if (stmt->default_case.has_value()) {
+            emit_label(default_label);
+            auto *default_stmt =
+                static_cast<DefaultStmt *>(stmt->default_case.value().get());
+            generate_statement(default_stmt->statement);
+            // Add implicit break for default case too
+            emit_goto(end_label);
+        }
+
+        emit_label(end_label);
+        loop_labels.pop();
+        break;
+    }
+
+    case ASTNodeType::RET_EXPR:
+        generate_return_stmt(static_cast<RetExpr *>(node.get()));
+        break;
+
+    case ASTNodeType::BREAK_STMT:
+        if (!loop_labels.empty()) {
+            emit_goto(loop_labels.top().first);
+        }
+        break;
+
+    case ASTNodeType::CONTINUE_STMT:
+        if (!loop_labels.empty() && !loop_labels.top().second.empty()) {
+            emit_goto(loop_labels.top().second);
+        }
+        break;
+
+    case ASTNodeType::GOTO_STMT: {
+        auto *stmt = static_cast<GotoStmt *>(node.get());
+        if (stmt->target_label) {
+            emit_goto(stmt->target_label->get_name());
+        }
+        break;
+    }
+
+    case ASTNodeType::LABEL_STMT: {
+        auto *stmt = static_cast<LabelStmt *>(node.get());
+        if (stmt->label) {
+            emit_label(stmt->label->get_name());
+        }
+        generate_statement(stmt->statement);
+        break;
+    }
+
+    // Expression statements
+    default:
+        if (is_expression_node(node->type)) {
+            generate_expression(node);
+        }
+        break;
+    }
+}
+
+void TACGenerator::generate_block_stmt(BlockStmt *stmt)
+{
+    for (auto &s : stmt->statements) {
+        generate_statement(s);
+    }
+}
+
+void TACGenerator::generate_if_stmt(IfStmt *stmt)
+{
+    auto condition = generate_expression(stmt->condition);
+    auto else_label = new_label("else");
+    auto end_label = new_label("endif");
+
+    emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
+                                          TACOperand(),
+                                          condition,
+                                          TACOperand::label(else_label)));
+
+    generate_statement(stmt->then_branch);
+    emit_goto(end_label);
+
+    emit_label(else_label);
+    if (stmt->else_branch.has_value()) {
+        generate_statement(stmt->else_branch.value());
+    }
+
+    emit_label(end_label);
+}
+
+void TACGenerator::generate_while_stmt(WhileStmt *stmt)
+{
+    auto cond_label = new_label("while_cond");
+    auto body_label = new_label("while_body");
+    auto end_label = new_label("while_end");
+
+    loop_labels.push({end_label, cond_label});
+
+    emit_label(cond_label);
+    auto condition = generate_expression(stmt->condition);
+    emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
+                                          TACOperand(),
+                                          condition,
+                                          TACOperand::label(end_label)));
+
+    emit_label(body_label);
+    generate_statement(stmt->body);
+    emit_goto(cond_label);
+
+    emit_label(end_label);
+    loop_labels.pop();
+}
+
+void TACGenerator::generate_for_stmt(ForStmt *stmt)
+{
+    auto cond_label = new_label("for_cond");
+    auto body_label = new_label("for_body");
+    auto update_label = new_label("for_update");
+    auto end_label = new_label("for_end");
+
+    loop_labels.push({end_label, update_label});
+
+    // Initialization
+    if (stmt->initializer.has_value()) {
+        generate_statement(stmt->initializer.value());
+    }
+
+    // Condition
+    emit_label(cond_label);
+    if (stmt->condition.has_value()) {
+        auto condition = generate_expression(stmt->condition.value());
+        emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
+                                              TACOperand(),
+                                              condition,
+                                              TACOperand::label(end_label)));
+    }
+
+    // Body
+    emit_label(body_label);
+    generate_statement(stmt->body);
+
+    // Update
+    emit_label(update_label);
+    if (stmt->updation.has_value()) {
+        generate_expression(stmt->updation.value());
+    }
+    emit_goto(cond_label);
+
+    emit_label(end_label);
+    loop_labels.pop();
+}
+
+void TACGenerator::generate_return_stmt(RetExpr *stmt)
+{
+    if (stmt->value.has_value()) {
+        auto return_value = generate_expression(stmt->value.value());
+        emit(std::make_shared<TACInstruction>(TACOpcode::RETURN,
+                                              TACOperand(),
+                                              return_value));
+    } else {
+        emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+    }
+}
