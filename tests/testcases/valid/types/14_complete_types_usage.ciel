@@ -1,0 +1,44 @@
+// Test: Using complete struct/union/class types should not error
+// Expected: No incomplete type errors
+
+struct CompleteStruct {
+    int x;
+    float y;
+};
+
+union CompleteUnion {
+    int i;
+    float f;
+};
+
+class CompleteClass {
+    private:
+        int data;
+    public:
+        int getValue();
+};
+
+// Using the complete types (should be OK)
+struct CompleteStruct s_var;
+union CompleteUnion u_var;
+class CompleteClass c_var;
+
+void func1(struct CompleteStruct param);
+void func2(union CompleteUnion param);
+void func3(class CompleteClass param);
+
+struct CompleteStruct getStruct();
+union CompleteUnion getUnion();
+class CompleteClass getClass();
+
+struct Outer {
+    struct CompleteStruct s_member;
+    union CompleteUnion u_member;
+    class CompleteClass c_member;
+};
+
+class Container {
+    struct CompleteStruct s_member;
+    union CompleteUnion u_member;
+    class CompleteClass c_member;
+};

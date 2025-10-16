@@ -1,0 +1,11 @@
+// Test: Pointer to incomplete type as class member
+// Expected: No error - pointers to incomplete types are allowed
+
+struct ForwardDeclaredStruct;
+
+class Container {
+    private:
+        struct ForwardDeclaredStruct* data_ptr;
+    public:
+        struct ForwardDeclaredStruct* getDataPtr();
+};

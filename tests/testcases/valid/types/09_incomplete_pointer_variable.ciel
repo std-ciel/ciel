@@ -1,0 +1,6 @@
+// Test: Pointer to incomplete type as variable
+// Expected: No error - pointers to incomplete types are allowed
+
+struct ForwardDeclaredStruct;
+
+struct ForwardDeclaredStruct* ptr;

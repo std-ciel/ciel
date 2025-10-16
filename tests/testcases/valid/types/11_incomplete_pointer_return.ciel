@@ -1,0 +1,6 @@
+// Test: Pointer to incomplete type as function return
+// Expected: No error - pointers to incomplete types are allowed
+
+struct ForwardDeclaredStruct;
+
+struct ForwardDeclaredStruct* getObject();
