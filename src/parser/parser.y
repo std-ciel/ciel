@@ -2687,6 +2687,12 @@ direct_declarator
                             else
                                 throw std::runtime_error("Unexpected type in variant");
                         }, literal->value);
+
+            if(value < 0){
+              parser_add_error(@2.begin.line, @2.begin.column, "array size expression must be non-negative");
+              value = 0;
+            }
+
             $$.array_dims.push_back(value);
           }
           else{
@@ -2853,6 +2859,12 @@ direct_abstract_declarator
                             else
                                 throw std::runtime_error("Unexpected type in variant");
                         }, literal->value);
+
+            if(value < 0){
+              parser_add_error(@2.begin.line, @2.begin.column, "array size expression must be non-negative");
+              value = 0;
+            }
+
             $$.array_dims.push_back(value);
           }
           else{
@@ -2888,6 +2900,12 @@ direct_abstract_declarator
                             else
                                 throw std::runtime_error("Unexpected type in variant");
                         }, literal->value);
+
+            if(value < 0){
+              parser_add_error(@2.begin.line, @2.begin.column, "array size expression must be non-negative");
+              value = 0;
+            }
+
             $$.array_dims.push_back(value);
           }
           else{
