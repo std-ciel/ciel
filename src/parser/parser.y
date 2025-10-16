@@ -1856,10 +1856,17 @@ postfix_expression
                 class_type = nullptr;
               }
             }
-            if(!class_type){
-              parser_add_error(@2.begin.line, @2.begin.column,
-                           "member '" + $3 + "' not found in class or its base classes");
-              $$ = nullptr;
+
+            if(!class_type) {
+              // Can be a function call, but we can't verify at this point because we can't mangle it yet.
+              if(encountered_function_names.find($3) != encountered_function_names.end()){
+                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, nullptr);
+              }
+              else{
+                parser_add_error(@2.begin.line, @2.begin.column,
+                             "member '" + $3 + "' not found in class or its base classes");
+                $$ = nullptr;
+              }
             }
           }
           else if(base_type->kind == TypeKind::RECORD){
@@ -1957,9 +1964,15 @@ postfix_expression
               }
             }
             if(!class_type){
-              parser_add_error(@2.begin.line, @2.begin.column,
-                             "member '" + $3 + "' not found in class or its base classes");
-              $$ = nullptr;
+              // Can be a function call, but we can't verify at this point because we can't mangle it yet.
+              if(encountered_function_names.find($3) != encountered_function_names.end()){
+                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, nullptr);
+              }
+              else{
+                parser_add_error(@2.begin.line, @2.begin.column,
+                               "member '" + $3 + "' not found in class or its base classes");
+                $$ = nullptr;
+              }
             }
           }
           else if(base_type->kind == TypeKind::RECORD){
