@@ -1212,7 +1212,7 @@
 %token TYPEDEF STATIC CONST VOLATILE
 %token ENUM STRUCT UNION CLASS
 %token RETURN IF ELSE SWITCH CASE DEFAULT FOR WHILE DO GOTO CONTINUE BREAK UNTIL
-%token NEW DELETE
+%token NEW DELETE THIS
 %token PUBLIC PRIVATE PROTECTED
 
 %token <std::string> TYPE_NAME
@@ -1416,6 +1416,20 @@ primary_expression
         LiteralValue literal = $1;
         $$ = std::make_shared<LiteralExpr>(literal, expr_type);
       }
+    | THIS
+      {
+        // 'this' is only valid inside a class member function
+        if (!in_class()|| !is_in_member_function_of_class()) {
+          parser_add_error(@1.begin.line, @1.begin.column, "'this' can only be used inside a class member function");
+          $$ = nullptr;
+        } else {
+          // 'this' is a pointer to the current class type
+          QualifiedType class_type(parser_state.current_class_type, Qualifier::NONE);
+          auto pointer_result = apply_pointer_levels_or_error(class_type, 1, "'this' type", @1.begin.line, @1.begin.column);
+          TypePtr this_type = pointer_result.type;
+          $$ = std::make_shared<ThisExpr>(this_type);
+        }
+      }
     | OPEN_PAREN_OP expression CLOSE_PAREN_OP
       {
         $$ = $2;
@@ -1483,6 +1497,12 @@ postfix_expression
       else if ($1->type == ASTNodeType::MEMBER_EXPR) {
         std::string function_name = std::static_pointer_cast<MemberExpr>($1)->member_name;
         TypePtr base_class = get_expression_type(std::static_pointer_cast<MemberExpr>($1)->object, @1, "member function call base");
+
+        auto mem_node = std::static_pointer_cast<MemberExpr>($1);
+        if (mem_node->op == Operator::MEMBER_ACCESS_PTR) {
+          // If using '->', dereference pointer to get class type
+          base_class = dereference_pointer(base_class, @1, "member function call base");
+        }
 
         if (!base_class || !is_class_type(base_class)) {
           parser_add_error(@1.begin.line,
@@ -1693,6 +1713,12 @@ postfix_expression
       else if ($1->type == ASTNodeType::MEMBER_EXPR) {
         std::string function_name = std::static_pointer_cast<MemberExpr>($1)->member_name;
         TypePtr base_class = get_expression_type(std::static_pointer_cast<MemberExpr>($1)->object, @1, "member function call base");
+
+        auto mem_node = std::static_pointer_cast<MemberExpr>($1);
+        if (mem_node->op == Operator::MEMBER_ACCESS_PTR) {
+          // If using '->', dereference pointer to get class type
+          base_class = dereference_pointer(base_class, @1, "member function call base");
+        }
 
         if (!base_class || !is_class_type(base_class)) {
           parser_add_error(@1.begin.line,
@@ -1938,14 +1964,14 @@ postfix_expression
               if (class_type->members.find($3)!= class_type->members.end()) {
                 MemberInfo member = class_type->members.at($3);
 
-                if (member.access != Access::PUBLIC) {
+                if (($1->type != ASTNodeType::THIS_EXPR) && (member.access != Access::PUBLIC)) {
                   parser_add_error(@2.begin.line, @2.begin.column,
                                "member '" + $3 + "' is not accessible (not public)");
                   $$ = nullptr;
                 }
                 else{
                   TypePtr member_type = member.type.type;
-                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, member_type);
                 }
 
                 break;
@@ -1966,7 +1992,7 @@ postfix_expression
             if(!class_type){
               // Can be a function call, but we can't verify at this point because we can't mangle it yet.
               if(encountered_function_names.find($3) != encountered_function_names.end()){
-                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, nullptr);
+                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, nullptr);
               }
               else{
                 parser_add_error(@2.begin.line, @2.begin.column,
@@ -3367,8 +3393,7 @@ designator_list
     ;
 
 designator
-    : OPEN_BRACKET_OP constant_expression CLOSE_BRACKET_OP
-    | DOT_OP IDENTIFIER
+    : DOT_OP IDENTIFIER
     ;
 
 statement
@@ -3954,6 +3979,14 @@ function_declaration_or_definition
         TypePtr ret = $1;
         const DeclaratorInfo &di = $2;
         if (ret && di.is_function) {
+            if (di.pointer_levels > 0) {
+              QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(ret, Qualifier::NONE),
+                                                               di.pointer_levels,
+                                                               "member function pointer definition",
+                                                               @1.begin.line,
+                                                               @2.begin.column);
+              ret = qt.type;
+            }
           parser_state.push_function(ret);
           prepare_parameters_for_scope(di.param_types, di.param_names);
         }

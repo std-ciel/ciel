@@ -154,6 +154,7 @@ enum class ASTNodeType {
     IDENTIFIER_EXPR,
     ENUM_IDENTIFIER_EXPR,
     FUNCTION_IDENTIFIER_EXPR,
+    THIS_EXPR,
 
     CALL_EXPR,
     RET_EXPR,
@@ -196,7 +197,8 @@ class ASTNode {
 };
 
 using ASTNodePtr = std::shared_ptr<ASTNode>;
-using LiteralValue = std::variant<int64_t, uint64_t, double, char, bool, std::string>;
+using LiteralValue =
+    std::variant<int64_t, uint64_t, double, char, bool, std::string>;
 
 class LiteralExpr : public ASTNode {
   public:
@@ -209,6 +211,17 @@ class LiteralExpr : public ASTNode {
     {
     }
     ~LiteralExpr() override = default;
+};
+
+class ThisExpr : public ASTNode {
+  public:
+    TypePtr expr_type;
+
+    ThisExpr(TypePtr expr_type)
+        : ASTNode(ASTNodeType::THIS_EXPR), expr_type(std::move(expr_type))
+    {
+    }
+    ~ThisExpr() override = default;
 };
 
 class IdentifierExpr : public ASTNode {
@@ -616,6 +629,7 @@ inline bool is_expression_node(ASTNodeType type)
     switch (type) {
     case ASTNodeType::LITERAL_EXPR:
     case ASTNodeType::IDENTIFIER_EXPR:
+    case ASTNodeType::THIS_EXPR:
     case ASTNodeType::CALL_EXPR:
     case ASTNodeType::RET_EXPR:
     case ASTNodeType::CAST_EXPR:
@@ -651,6 +665,8 @@ get_expression_type(const ASTNodePtr &node)
         return static_cast<LiteralExpr *>(node.get())->expr_type;
     case ASTNodeType::IDENTIFIER_EXPR:
         return static_cast<IdentifierExpr *>(node.get())->expr_type;
+    case ASTNodeType::THIS_EXPR:
+        return static_cast<ThisExpr *>(node.get())->expr_type;
     case ASTNodeType::CALL_EXPR:
         return static_cast<CallExpr *>(node.get())->expr_type;
     case ASTNodeType::RET_EXPR:
