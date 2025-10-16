@@ -47,7 +47,7 @@ typedef char Matrix[5][5];
 int main() {
     // Using typedefs
     Integer x = 10;
-    String s = 0;
+    String s = (String)0;
     Point p;
     Node n;
     Data d;

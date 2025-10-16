@@ -7,30 +7,30 @@ int func_no_params() {
 
 // Single parameter
 int* func_single_param(int x) {
-    return 0;
+    return (int*)0;
 }
 
 // Multiple parameters
 char* func_multi_params(int x, char c, float f) {
-    return 0;
+    return (char*)0;
 }
 
 // Pointer parameters
 int** func_pointer_params(int* p1, char* p2) {
-    return 0;
+    return (int**)0;
 }
 
 // Mixed pointer levels in parameters
 float*** func_mixed_params(int** p1, char c, float* p2, bool*** p3) {
-    return 0;
+    return (float***)0;
 }
 
 // Many parameters
 void* func_many_params(int a, int b, int c, int d, int e, int f) {
-    return 0;
+    return (void*)0;
 }
 
 // Unsigned parameters
 unsigned* func_unsigned_params(unsigned x, unsigned* ptr) {
-    return 0;
+    return (unsigned*)0;
 }

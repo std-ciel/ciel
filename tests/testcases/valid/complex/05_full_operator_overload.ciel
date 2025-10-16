@@ -104,7 +104,7 @@ class ComplexNumber add_complex(class ComplexNumber c1, class ComplexNumber c2) 
 
 // Variadic with overloaded types
 class Vector3D* combine_vectors(int count, ...) {
-    return 0;
+    return (class Vector3D*)0;
 }
 
 int main() {

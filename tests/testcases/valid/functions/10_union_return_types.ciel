@@ -14,30 +14,32 @@ union Value {
 
 // Return union by value
 union Data create_data() {
-    return;
+    union Data d;
+    return d;
 }
 
 union Value create_value() {
-    return;
+    union Value v;
+    return v;
 }
 
 // Return pointer to union
 union Data* alloc_data() {
-    return 0;
+    return (union Data*)0;
 }
 
 union Value* create_value_ptr() {
-    return 0;
+    return (union Value*)0;
 }
 
 // Return double pointer to union
 union Data** create_data_array() {
-    return 0;
+    return (union Data**)0;
 }
 
 // Functions with union parameters
 union Data process_data(union Data d) {
-    return;
+    return d;
 }
 
 union Value* modify_value(union Value* v) {

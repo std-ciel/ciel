@@ -2,7 +2,7 @@
 
 int main() {
     // Void (in function context)
-    void* vptr = 0;
+    void* vptr = (void*)0;
     
     // Integer types
     int i = 0;

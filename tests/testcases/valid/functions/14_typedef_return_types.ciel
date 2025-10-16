@@ -18,7 +18,7 @@ Integer get_integer() {
 }
 
 String get_string() {
-    return 0;
+    return (String)0;
 }
 
 Real get_real() {
@@ -35,16 +35,16 @@ Point create_point() {
 }
 
 NodePtr create_node() {
-    return 0;
+    return (NodePtr)0;
 }
 
 // Pointer to typedef
 Integer* get_int_array() {
-    return 0;
+    return (Integer*)0;
 }
 
 String* get_string_array() {
-    return 0;
+    return (String*)0;
 }
 
 // Functions with typedef parameters
@@ -53,7 +53,7 @@ Integer add(Integer a, Integer b) {
 }
 
 String concat(String s1, String s2) {
-    return 0;
+    return (String)0;
 }
 
 Point translate(Point p, Integer dx, Integer dy) {

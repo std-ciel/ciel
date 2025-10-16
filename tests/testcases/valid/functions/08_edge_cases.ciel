@@ -1,10 +1,10 @@
 // Test edge cases and special scenarios
 
 // Functions with no parameters but pointer returns
-int* func1() { return 0; }
-char* func2() { return 0; }
-float** func3() { return 0; }
-void*** func4() { return 0; }
+int* func1() { return (int*)0; }
+char* func2() { return (char*)0; }
+float** func3() { return (float**)0; }
+void*** func4() { return (void***)0; }
 
 // Functions with many pointer parameters
 int* func_many_ptrs(int* p1, int* p2, int* p3, int* p4) {
@@ -12,28 +12,28 @@ int* func_many_ptrs(int* p1, int* p2, int* p3, int* p4) {
 }
 
 // Functions returning different pointer depths
-int* depth1(int x) { return 0; }
-int** depth2(int x) { return 0; }
-int*** depth3(int x) { return 0; }
-int**** depth4(int x) { return 0; }
+int* depth1(int x) { return (int*)0; }
+int** depth2(int x) { return (int**)0; }
+int*** depth3(int x) { return (int***)0; }
+int**** depth4(int x) { return (int****)0; }
 
 // Mixed basic types in parameters
 unsigned* mixed_types(int i, unsigned u, char c, bool b, float f) {
-    return 0;
+    return (unsigned*)0;
 }
 
 // All pointer parameters
 void*** all_pointers(int* p1, char** p2, float*** p3) {
-    return 0;
+    return (void***)0;
 }
 
 // Combinations of signed/unsigned
 int* func_signed_ret(int s, unsigned u) {
-    return 0;
+    return (int*)0;
 }
 
 unsigned** func_unsigned_ret(unsigned* up, int* sp) {
-    return 0;
+    return (unsigned**)0;
 }
 
 int main() {

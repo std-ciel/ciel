@@ -72,19 +72,19 @@ class PrivateDerived : private ProtectedBase {
 
 // Functions returning inherited types
 class Animal* create_animal() {
-    return 0;
+    return (class Animal*)0;
 }
 
 class Dog* create_dog() {
-    return 0;
+    return (class Dog*)0;
 }
 
 class Dog** create_dog_pack(int size) {
-    return 0;
+    return (class Dog**)0;
 }
 
 class SportsCar* build_sports_car(int speed, int doors, int turbo) {
-    return 0;
+    return (class SportsCar*)0;
 }
 
 // Complex hierarchy functions
@@ -93,7 +93,7 @@ int train_dog(class Dog* d, class Animal* trainer) {
 }
 
 class Car* upgrade_vehicle(class Vehicle* v, int new_features, ...) {
-    return 0;
+    return (class Car*)0;
 }
 
 int main() {

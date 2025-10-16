@@ -22,8 +22,8 @@ int main() {
     void** vp2;
     
     // Pointer initialization
-    int* ptr = 0;
-    char* str = 0;
+    int* ptr = (int*)0;
+    char* str = (char*)0;
     
     return 0;
 }

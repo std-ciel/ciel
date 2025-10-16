@@ -41,15 +41,15 @@ class Derived : public Base {
 
 // Functions with extreme parameter combinations
 int**** hyper_allocate(int w, int x, int y, int z, ...) {
-    return 0;
+    return (int****)0;
 }
 
 struct Node*** build_tree(int depth, int branching, enum Type t, ...) {
-    return 0;
+    return (struct Node***)0;
 }
 
 union Value** process_values(union Value* vals, int count, bool* flags, ...) {
-    return 0;
+    return (union Value**)0;
 }
 
 // Complex nested control flow
@@ -115,7 +115,7 @@ struct Point {
 };
 
 struct Point*** create_grid(int layers, int rows, int cols) {
-    return 0;
+    return (struct Point***)0;
 }
 
 int process_complex_grid(struct Point grid[5][5][5], int size) {
@@ -124,11 +124,11 @@ int process_complex_grid(struct Point grid[5][5][5], int size) {
 
 // Variadic with complex types
 struct Node* build_list(int count, ...) {
-    return 0;
+    return (struct Node*)0;
 }
 
 class Base* create_hierarchy(int depth, ...) {
-    return 0;
+    return (class Base*)0;
 }
 
 // Operator overloading in classes
@@ -152,7 +152,7 @@ typedef IntPtr* IntPtrPtr;
 typedef IntPtrPtr* IntPtrPtrPtr;
 
 IntPtrPtrPtr ultra_pointer() {
-    return 0;
+    return (IntPtrPtrPtr)0;
 }
 
 int main() {

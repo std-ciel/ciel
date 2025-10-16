@@ -2,29 +2,29 @@
 
 // Pointer to basic types
 int* func_int_ptr() {
-    return 0;
+    return (int*)0;
 }
 
 char* func_char_ptr() {
-    return 0;
+    return (char*)0;
 }
 
 float* func_float_ptr() {
-    return 0;
+    return (float*)0;
 }
 
 bool* func_bool_ptr() {
-    return 0;
+    return (bool*)0;
 }
 
 unsigned* func_unsigned_ptr() {
-    return 0;
+    return (unsigned*)0;
 }
 
 int* func_signed_ptr() {
-    return 0;
+    return (int*)0;
 }
 
 void* func_void_ptr() {
-    return 0;
+    return (void*)0;
 }

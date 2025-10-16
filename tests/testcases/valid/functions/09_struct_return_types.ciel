@@ -18,30 +18,32 @@ struct Node {
 
 // Return struct by value
 struct Point create_point() {
-    return;
+    struct Point p;
+    return p;
 }
 
 struct Vector create_vector() {
-    return;
+    struct Vector v;
+    return v;
 }
 
 // Return pointer to struct
 struct Point* alloc_point() {
-    return 0;
+    return (struct Point*)0;
 }
 
 struct Node* create_node() {
-    return 0;
+    return (struct Node*)0;
 }
 
 // Return double pointer to struct
 struct Point** create_point_array() {
-    return 0;
+    return (struct Point**)0;
 }
 
 // Functions with struct parameters
 struct Point transform_point(struct Point p) {
-    return;
+    return p;
 }
 
 struct Vector* process_vector(struct Vector* v) {

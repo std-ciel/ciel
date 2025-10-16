@@ -4,7 +4,7 @@
 int* func_decl_then_def(int x);
 
 int* func_decl_then_def(int x) {
-    return 0;
+    return (int*)0;
 }
 
 // Multiple related functions
@@ -21,7 +21,7 @@ int* process_numbers(int* arr, unsigned size) {
 }
 
 float** create_matrix(int rows, int cols) {
-    return 0;
+    return (float**)0;
 }
 
 // Forward declarations
@@ -38,7 +38,7 @@ void helper2() {
 }
 
 int* main_processor() {
-    return 0;
+    return (int*)0;
 }
 
 int main() {

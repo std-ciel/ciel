@@ -21,30 +21,30 @@ enum Direction {
 
 // Return enum by value
 enum Color get_color() {
-    return;
+    return Color.RED;
 }
 
 enum Status get_status() {
-    return;
+    return Status.SUCCESS;
 }
 
 // Return pointer to enum
 enum Color* get_color_ptr() {
-    return 0;
+    return (enum Color*)0;
 }
 
 enum Direction* get_direction_ptr() {
-    return 0;
+    return (enum Direction*)0;
 }
 
 // Return double pointer to enum
 enum Status** get_status_array() {
-    return 0;
+    return (enum Status**)0;
 }
 
 // Functions with enum parameters
 enum Color process_color(enum Color c) {
-    return;
+    return c;
 }
 
 enum Status* check_status(enum Status* s) {
