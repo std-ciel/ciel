@@ -955,6 +955,31 @@
     return (lhs_rank >= rhs_rank) ? lhs : rhs;
   }
 
+  static std::optional<ASTNodePtr> try_operator_overload(
+      TypePtr operand_type,
+      const std::string& op_symbol,
+      const std::vector<ASTNodePtr>& operands,
+      const yy::location& loc,
+      const std::string& op_name,
+      TypePtr right_type = nullptr)
+  {
+    if (!is_class_type(operand_type)) {
+      return std::nullopt;
+    }
+
+    SymbolPtr overload = get_operator_overload(operand_type, op_symbol, right_type);
+    if (overload) {
+      TypePtr function_type = overload->get_type().type;
+      TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+      return std::make_shared<CallExpr>(overload, operands, result_type);
+    } else {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       "No operator" + op_symbol + " overload found for type '" + operand_type->debug_name() + "'");
+      return std::make_shared<CallExpr>(nullptr, operands, nullptr); // Return error marker
+    }
+  }
+
   static ASTNodePtr handle_unary_operator(
       ASTNodePtr operand,
       const yy::location& loc,
