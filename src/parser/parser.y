@@ -1362,47 +1362,74 @@ postfix_expression
 
         if (!base_class || !is_class_type(base_class)) {
           parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "member function call base is not a class type");
+                          @1.begin.column,
+                          "member function call base is not a class type");
           $$ = nullptr;
         }
         else {
-          FunctionType non_variadic(QualifiedType(), {}, false);
-          FunctionType variadic(QualifiedType(), {}, true);
-
           FunctionMeta meta(FunctionKind::METHOD, {});
+          SymbolPtr func_symbol = nullptr;
 
-          auto non_variadic_mangled_name = mangle_function_name(function_name, non_variadic, meta, *std::static_pointer_cast<ClassType>(base_class)).value();
-          auto variadic_mangled_name = mangle_function_name(function_name, variadic, meta, *std::static_pointer_cast<ClassType>(base_class)).value();
+          // Search through class hierarchy for matching function
+          auto current_class = std::static_pointer_cast<ClassType>(base_class);
 
-          auto non_variadic_symbol = symbol_table.lookup_symbol(non_variadic_mangled_name);
-          auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled_name);
+          while (current_class && !func_symbol) {
+            FunctionType non_variadic(QualifiedType(), {}, false);
+            FunctionType variadic(QualifiedType(), {}, true);
 
-          if (!non_variadic_symbol.has_value() && !variadic_symbol.has_value()) {
-            parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "use of undeclared member function '" + function_name + "'");
-            $$ = nullptr;
+            // Try non-variadic version
+            auto non_variadic_mangled = mangle_function_name(function_name, non_variadic, meta, *current_class);
+            if (non_variadic_mangled.has_value()) {
+              auto non_variadic_symbol = symbol_table.lookup_symbol(non_variadic_mangled.value());
+              if (non_variadic_symbol.has_value()) {
+                func_symbol = non_variadic_symbol.value();
+                break;
+              }
+            }
+
+            // Try variadic version
+            if (!func_symbol) {
+              auto variadic_mangled = mangle_function_name(function_name, variadic, meta, *current_class);
+              if (variadic_mangled.has_value()) {
+                auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled.value());
+                if (variadic_symbol.has_value()) {
+                  func_symbol = variadic_symbol.value();
+                  break;
+                }
+              }
+            }
+
+            // Move to base class if accessible (public inheritance only)
+            if (current_class->base.base_type && current_class->base.access == Access::PUBLIC) {
+              TypePtr base_type = current_class->base.base_type;
+              if (is_class_type(base_type)) {
+                current_class = std::static_pointer_cast<ClassType>(base_type);
+              } else {
+                current_class = nullptr;
+              }
+            } else {
+              current_class = nullptr;
+            }
           }
-          else if (non_variadic_symbol.has_value() && variadic_symbol.has_value()) {
+
+          if (!func_symbol) {
             parser_add_error(@1.begin.line,
-                             @1.begin.column,
-                             "ambiguous call to overloaded member function '" + function_name + "' with no arguments");
+                            @1.begin.column,
+                            "use of undeclared member function '" + function_name + "'");
             $$ = nullptr;
           }
           else {
-            SymbolPtr func_symbol = non_variadic_symbol.has_value() ? non_variadic_symbol.value() : variadic_symbol.value();
             auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
 
             if (!fn_type->param_types.empty() && !fn_type->is_variadic) {
               parser_add_error(@2.begin.line,
-                               @2.begin.column,
-                               "too few arguments to member function call, expected " +
-                               std::to_string(fn_type->param_types.size()) + ", have 0");
+                              @2.begin.column,
+                              "too few arguments to member function call, expected " +
+                              std::to_string(fn_type->param_types.size()) + ", have 0");
               $$ = nullptr;
             }
             else {
-              std::vector<ASTNodePtr> args={$1}; // empty argument list
+              std::vector<ASTNodePtr> args = {$1};
               $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
             }
           }
@@ -1436,72 +1463,233 @@ postfix_expression
     }
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
     {
-      TypePtr func_type = get_expression_type($1, @1, "function call");
+      ASTNodePtr args_list = $3;
+      std::vector<ASTNodePtr> arg_nodes;
+      std::vector<QualifiedType> arg_types;
 
-      if (!func_type) {
-        $$ = nullptr;
+      std::function<void(ASTNodePtr)> extract_arg_nodes = [&](ASTNodePtr node) {
+        if (!node) return;
+
+        if (node->type == ASTNodeType::BINARY_EXPR) {
+          auto binary = std::static_pointer_cast<BinaryExpr>(node);
+          if (binary->op == Operator::COMMA_OP) {
+            // Recursively extract left side first (for left-to-right order)
+            extract_arg_nodes(binary->left);
+            // Then extract right side
+            extract_arg_nodes(binary->right);
+            return;
+          }
+        }
+
+        arg_nodes.push_back(node);
+      };
+
+      extract_arg_nodes(args_list);
+
+      for (const auto& arg : arg_nodes) {
+        TypePtr arg_type = get_expression_type(arg, @3, "function argument");
+        if (!arg_type) {
+          parser_add_error(@3.begin.line,
+                           @3.begin.column,
+                           "Type of function argument could not be inferred");
+        }
+        arg_types.push_back(QualifiedType{arg_type, Qualifier::NONE});
       }
-      else if (is_function_type(func_type)) {
-        auto fn_type = std::static_pointer_cast<FunctionType>(func_type);
 
-        // Type check arguments
-        std::vector<ASTNodePtr> args;
-        auto arg_list = $3;
+      if($1->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR){
+        std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>($1)->function_name;
 
-        // Extract arguments from comma expression chain
-        std::function<void(ASTNodePtr)> extract_args = [&](ASTNodePtr node) {
-          if (!node) return;
-          if (node->type == ASTNodeType::BINARY_EXPR) {
-            auto binary = std::static_pointer_cast<BinaryExpr>(node);
-            if (binary->op == Operator::COMMA_OP) {
-              extract_args(binary->left);
-              args.push_back(binary->right);
-              return;
+        FunctionMeta meta{};
+        SymbolPtr func_symbol = nullptr;
+
+        // Step 1: Try exact match with all arguments (non-variadic)
+        FunctionType exact_match(QualifiedType(), arg_types, false);
+        auto exact_mangled = mangle_function_name(function_name, exact_match, meta, std::nullopt);
+        if (exact_mangled.has_value()) {
+          auto exact_symbol = symbol_table.lookup_symbol(exact_mangled.value());
+          if (exact_symbol.has_value()) {
+            func_symbol = exact_symbol.value();
+          }
+        }
+
+        // Step 2: Try exact match with variadic function
+        if (!func_symbol) {
+          FunctionType variadic_match(QualifiedType(), arg_types, true);
+          auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, std::nullopt);
+          if (variadic_mangled.has_value()) {
+            auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled.value());
+            if (variadic_symbol.has_value()) {
+              func_symbol = variadic_symbol.value();
             }
           }
-          args.push_back(node);
-        };
-        extract_args(arg_list);
-
-        // Check argument count
-        if (!fn_type->is_variadic && args.size() != fn_type->param_types.size()) {
-          parser_add_error(@2.begin.line,
-                           @2.begin.column,
-                           "wrong number of arguments to function call, expected " +
-                           std::to_string(fn_type->param_types.size()) + ", have " +
-                           std::to_string(args.size()));
-          $$ = nullptr;
         }
-        else if (fn_type->is_variadic && args.size() < fn_type->param_types.size()) {
-          parser_add_error(@2.begin.line,
-                           @2.begin.column,
-                           "too few arguments to variadic function call, expected at least " +
-                           std::to_string(fn_type->param_types.size()));
+
+        // Step 3: Try decreasing parameters from right, looking for variadic functions
+        if (!func_symbol) {
+          for (size_t i = arg_types.size(); i > 0; --i) {
+            std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
+            FunctionType reduced_variadic(QualifiedType(), reduced_args, true);
+
+            auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, std::nullopt);
+            if (reduced_mangled.has_value()) {
+              auto reduced_symbol = symbol_table.lookup_symbol(reduced_mangled.value());
+              if (reduced_symbol.has_value()) {
+                func_symbol = reduced_symbol.value();
+                break;
+              }
+            }
+          }
+        }
+
+        // Step 4: Try with no parameters and variadic
+        if (!func_symbol) {
+          FunctionType empty_variadic(QualifiedType(), {}, true);
+          auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, std::nullopt);
+          if (empty_mangled.has_value()) {
+            auto empty_symbol = symbol_table.lookup_symbol(empty_mangled.value());
+            if (empty_symbol.has_value()) {
+              func_symbol = empty_symbol.value();
+            }
+          }
+        }
+
+        // Step 5: Error if no match found
+        if (!func_symbol) {
+          parser_add_error(@1.begin.line,
+                          @1.begin.column,
+                          "no matching function for call to '" + function_name + "' with " +
+                          std::to_string(arg_types.size()) + " argument(s)");
           $$ = nullptr;
         }
         else {
-          SymbolPtr func_symbol = nullptr;
-          if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
-            func_symbol = std::static_pointer_cast<IdentifierExpr>($1)->symbol;
-          }
-
-          $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+          auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+          $$ = std::make_shared<CallExpr>(func_symbol, arg_nodes, fn_type->return_type.type);
         }
       }
-      else if (is_class_type(func_type)) {
-        // Check for operator() overload with arguments
+      else if ($1->type == ASTNodeType::MEMBER_EXPR) {
+        std::string function_name = std::static_pointer_cast<MemberExpr>($1)->member_name;
+        TypePtr base_class = get_expression_type(std::static_pointer_cast<MemberExpr>($1)->object, @1, "member function call base");
 
-        // TODO: implement operator() with arguments
-        parser_add_error(@2.begin.line,
-                         @2.begin.column,
-                         "operator() overload with arguments not yet supported");
-        $$ = nullptr;
+        if (!base_class || !is_class_type(base_class)) {
+          parser_add_error(@1.begin.line,
+                          @1.begin.column,
+                          "member function call base is not a class type");
+          $$ = nullptr;
+        }
+        else {
+          FunctionMeta meta(FunctionKind::METHOD, {});
+          SymbolPtr func_symbol = nullptr;
+
+          // Search through class hierarchy for matching function
+          auto current_class = std::static_pointer_cast<ClassType>(base_class);
+
+          while (current_class && !func_symbol) {
+            // Step 1: Try exact match with all arguments (non-variadic)
+            FunctionType exact_match(QualifiedType(), arg_types, false);
+            auto exact_mangled = mangle_function_name(function_name, exact_match, meta, *current_class);
+            if (exact_mangled.has_value()) {
+              auto exact_symbol = symbol_table.lookup_symbol(exact_mangled.value());
+              if (exact_symbol.has_value()) {
+                func_symbol = exact_symbol.value();
+                break;
+              }
+            }
+
+            // Step 2: Try exact match with variadic function
+            if (!func_symbol) {
+              FunctionType variadic_match(QualifiedType(), arg_types, true);
+              auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, *current_class);
+              if (variadic_mangled.has_value()) {
+                auto variadic_symbol = symbol_table.lookup_symbol(variadic_mangled.value());
+                if (variadic_symbol.has_value()) {
+                  func_symbol = variadic_symbol.value();
+                  break;
+                }
+              }
+            }
+
+            // Step 3: Try decreasing parameters from right, looking for variadic functions
+            if (!func_symbol) {
+              for (size_t i = arg_types.size(); i > 0; --i) {
+                std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
+                FunctionType reduced_variadic(QualifiedType(), reduced_args, true);
+
+                auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, *current_class);
+                if (reduced_mangled.has_value()) {
+                  auto reduced_symbol = symbol_table.lookup_symbol(reduced_mangled.value());
+                  if (reduced_symbol.has_value()) {
+                    func_symbol = reduced_symbol.value();
+                    break;
+                  }
+                }
+              }
+            }
+
+            // Step 4: Try with no parameters and variadic
+            if (!func_symbol) {
+              FunctionType empty_variadic(QualifiedType(), {}, true);
+              auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, *current_class);
+              if (empty_mangled.has_value()) {
+                auto empty_symbol = symbol_table.lookup_symbol(empty_mangled.value());
+                if (empty_symbol.has_value()) {
+                  func_symbol = empty_symbol.value();
+                  break;
+                }
+              }
+            }
+
+            // Move to base class if accessible (public inheritance only)
+            if (current_class->base.base_type && current_class->base.access == Access::PUBLIC) {
+              TypePtr base_type = current_class->base.base_type;
+              if (is_class_type(base_type)) {
+                current_class = std::static_pointer_cast<ClassType>(base_type);
+              } else {
+                current_class = nullptr;
+              }
+            } else {
+              current_class = nullptr;
+            }
+          }
+
+          // Step 5: Error if no match found
+          if (!func_symbol) {
+            parser_add_error(@1.begin.line,
+                            @1.begin.column,
+                            "no matching member function for call to '" + function_name + "' with " +
+                            std::to_string(arg_types.size()) + " argument(s)");
+            $$ = nullptr;
+          }
+          else {
+            auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+            std::vector<ASTNodePtr> args = {$1};
+            args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
+            $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+          }
+        }
       }
       else {
-        parser_add_error(@1.begin.line,
-                         @1.begin.column,
-                         "called object is not a function or function pointer");
-        $$ = nullptr;
+        TypePtr func_type = get_expression_type($1, @1, "function call");
+
+        if (is_class_type(func_type)) {
+          SymbolPtr overload = get_operator_overload(func_type, "()");
+          if (overload) {
+            TypePtr function_type = overload->get_type().type;
+            TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+            std::vector<ASTNodePtr> args = {$1};
+            $$ = std::make_shared<CallExpr>(overload, args, result_type);
+          } else {
+            parser_add_error(@2.begin.line,
+                            @2.begin.column,
+                            "No operator() overload found for type '" + func_type->debug_name() + "'");
+            $$ = nullptr;
+          }
+        }
+        else{
+          parser_add_error(@1.begin.line,
+                           @1.begin.column,
+                           "called object is not a function");
+          $$ = nullptr;
+        }
       }
     }
     | postfix_expression DOT_OP IDENTIFIER
@@ -1516,9 +1704,17 @@ postfix_expression
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
             while(class_type){
               if (class_type->members.find($3)!= class_type->members.end()) {
-                TypePtr member_type = class_type->members.at($3).type.type;
+                MemberInfo member = class_type->members.at($3);
 
-                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+                if (member.access != Access::PUBLIC) {
+                  parser_add_error(@2.begin.line, @2.begin.column,
+                               "member '" + $3 + "' is not accessible (not public)");
+                  $$ = nullptr;
+                }
+                else{
+                  TypePtr member_type = member.type.type;
+                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+                }
                 break;
               }
               if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
@@ -1607,8 +1803,18 @@ postfix_expression
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
             while(class_type){
               if (class_type->members.find($3)!= class_type->members.end()) {
-                TypePtr member_type = class_type->members.at($3).type.type;
-                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, $1, $3, member_type);
+                MemberInfo member = class_type->members.at($3);
+
+                if (member.access != Access::PUBLIC) {
+                  parser_add_error(@2.begin.line, @2.begin.column,
+                               "member '" + $3 + "' is not accessible (not public)");
+                  $$ = nullptr;
+                }
+                else{
+                  TypePtr member_type = member.type.type;
+                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+                }
+
                 break;
               }
               if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
@@ -1666,10 +1872,10 @@ postfix_expression
                                  [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
                                  "an integer or pointer type");
     }
-    | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
-    {
-      //TODO: implement compound literal
-    }
+    /* | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP */
+    /* { */
+
+    /* } */
     ;
 
 argument_expression_list
