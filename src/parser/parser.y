@@ -3510,6 +3510,15 @@ function_definition
 			if (!di.is_function || di.name.empty()) {
 				parser_add_error(@2.begin.line, @2.begin.column, "function definition requires a named function declarator");
 			} else {
+
+			  for (size_t i = 0; i < di.param_names.size(); ++i) {
+			    if (di.param_names[i].empty()) {
+			      parser_add_error(@2.begin.line, @2.begin.column, 
+			                       "function definition cannot have unnamed parameters (parameter " + 
+			                       std::to_string(i + 1) + ")");
+			    }
+			  }
+			  
         encountered_function_names.insert(di.name);
 			  // Apply pointer levels to base type for return type
 			  TypePtr return_type = base;
