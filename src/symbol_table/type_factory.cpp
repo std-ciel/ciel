@@ -74,7 +74,12 @@ Result<QualifiedType, TypeFactoryError>
 TypeFactory::make_array_chain(QualifiedType base,
                               const std::vector<size_t> &sizes)
 {
-    for (auto size : sizes) {
+    // Build array types from innermost to outermost
+    // For int[3][4], sizes = [3, 4]
+    // We need to build: int -> int[4] -> (int[4])[3]
+    // So iterate in reverse order
+    for (auto it = sizes.rbegin(); it != sizes.rend(); ++it) {
+        auto size = *it;
         auto array_type = get_array(base, size);
         if (array_type.is_err()) {
             return Result<QualifiedType, TypeFactoryError>(array_type.error());
