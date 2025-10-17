@@ -170,7 +170,7 @@
   static TypeFactory type_factory;
   static GlobalParserState parser_state;
   std::unordered_set<std::string> encountered_function_names;
-  
+
   // External reference to the global parsed_translation_unit
   extern std::vector<ASTNodePtr> parsed_translation_unit;
   extern SymbolTable global_symbol_table;
@@ -334,7 +334,7 @@
       return nullptr;
     }
 
-    QualifiedType qualified_char(char_type, Qualifier::CONST);
+    QualifiedType qualified_char(char_type, Qualifier::NONE);
     std::vector<Qualifier> pointer_levels = {Qualifier::NONE};
 
     auto pointer_result = type_factory.make_pointer_chain(qualified_char, pointer_levels);
@@ -502,7 +502,6 @@
     }
     return true;
   }
-
 
   static bool is_in_member_function_of_class() {
     if (!parser_state.current_class_type) {
@@ -1354,6 +1353,11 @@
 %type <ASTNodePtr> exclusive_or_expression inclusive_or_expression logical_and_expression logical_or_expression
 %type <ASTNodePtr> conditional_expression assignment_expression expression constant_expression argument_expression_list
 
+
+%type <std::string> designator
+%type <std::vector<ASTNodePtr>> initializer_list
+%type <std::vector<std::string>> designation designator_list
+
 %left COMMA_OP
 
 %right ASSIGN_OP PLUS_ASSIGN_OP MINUS_ASSIGN_OP STAR_ASSIGN_OP DIVIDE_ASSIGN_OP MOD_ASSIGN_OP
@@ -1898,67 +1902,6 @@ postfix_expression
                      "member access base type could not be determined");
         $$ = nullptr;
       }
-      else if ($1->type == ASTNodeType::IDENTIFIER_EXPR) {
-          if (is_class_type(base_type)) {
-            auto class_type = std::static_pointer_cast<ClassType>(base_type);
-            while(class_type){
-              if (class_type->members.find($3)!= class_type->members.end()) {
-                MemberInfo member = class_type->members.at($3);
-
-                if (member.access != Access::PUBLIC) {
-                  parser_add_error(@2.begin.line, @2.begin.column,
-                               "member '" + $3 + "' is not accessible (not public)");
-                  $$ = nullptr;
-                }
-                else{
-                  TypePtr member_type = member.type.type;
-                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
-                }
-                break;
-              }
-              if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
-                base_type = class_type->base.base_type;
-                if(is_class_type(base_type)){
-                  class_type = std::static_pointer_cast<ClassType>(base_type);
-                }
-                else{
-                  class_type = nullptr;
-                }
-              }
-              else{
-                class_type = nullptr;
-              }
-            }
-
-            if(!class_type) {
-              // Can be a function call, but we can't verify at this point because we can't mangle it yet.
-              if(encountered_function_names.find($3) != encountered_function_names.end()){
-                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, nullptr);
-              }
-              else{
-                parser_add_error(@2.begin.line, @2.begin.column,
-                             "member '" + $3 + "' not found in class or its base classes");
-                $$ = nullptr;
-              }
-            }
-          }
-          else if(base_type->kind == TypeKind::RECORD){
-            auto record_type = std::static_pointer_cast<RecordType>(base_type);
-            if (record_type->fields.find($3)!= record_type->fields.end()) {
-              TypePtr member_type = record_type->fields.at($3).type;
-              $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
-            } else {
-              parser_add_error(@2.begin.line, @2.begin.column,
-                           "member '" + $3 + "' not found in struct/union");
-              $$ = nullptr;
-            }
-          }
-          else {
-            parser_add_error(@1.begin.line, @1.begin.column,
-                         "member reference base type is not a structure or union");
-            $$ = nullptr;
-          }
-        }
       else if($1->type == ASTNodeType::ENUM_IDENTIFIER_EXPR){
           TypePtr enum_type = get_expression_type($1, @1, "enum member access");
 
@@ -1983,11 +1926,122 @@ postfix_expression
             }
           }
       }
-      else {
-          parser_add_error(@1.begin.line, @1.begin.column,
-                       "member access requires struct, union, or class type");
-          $$ = nullptr;
-      }
+      else{
+          if (is_class_type(base_type)) {
+            auto class_type = std::static_pointer_cast<ClassType>(base_type);
+            // Track the effective access level - starts as PUBLIC for direct members
+            Access effective_access = Access::PUBLIC;
+            bool is_direct_access = true; // DOT_OP is always direct access (not through 'this')
+
+            while(class_type){
+              if (class_type->members.find($3)!= class_type->members.end()) {
+                MemberInfo member = class_type->members.at($3);
+
+                // Determine the most restrictive access between member's own access and effective access
+                Access final_access = member.access;
+
+                // If we traversed through inheritance, apply the effective access restriction
+                if (effective_access == Access::PRIVATE) {
+                  final_access = Access::PRIVATE;
+                } else if (effective_access == Access::PROTECTED && final_access == Access::PUBLIC) {
+                  final_access = Access::PROTECTED;
+                }
+
+                // Check accessibility
+                if (!is_direct_access && final_access != Access::PUBLIC) {
+                  parser_add_error(@2.begin.line, @2.begin.column,
+                              "member '" + $3 + "' is not accessible (not public)");
+                  $$ = nullptr;
+                }
+                else{
+                  TypePtr member_type = member.type.type;
+                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+                }
+
+                break;
+              }
+
+              // Move to base class
+              if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+                base_type = class_type->base.base_type;
+
+                // Update effective access based on how we inherit
+                // Public inheritance maintains the access level
+                // (No change needed since we already check for PUBLIC inheritance)
+
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
+              }
+              else if(class_type->base.base_type && class_type->base.access == Access::PROTECTED){
+                // Protected inheritance: public members become protected
+                if (effective_access == Access::PUBLIC) {
+                  effective_access = Access::PROTECTED;
+                }
+
+                base_type = class_type->base.base_type;
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
+              }
+              else if(class_type->base.base_type && class_type->base.access == Access::PRIVATE){
+                // Private inheritance: all members become inaccessible from outside
+                effective_access = Access::PRIVATE;
+
+                base_type = class_type->base.base_type;
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
+              }
+              else{
+                class_type = nullptr;
+              }
+            }
+
+            if(!class_type) {
+              // Can be a function call, but we can't verify at this point because we can't mangle it yet.
+              if(encountered_function_names.find($3) != encountered_function_names.end()){
+                $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, nullptr);
+              }
+              else{
+                parser_add_error(@2.begin.line, @2.begin.column,
+                            "member '" + $3 + "' not found in class or its base classes");
+                $$ = nullptr;
+              }
+            }
+          }
+          else if(base_type->kind == TypeKind::RECORD){
+            auto record_type = std::static_pointer_cast<RecordType>(base_type);
+            if (record_type->fields.find($3)!= record_type->fields.end()) {
+              TypePtr member_type = record_type->fields.at($3).type;
+              $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS, $1, $3, member_type);
+            } else {
+              parser_add_error(@2.begin.line, @2.begin.column,
+                           "member '" + $3 + "' not found in struct/union");
+              $$ = nullptr;
+            }
+          }
+          else {
+            parser_add_error(@1.begin.line, @1.begin.column,
+                         "member reference base type is not a structure or union");
+            $$ = nullptr;
+          }
+        }
+
+      //else {
+         // parser_add_error(@1.begin.line, @1.begin.column,
+              //         "member access requires struct, union, or class type");
+          // $$ = nullptr;
+      // }
     }
     | postfix_expression ARROW_OP IDENTIFIER
     {
@@ -2007,13 +2061,28 @@ postfix_expression
         if (base_type) {
           if(is_class_type(base_type)){
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
+            // Track the effective access level - starts as PUBLIC for direct members
+            Access effective_access = Access::PUBLIC;
+            bool is_direct_access = ($1->type == ASTNodeType::THIS_EXPR);
+
             while(class_type){
               if (class_type->members.find($3)!= class_type->members.end()) {
                 MemberInfo member = class_type->members.at($3);
 
-                if (($1->type != ASTNodeType::THIS_EXPR) && (member.access != Access::PUBLIC)) {
+                // Determine the most restrictive access between member's own access and effective access
+                Access final_access = member.access;
+
+                // If we traversed through inheritance, apply the effective access restriction
+                if (effective_access == Access::PRIVATE) {
+                  final_access = Access::PRIVATE;
+                } else if (effective_access == Access::PROTECTED && final_access == Access::PUBLIC) {
+                  final_access = Access::PROTECTED;
+                }
+
+                // Check accessibility
+                if (!is_direct_access && final_access != Access::PUBLIC) {
                   parser_add_error(@2.begin.line, @2.begin.column,
-                               "member '" + $3 + "' is not accessible (not public)");
+                              "member '" + $3 + "' is not accessible (not public)");
                   $$ = nullptr;
                 }
                 else{
@@ -2023,7 +2092,40 @@ postfix_expression
 
                 break;
               }
+
+              // Move to base class
               if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+                base_type = class_type->base.base_type;
+
+                // Update effective access based on how we inherit
+                // Public inheritance maintains the access level
+                // (No change needed since we already check for PUBLIC inheritance)
+
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
+              }
+              else if(class_type->base.base_type && class_type->base.access == Access::PROTECTED){
+                // Protected inheritance: public members become protected
+                if (effective_access == Access::PUBLIC) {
+                  effective_access = Access::PROTECTED;
+                }
+
+                base_type = class_type->base.base_type;
+                if(is_class_type(base_type)){
+                  class_type = std::static_pointer_cast<ClassType>(base_type);
+                }
+                else{
+                  class_type = nullptr;
+                }
+              }
+              else if(class_type->base.base_type && class_type->base.access == Access::PRIVATE){
+                // Private inheritance: all members become inaccessible from outside
+                effective_access = Access::PRIVATE;
+
                 base_type = class_type->base.base_type;
                 if(is_class_type(base_type)){
                   class_type = std::static_pointer_cast<ClassType>(base_type);
@@ -2036,6 +2138,7 @@ postfix_expression
                 class_type = nullptr;
               }
             }
+
             if(!class_type){
               // Can be a function call, but we can't verify at this point because we can't mangle it yet.
               if(encountered_function_names.find($3) != encountered_function_names.end()){
@@ -2043,7 +2146,7 @@ postfix_expression
               }
               else{
                 parser_add_error(@2.begin.line, @2.begin.column,
-                               "member '" + $3 + "' not found in class or its base classes");
+                              "member '" + $3 + "' not found in class or its base classes");
                 $$ = nullptr;
               }
             }
@@ -2084,10 +2187,61 @@ postfix_expression
                                  [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
                                  "an integer or pointer type");
     }
-    /* | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP */
-    /* { */
+    | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
+    {
+        TypePtr target_type = $2;
+        target_type = strip_typedefs(target_type);
+        if (!target_type) {
+            parser_add_error(@2.begin.line, @2.begin.column,
+                           "invalid type in compound literal");
+            $$ = nullptr;
+        } else if (target_type->kind != TypeKind::RECORD && target_type->kind != TypeKind::CLASS) {
+            parser_add_error(@2.begin.line, @2.begin.column,
+                           "compound literals only supported for struct/class types");
+            $$ = nullptr;
+        } else {
+            // Validate all initializers reference valid members
+            std::vector<ASTNodePtr> initializers = $5;
 
-    /* } */
+            for (const auto& init : initializers) {
+                if (init && init->type == ASTNodeType::DESIGNATED_INITIALIZER_EXPR) {
+                    auto* desig = static_cast<DesignatedInitializerExpr*>(init.get());
+
+                    // Validate member path exists in the type
+                    TypePtr current_type = target_type;
+                    for (size_t i = 0; i < desig->member_path.size(); ++i) {
+                        const std::string& member = desig->member_path[i];
+
+                        if (current_type->kind == TypeKind::RECORD) {
+                            auto record = std::static_pointer_cast<RecordType>(current_type);
+                            if (record->fields.find(member) == record->fields.end()) {
+                                parser_add_error(@5.begin.line, @5.begin.column,
+                                               "no member named '" + member + "' in '" +
+                                               current_type->debug_name() + "'");
+                                break;
+                            }
+                            current_type = record->fields.at(member).type;
+                        } else if (current_type->kind == TypeKind::CLASS) {
+                            auto class_type = std::static_pointer_cast<ClassType>(current_type);
+                            if (class_type->members.find(member) == class_type->members.end()) {
+                                parser_add_error(@5.begin.line, @5.begin.column,
+                                               "no member named '" + member + "' in '" +
+                                               current_type->debug_name() + "'");
+                                break;
+                            }
+                            current_type = class_type->members.at(member).type.type;
+                        } else {
+                            parser_add_error(@5.begin.line, @5.begin.column,
+                                           "member access on non-struct/class type");
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $$ = std::make_shared<CompoundLiteralExpr>(target_type, initializers, target_type);
+        }
+    }
     ;
 
 argument_expression_list
@@ -2565,7 +2719,7 @@ declaration
         // Use $1 directly instead of parser_state.current_decl_base_type
         // because parameter parsing may have reset it
         TypePtr base = $1;
-        
+
         // Collect assignment statements for declarations with initializers
         std::vector<ASTNodePtr> init_stmts;
 
@@ -2636,7 +2790,7 @@ declaration
             }
           }
         }
-        
+
         // If we have any initialization statements, return a BlockStmt containing them
         // Otherwise return nullptr
         if (!init_stmts.empty()) {
@@ -2644,7 +2798,7 @@ declaration
         } else {
           $$ = nullptr;
         }
-        
+
         parser_state.reset_decl();
       }
     | TYPEDEF type_specifier pointer_opt TYPE_NAME SEMICOLON_OP
@@ -3461,30 +3615,70 @@ type_name
       { $$ = $1; }
     ;
 
+
 initializer
-    : assignment_expression { $$ = $1; }
-    | OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP { $$ = nullptr; /* TODO: handle aggregate initializers */ }
-    | OPEN_BRACE_OP initializer_list COMMA_OP CLOSE_BRACE_OP { $$ = nullptr; /* TODO: handle aggregate initializers */ }
+    : assignment_expression
+    {
+        $$ = $1;
+    }
+    | OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
+    {
+        // Create a list node to hold multiple initializers
+        $$ = std::make_shared<BlockStmt>($2);
+    }
+    | OPEN_BRACE_OP initializer_list COMMA_OP CLOSE_BRACE_OP
+    {
+        $$ = std::make_shared<BlockStmt>($2);
+    }
     ;
 
 initializer_list
     : designation initializer
+    {
+      $$ = std::vector<ASTNodePtr>{
+          std::make_shared<DesignatedInitializerExpr>($1, $2)
+      };
+    }
     | initializer
+    {
+      $$ = std::vector<ASTNodePtr>{ $1 };
+    }
     | initializer_list COMMA_OP designation initializer
+    {
+        $$ = $1;
+        $$.push_back(std::make_shared<DesignatedInitializerExpr>($3, $4));
+    }
     | initializer_list COMMA_OP initializer
+    {
+        $$ = $1;
+        $$.push_back($3);
+    }
     ;
 
 designation
     : designator_list ASSIGN_OP
+    {
+      $$ = $1;
+    }
     ;
 
 designator_list
     : designator
+    {
+        $$ = std::vector<std::string>{ $1 };
+    }
     | designator_list designator
+    {
+      $$ = $1;
+      $$.push_back($2);
+    }
     ;
 
 designator
     : DOT_OP IDENTIFIER
+    {
+        $$ = $2;
+    }
     ;
 
 statement

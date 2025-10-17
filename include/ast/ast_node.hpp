@@ -170,6 +170,9 @@ enum class ASTNodeType {
     NEW_EXPR,
     DELETE_EXPR,
 
+    COMPOUND_LITERAL_EXPR,
+    DESIGNATED_INITIALIZER_EXPR,
+
     BLOCK_STMT,
     IF_STMT,
     ELSE_STMT,
@@ -431,6 +434,35 @@ class BlockStmt : public ASTNode {
     ~BlockStmt() override = default;
 };
 
+class DesignatedInitializerExpr : public ASTNode {
+  public:
+    std::vector<std::string> member_path; // e.g., ["obj", "y"] for .obj.y
+    ASTNodePtr value;
+
+    DesignatedInitializerExpr(std::vector<std::string> path, ASTNodePtr val)
+        : ASTNode(ASTNodeType::DESIGNATED_INITIALIZER_EXPR),
+          member_path(std::move(path)), value(std::move(val))
+    {
+    }
+};
+
+class CompoundLiteralExpr : public ASTNode {
+  public:
+    TypePtr type;
+    std::vector<ASTNodePtr> initializers; // vector of DesignatedInitializerExpr
+                                          // or regular expressions
+
+    CompoundLiteralExpr(TypePtr t,
+                        std::vector<ASTNodePtr> inits,
+                        TypePtr result_type)
+        : ASTNode(ASTNodeType::COMPOUND_LITERAL_EXPR), type(t),
+          initializers(std::move(inits)), expr_type(result_type)
+    {
+    }
+
+    TypePtr expr_type;
+};
+
 class IfStmt : public ASTNode {
   public:
     ASTNodePtr condition;
@@ -642,6 +674,8 @@ inline bool is_expression_node(ASTNodeType type)
     case ASTNodeType::MEMBER_EXPR:
     case ASTNodeType::ENUM_IDENTIFIER_EXPR:
     case ASTNodeType::FUNCTION_IDENTIFIER_EXPR:
+    case ASTNodeType::COMPOUND_LITERAL_EXPR:
+    case ASTNodeType::DESIGNATED_INITIALIZER_EXPR:
         return true;
     default:
         return false;
@@ -689,6 +723,8 @@ get_expression_type(const ASTNodePtr &node)
         return static_cast<MemberExpr *>(node.get())->expr_type;
     case ASTNodeType::ENUM_IDENTIFIER_EXPR:
         return static_cast<EnumIdentifierExpr *>(node.get())->expr_type;
+    case ASTNodeType::COMPOUND_LITERAL_EXPR:
+        return static_cast<CompoundLiteralExpr *>(node.get())->expr_type;
     default:
         return ExpressionTypeError::NotExpression;
     }
