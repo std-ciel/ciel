@@ -1160,9 +1160,13 @@
     }
     case ASTNodeType::BINARY_EXPR: {
       auto binary = std::static_pointer_cast<BinaryExpr>(node);
-      // Array subscript produces an lvalue (handled as binary operation in some ASTs)
-      // Member access with dot operator
-      return false; // TODO: implement when array subscript and member access are added
+
+      if(binary->op == Operator::SUBSCRIPT_OP || binary->op == Operator::MEMBER_ACCESS || binary->op == Operator::MEMBER_ACCESS_PTR)
+      {
+        return true;
+      }
+
+      return false;
     }
     case ASTNodeType::LITERAL_EXPR:
     case ASTNodeType::CALL_EXPR:
@@ -1489,7 +1493,7 @@ postfix_expression
       $$ = handle_binary_operator($1, $3, @1, @3, @2,
           Operator::SUBSCRIPT_OP,
           [](TypePtr left, TypePtr right) {
-            return is_pointer_type(left) && is_integral_type(right);
+            return (is_pointer_type(left) || is_array_type(left)) && is_integral_type(right);
           },
           "pointer and integer types for array subscript");
     }
