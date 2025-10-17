@@ -1,0 +1,19 @@
+struct x{
+    int y;
+};
+
+struct z {
+    int a;
+    struct x obj;
+};
+
+struct w {
+    int p;
+    struct z inner;
+};
+
+int main(){
+    struct z aura = (struct z){.a = 1, .obj.y = 0};
+    struct w infinite_aura = (struct w){.p = 5, .inner = {.a = 2, .obj = {.y = 3}}};
+    return 0;
+}

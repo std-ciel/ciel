@@ -14,7 +14,7 @@ class Base {
         }
 };
 
-class Derived : Base {
+class Derived : public Base {
     public:
         int derived_value;
 

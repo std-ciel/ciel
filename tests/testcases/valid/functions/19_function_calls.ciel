@@ -89,7 +89,7 @@ int main() {
     char* msg = format_string("Hello %s", "world");
 
     // Nested calls
-    int nested = compute(add(1, 2), multiply(3, 4), 5);
+    int nested = compute(add(1, 2), (int)multiply(3.0, 4.0), 5);
 
     // Call with function result as parameter
     print_value(add(10, 20));

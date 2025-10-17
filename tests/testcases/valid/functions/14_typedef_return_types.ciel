@@ -5,10 +5,17 @@ typedef char* String;
 typedef float Real;
 typedef unsigned Counter;
 
-typedef struct Point {
+struct Point {
     int x;
     int y;
-} Point;
+};
+
+struct Node {
+    int data;
+    struct Node* next;
+};
+
+typedef struct Point Point;
 
 typedef struct Node* NodePtr;
 
@@ -26,12 +33,15 @@ Real get_real() {
 }
 
 Counter get_counter() {
-    return 0;
+    return (Counter)0;
 }
 
 // Return typedef struct
 Point create_point() {
-    return;
+    Point p;
+    p.x = 0;
+    p.y = 0;
+    return p;
 }
 
 NodePtr create_node() {
@@ -57,7 +67,7 @@ String concat(String s1, String s2) {
 }
 
 Point translate(Point p, Integer dx, Integer dy) {
-    return;
+    return (Point){p.x + dx, p.y + dy};
 }
 
 int main() {

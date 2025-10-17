@@ -5,25 +5,25 @@ class Animal {
         int age;
         char name[50];
     public:
-        Animal(int a) { age = a; }
-        void set_age(int a) { age = a; }
-        int get_age() { return age; }
+        Animal(int a) { this->age = a; }
+        void set_age(int a) { this->age = a; }
+        int get_age() { return this->age; }
 };
 
 class Mammal : public Animal {
     protected:
         bool warm_blooded;
     public:
-        Mammal(int a) { age = a; warm_blooded = 1 == 1; }
-        void set_warm_blooded(bool wb) { warm_blooded = wb; }
+        Mammal(int a) { this->age = a; this->warm_blooded = 1 == 1; }
+        void set_warm_blooded(bool wb) { this->warm_blooded = wb; }
 };
 
 class Dog : public Mammal {
     private:
         char breed[30];
     public:
-        Dog(int a) { age = a; }
-        void bark() { age = age + 1; }
+        Dog(int a) { this->age = a; }
+        void bark() { this->age = this->age + 1; }
         void set_breed(char* b) {}
 };
 
@@ -32,24 +32,24 @@ class Vehicle {
     protected:
         int speed;
     public:
-        Vehicle(int s) { speed = s; }
-        void accelerate(int amount) { speed = speed + amount; }
+        Vehicle(int s) { this->speed = s; }
+        void accelerate(int amount) { this->speed = this->speed + amount; }
 };
 
 class Car : public Vehicle {
     private:
         int doors;
     public:
-        Car(int s, int d) { speed = s; doors = d; }
-        void honk() { speed = speed + 1; }
+        Car(int s, int d) { this->speed = s; this->doors = d; }
+        void honk() { this->speed = this->speed + 1; }
 };
 
 class SportsCar : public Car {
     private:
         int turbo_boost;
     public:
-        SportsCar(int s, int d, int tb) { speed = s; turbo_boost = tb; }
-        void activate_turbo() { speed = speed + turbo_boost; }
+        SportsCar(int s, int d, int tb) { this->speed = s; this->turbo_boost = tb; }
+        void activate_turbo() { this->speed = this->speed + this->turbo_boost; }
 };
 
 // Different access specifiers in inheritance
@@ -62,12 +62,12 @@ class ProtectedBase {
 
 class ProtectedDerived : protected ProtectedBase {
     public:
-        void access_protected() { prot_val = 0; }
+        void access_protected() { this->prot_val = 0; }
 };
 
 class PrivateDerived : private ProtectedBase {
     public:
-        void access_private() { pub_val = 0; }
+        void access_private() { this->pub_val = 0; }
 };
 
 // Functions returning inherited types
@@ -103,10 +103,10 @@ int main() {
     class Vehicle v;
     class Car c;
     class SportsCar sc;
-    
+
     class Animal* a_ptr;
     class Dog* d_ptr;
     class SportsCar* sc_ptr;
-    
+
     return 0;
 }
