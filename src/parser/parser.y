@@ -1010,6 +1010,14 @@
     std::string op_symbol = get_operator_string(op_enum);
     std::string op_name = get_operator_name(op_enum);
 
+    if(operand->type == ASTNodeType::THIS_EXPR && op_enum != Operator::POINTER_DEREF)
+    {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       "'this' pointer can only be dereferenced");
+      return nullptr;
+    }
+
     TypePtr operand_type = get_expression_type(operand, loc, op_name + " operand");
     if (!operand_type) {
       parser_add_error(loc.begin.line,
@@ -1064,6 +1072,21 @@
     TypePtr right_type = get_expression_type(right, right_loc, op_name);
 
     if (!left_type || !right_type) {
+      return nullptr;
+    }
+
+    if(left->type == ASTNodeType::THIS_EXPR && (op_enum != Operator::EQUAL && op_enum != Operator::NOT_EQUAL))
+    {
+      parser_add_error(left_loc.begin.line,
+                       left_loc.begin.column,
+                       "'this' pointer can not be used in binary operations");
+      return nullptr;
+    }
+    else if(right->type == ASTNodeType::THIS_EXPR && (op_enum != Operator::EQUAL && op_enum != Operator::NOT_EQUAL))
+    {
+      parser_add_error(right_loc.begin.line,
+                       right_loc.begin.column,
+                       "'this' pointer can not be used in binary operations");
       return nullptr;
     }
 
@@ -2138,14 +2161,25 @@ unary_expression
       }
     | DELETE unary_expression
       {
-        TypePtr operand_type = get_expression_type($2, @2, "delete operand");
-        if (operand_type && !is_pointer_type(operand_type)) {
+        if($2->type == ASTNodeType::THIS_EXPR ){
           parser_add_error(@1.begin.line,
                            @1.begin.column,
-                           "delete operand is not a pointer type");
+                           "cannot delete 'this' pointer");
+          $$ = nullptr;
         }
-        TypePtr result_type = require_builtin("void", @1, "delete expression");
-        $$ = std::make_shared<DeleteExpr>($2, result_type);
+        else{
+          TypePtr operand_type = get_expression_type($2, @2, "delete operand");
+          if (operand_type && !is_pointer_type(operand_type)) {
+            parser_add_error(@1.begin.line,
+                            @1.begin.column,
+                            "delete operand is not a pointer type");
+            $$ = nullptr;
+          }
+          else{
+            TypePtr result_type = require_builtin("void", @1, "delete expression");
+            $$ = std::make_shared<DeleteExpr>($2, result_type);
+          }
+        }
       }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP cast_expression
       {
