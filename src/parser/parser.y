@@ -3745,8 +3745,8 @@ jump_statement
     ;
 
 translation_unit
-    : external_declaration { 
-        $$ = std::vector<ASTNodePtr>{ $1 }; 
+    : external_declaration {
+        $$ = std::vector<ASTNodePtr>{ $1 };
         parsed_translation_unit = $$;
     }
     | translation_unit external_declaration
@@ -4192,35 +4192,93 @@ function_declaration_or_definition
         handle_destructor_definition($2, $6, @2);
         if (parser_state.in_function()) parser_state.pop_function();
       }
-  | /* operator overload def with params */ type_name OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
-      { /* push function context before body */
-        if ($1) {
-          parser_state.push_function($1);
-          const auto &plist = $5;
+  | /* operator overload def with params */ declaration_specifiers pointer_opt OPERATOR operator_token OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
+      {
+        TypePtr base = $1;
+        size_t ptr_levels = $2;
+        TypePtr return_type = base;
+
+        if (ptr_levels > 0) {
+          QualifiedType qt = apply_pointer_levels_or_error(
+              QualifiedType(base, Qualifier::NONE),
+              ptr_levels,
+              "operator overload return type",
+              @1.begin.line,
+              @1.begin.column);
+          return_type = qt.type;
+        }
+
+        if (return_type) {
+          parser_state.push_function(return_type);
+          const auto &plist = $6;
           prepare_parameters_for_scope(plist.types, plist.names);
         }
       }
       compound_statement
       {
-        const auto &plist = $5;
+        TypePtr base = $1;
+        size_t ptr_levels = $2;
+        TypePtr return_type = base;
+
+        if (ptr_levels > 0) {
+          QualifiedType qt = apply_pointer_levels_or_error(
+              QualifiedType(base, Qualifier::NONE),
+              ptr_levels,
+              "operator overload return type",
+              @1.begin.line,
+              @1.begin.column);
+          return_type = qt.type;
+        }
+
+        const auto &plist = $6;
         handle_operator_overload_definition(
-            $1, $3, plist.types, plist.names, plist.variadic,
-            $8, @1, @3);
+            return_type, $4, plist.types, plist.names, plist.variadic,
+            $9, @1, @4);
 
         parser_state.reset_decl();
         if (parser_state.in_function()) parser_state.pop_function();
       }
-  | /* operator overload def without params */ type_name OPERATOR operator_token OPEN_PAREN_OP CLOSE_PAREN_OP
+  | /* operator overload def without params */ declaration_specifiers pointer_opt OPERATOR operator_token OPEN_PAREN_OP CLOSE_PAREN_OP
       { /* push function context before body */
-        if ($1) { parser_state.push_function($1); }
+        TypePtr base = $1;
+        size_t ptr_levels = $2;
+        TypePtr return_type = base;
+
+        if (ptr_levels > 0) {
+          QualifiedType qt = apply_pointer_levels_or_error(
+              QualifiedType(base, Qualifier::NONE),
+              ptr_levels,
+              "operator overload return type",
+              @1.begin.line,
+              @1.begin.column);
+          return_type = qt.type;
+        }
+
+        if (return_type) {
+          parser_state.push_function(return_type);
+        }
       }
       compound_statement
       {
+        TypePtr base = $1;
+        size_t ptr_levels = $2;
+        TypePtr return_type = base;
+
+        if (ptr_levels > 0) {
+          QualifiedType qt = apply_pointer_levels_or_error(
+              QualifiedType(base, Qualifier::NONE),
+              ptr_levels,
+              "operator overload return type",
+              @1.begin.line,
+              @1.begin.column);
+          return_type = qt.type;
+        }
+
         std::vector<QualifiedType> empty_params;
         std::vector<std::string> empty_names;
         handle_operator_overload_definition(
-            $1, $3, empty_params, empty_names, false,
-            $7, @1, @3);
+            return_type, $4, empty_params, empty_names, false,
+            $8, @1, @4);
 
         parser_state.reset_decl();
         if (parser_state.in_function()) parser_state.pop_function();
