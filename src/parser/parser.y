@@ -3014,24 +3014,28 @@ init_declarator
             parser_add_error(@2.begin.line, @2.begin.column,
                            "function '" + di.name + "' cannot have an initializer");
           } else {
-            QualifiedType final_t;
+            QualifiedType final_t = base;
 
+            // Apply pointer levels first if present
             if(di.pointer_levels > 0){
-              final_t = apply_pointer_levels_or_error(base,
+              final_t = apply_pointer_levels_or_error(final_t,
                                                      di.pointer_levels,
                                                      "initializer pointer declarator",
                                                      @1.begin.line,
                                                      @1.begin.column);
             }
-            else if(!di.array_dims.empty()){
-              final_t = apply_array_dimensions_or_error(base,
+
+            // Then apply array dimensions if present
+            if(!di.array_dims.empty()){
+              final_t = apply_array_dimensions_or_error(final_t,
                                                        di.array_dims,
                                                        "initializer array declarator",
                                                        @1.begin.line,
                                                        @1.begin.column);
             }
-            else {
-              final_t = base;
+
+            // Check completeness for non-array types
+            if(di.pointer_levels == 0 && di.array_dims.empty()) {
               check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
@@ -3056,23 +3060,28 @@ init_declarator
           // Skip adding as a variable if this is a function declarator
           // Function declarations are handled separately in the declaration rule
           if (!di.is_function) {
-            QualifiedType final_t;
+            QualifiedType final_t = base;
+
+            // Apply pointer levels first if present
             if(di.pointer_levels > 0){
-              final_t = apply_pointer_levels_or_error(base,
+              final_t = apply_pointer_levels_or_error(final_t,
                                                      di.pointer_levels,
                                                      "declarator pointer",
                                                      @1.begin.line,
                                                      @1.begin.column);
             }
-            else if(!di.array_dims.empty()){
-              final_t = apply_array_dimensions_or_error(base,
+
+            // Then apply array dimensions if present
+            if(!di.array_dims.empty()){
+              final_t = apply_array_dimensions_or_error(final_t,
                                                        di.array_dims,
                                                        "declarator array",
                                                        @1.begin.line,
                                                        @1.begin.column);
             }
-            else {
-              final_t = base;
+
+            // Check completeness for non-array types
+            if(di.pointer_levels == 0 && di.array_dims.empty()) {
               check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
@@ -3236,24 +3245,29 @@ struct_declaration
         if (base) {
           for (auto &di : $2) {
             if (!di.name.empty()) {
-              QualifiedType final_t;
+              QualifiedType final_t = base;
 
+              // Apply pointer levels first if present
               if(di.pointer_levels){
-                final_t = apply_pointer_levels_or_error(base,
+                final_t = apply_pointer_levels_or_error(final_t,
                                                        di.pointer_levels,
                                                        "struct field pointer",
                                                        @1.begin.line,
                                                        @1.begin.column);
               }
-              else{
-                final_t = apply_array_dimensions_or_error(base,
+
+              // Then apply array dimensions if present
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
                                                          di.array_dims,
                                                          "struct field array",
                                                          @1.begin.line,
                                                          @1.begin.column);
-                if (di.array_dims.empty()) {
-                  check_complete_type(final_t.type, @1, TypeUsageContext::STRUCT_UNION_MEMBER);
-                }
+              }
+
+              // Check completeness for non-array types
+              if (di.array_dims.empty() && di.pointer_levels == 0) {
+                check_complete_type(final_t.type, @1, TypeUsageContext::STRUCT_UNION_MEMBER);
               }
 
               // TODO handle errors
@@ -4366,23 +4380,29 @@ function_declaration_or_definition
                                   std::optional<FunctionMeta>{meta});
             }
           } else {
-            QualifiedType final_t;
+            QualifiedType final_t = ret;
+
+            // Apply pointer levels first if present
             if(di.pointer_levels){
-              final_t = apply_pointer_levels_or_error(ret,
+              final_t = apply_pointer_levels_or_error(final_t,
                                                      di.pointer_levels,
                                                      "member pointer declarator",
                                                      @1.begin.line,
                                                      @2.begin.column);
             }
-            else{
-              final_t = apply_array_dimensions_or_error(ret,
+
+            // Then apply array dimensions if present
+            if(!di.array_dims.empty()){
+              final_t = apply_array_dimensions_or_error(final_t,
                                                        di.array_dims,
                                                        "member array declarator",
                                                        @1.begin.line,
                                                        @1.begin.column);
-              if (di.array_dims.empty()) {
-                check_complete_type(final_t.type, @1, TypeUsageContext::CLASS_DATA_MEMBER);
-              }
+            }
+
+            // Check completeness for non-array types
+            if (di.array_dims.empty() && di.pointer_levels == 0) {
+              check_complete_type(final_t.type, @1, TypeUsageContext::CLASS_DATA_MEMBER);
             }
 
             // TODO error handling
@@ -4449,16 +4469,20 @@ function_declaration_or_definition
                                   std::optional<FunctionMeta>{meta});
             }
           } else {
-            QualifiedType final_t;
+            QualifiedType final_t = ret;
+
+            // Apply pointer levels first if present
             if(di.pointer_levels){
-              final_t = apply_pointer_levels_or_error(ret,
+              final_t = apply_pointer_levels_or_error(final_t,
                                                      di.pointer_levels,
                                                      "member pointer definition",
                                                      @1.begin.line,
                                                      @2.begin.column);
             }
-            else{
-              final_t = apply_array_dimensions_or_error(ret,
+
+            // Then apply array dimensions if present
+            if(!di.array_dims.empty()){
+              final_t = apply_array_dimensions_or_error(final_t,
                                                        di.array_dims,
                                                        "member array definition",
                                                        @1.begin.line,
