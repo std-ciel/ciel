@@ -13,6 +13,7 @@ class TACGenerator {
     TACFunctionPtr current_function;
     TACBasicBlockPtr current_block;
 
+    // References to global instances
     SymbolTable &symbol_table;
     TypeFactory &type_factory;
 
@@ -45,7 +46,7 @@ class TACGenerator {
     std::string new_label(const std::string &prefix = "L");
 
   public:
-    TACGenerator(SymbolTable &st, TypeFactory &tf);
+    TACGenerator();
 
     void generate_function(FunctionDef *func_def);
     void generate_global_declaration(ASTNodePtr node);

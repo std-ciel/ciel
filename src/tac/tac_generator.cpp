@@ -1,9 +1,10 @@
 #include "tac/tac_generator.hpp"
+#include "parser/parser_helper.hpp"
 #include "tac/tac_utils.hpp"
 #include <stdexcept>
 
-TACGenerator::TACGenerator(SymbolTable &st, TypeFactory &tf)
-    : symbol_table(st), type_factory(tf)
+TACGenerator::TACGenerator()
+    : symbol_table(get_symbol_table()), type_factory(get_type_factory())
 {
 }
 

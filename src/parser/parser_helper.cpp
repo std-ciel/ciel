@@ -4,31 +4,14 @@
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type_factory.hpp"
 
-// Define the global variables
+// Define the global parsed translation unit
 std::vector<ASTNodePtr> parsed_translation_unit;
-SymbolTable global_symbol_table;
-TypeFactory global_type_factory;
 
-void set_parsed_translation_unit(const std::vector<ASTNodePtr> &tu)
-{
-    parsed_translation_unit = tu;
-}
+// Forward declare the globals from parser.y
+extern SymbolTable symbol_table;
+extern TypeFactory type_factory;
 
-void set_symbol_table(SymbolTable *st)
-{
-    if (st) {
-        global_symbol_table = *st;
-    }
-}
-
-void set_type_factory(TypeFactory *tf)
-{
-    if (tf) {
-        global_type_factory = *tf;
-    }
-}
-
-// Implement getter functions
+// Implement getter functions to access parser.y globals
 std::vector<ASTNodePtr> get_parsed_translation_unit()
 {
     return parsed_translation_unit;
@@ -36,10 +19,10 @@ std::vector<ASTNodePtr> get_parsed_translation_unit()
 
 SymbolTable &get_symbol_table()
 {
-    return global_symbol_table;
+    return symbol_table;
 }
 
 TypeFactory &get_type_factory()
 {
-    return global_type_factory;
+    return type_factory;
 }

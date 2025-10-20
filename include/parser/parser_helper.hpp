@@ -4,15 +4,12 @@
 #include "ast/ast_node.hpp"
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type_factory.hpp"
-#include <memory>
 #include <vector>
 
 // External declarations for global parser state
 extern std::vector<ASTNodePtr> parsed_translation_unit;
-extern SymbolTable global_symbol_table;
-extern TypeFactory global_type_factory;
 
-// Getter functions
+// Getter functions to access globals from parser.y
 std::vector<ASTNodePtr> get_parsed_translation_unit();
 SymbolTable &get_symbol_table();
 TypeFactory &get_type_factory();

@@ -26,7 +26,8 @@
   #include "symbol_table/symbol.hpp"
   #include "symbol_table/mangling.hpp"
   #include "parser/parser_errors.hpp"
-
+  #include "symbol_table/type_factory.hpp"
+  #include "symbol_table/symbol_table.hpp"
 
   class Lexer;
 
@@ -161,20 +162,18 @@
   #include <sstream>
   #include "lexer/lexer.hpp"
   #include "parser/parser_errors.hpp"
-  #include "symbol_table/type_factory.hpp"
-  #include "symbol_table/symbol_table.hpp"
+
+  SymbolTable symbol_table;
+  TypeFactory type_factory;
 
   #undef yylex
   #define yylex lexer.yylex
-  static SymbolTable symbol_table;
-  static TypeFactory type_factory;
+
   static GlobalParserState parser_state;
   std::unordered_set<std::string> encountered_function_names;
 
   // External reference to the global parsed_translation_unit
   extern std::vector<ASTNodePtr> parsed_translation_unit;
-  extern SymbolTable global_symbol_table;
-  extern TypeFactory global_type_factory;
 
   void check_forward_declarations(){
      for (const auto& type_name : parser_state.forward_declared_types) {
