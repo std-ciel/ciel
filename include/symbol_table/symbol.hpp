@@ -17,14 +17,16 @@ struct FunctionMeta {
     bool is_defined;
     std::vector<std::string> params;
     std::optional<TypePtr> parent_class;
+    ScopeID body_scope_id;
+    std::string mangled_name;
 
-    FunctionMeta() : function_kind(FunctionKind::NORMAL), is_defined(false) {}
+    FunctionMeta() : function_kind(FunctionKind::NORMAL), is_defined(false), body_scope_id(0) {}
 
     FunctionMeta(FunctionKind kind,
                  std::vector<std::string> params,
                  std::optional<TypePtr> parent_class = std::nullopt)
         : function_kind(kind), is_defined(false), params(std::move(params)),
-          parent_class(std::move(parent_class))
+          parent_class(std::move(parent_class)), body_scope_id(0)
     {
     }
 };
@@ -61,6 +63,16 @@ class Symbol {
     StorageClass get_storage_class() const
     {
         return storage_class;
+    }
+
+    const std::optional<FunctionMeta> &get_function_meta() const
+    {
+        return function_meta;
+    }
+
+    void set_function_meta(FunctionMeta fm)
+    {
+        function_meta = std::move(fm);
     }
 
   private:
