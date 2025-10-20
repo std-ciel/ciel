@@ -1,0 +1,15 @@
+// Basic local static variable test
+
+int counter() {
+    static int count = 0;
+    count = count + 1;
+    return count;
+}
+
+int main() {
+    int a = counter();  // Should be 1
+    int b = counter();  // Should be 2
+    int c = counter();  // Should be 3
+
+    return 0;
+}

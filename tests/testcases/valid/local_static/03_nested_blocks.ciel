@@ -1,0 +1,21 @@
+// Test local static in nested blocks
+
+int test_nested() {
+    static int outer = 100;
+    outer = outer + 1;
+
+    if (outer > 100) {
+        static int inner = 50;
+        inner = inner + 10;
+        return outer + inner;
+    }
+
+    return outer;
+}
+
+int main() {
+    int first = test_nested();   // outer=101, inner=60, return 161
+    int second = test_nested();  // outer=102, inner=70, return 172
+    int third = test_nested();   // outer=103, inner=80, return 183
+    return third;
+}
