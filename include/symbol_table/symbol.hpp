@@ -20,7 +20,11 @@ struct FunctionMeta {
     ScopeID body_scope_id;
     std::string mangled_name;
 
-    FunctionMeta() : function_kind(FunctionKind::NORMAL), is_defined(false), body_scope_id(0) {}
+    FunctionMeta()
+        : function_kind(FunctionKind::NORMAL), is_defined(false),
+          body_scope_id(0)
+    {
+    }
 
     FunctionMeta(FunctionKind kind,
                  std::vector<std::string> params,
@@ -48,18 +52,37 @@ class Symbol {
     {
         return name;
     }
+
+    void set_name(const std::string &n)
+    {
+        name = n;
+    }
+
     QualifiedType get_type() const
     {
         return type;
     }
+
     ScopeID get_scope_id() const
     {
         return scope_id;
     }
+
+    void set_scope_id(ScopeID sid)
+    {
+        scope_id = sid;
+    }
+
     ScopeID get_parent_scope() const
     {
         return parent_scope;
     }
+
+    void set_parent_scope(ScopeID psid)
+    {
+        parent_scope = psid;
+    }
+
     StorageClass get_storage_class() const
     {
         return storage_class;
