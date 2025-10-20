@@ -332,12 +332,42 @@ std::string TACFunction::get_exit_label() const
 
 std::string TACFunction::new_temp(TypePtr type)
 {
-    return "t" + std::to_string(temp_counter++);
+    std::string temp_name = mangle_temporary_name(temp_counter++);
+
+    // Add the temporary to the symbol table if we have access to it
+    if (body_scope_id > 0 && type) {
+        // Get the parent scope from the symbol table
+        auto scope_iter = sym_table.get_scope_chain();
+        ScopeID parent_scope = body_scope_id; // Default to same scope
+
+        // Find parent of body_scope_id
+        for (size_t i = 0; i < scope_iter.size(); ++i) {
+            if (scope_iter[i] == body_scope_id && i > 0) {
+                parent_scope = scope_iter[i - 1];
+                break;
+            }
+        }
+
+        // Create a qualified type (use NONE qualifier for temporaries)
+        QualifiedType qt(type, Qualifier::NONE);
+
+        // Create the symbol
+        auto temp_symbol = std::make_shared<Symbol>(temp_name,
+                                                    qt,
+                                                    StorageClass::AUTO,
+                                                    body_scope_id,
+                                                    parent_scope);
+
+        // Add to the function's body scope
+        sym_table.add_symbol_in_scope(temp_name, temp_symbol, body_scope_id);
+    }
+
+    return temp_name;
 }
 
 std::string TACFunction::new_label(const std::string &prefix)
 {
-    return prefix + std::to_string(label_counter++);
+    return mangle_label_name(prefix, label_counter++);
 }
 
 void TACFunction::add_block(TACBasicBlockPtr block)

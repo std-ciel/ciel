@@ -754,12 +754,19 @@ void TACGenerator::generate_function(FunctionDef *func_def)
 
     std::string mangled_name = func_def->function_symbol->get_name();
 
+    auto func_meta_opt = func_def->function_symbol->get_function_meta();
+    ScopeID body_scope = 0;
+    if (func_meta_opt.has_value()) {
+        body_scope = func_meta_opt.value().body_scope_id;
+    }
     current_function = std::make_shared<TACFunction>(mangled_name,
                                                      mangled_name,
-                                                     func_def->return_type);
+                                                     func_def->return_type,
+                                                     body_scope,
+                                                     get_symbol_table());
 
-    // Create entry block
-    current_block = std::make_shared<TACBasicBlock>("entry");
+    current_block =
+        std::make_shared<TACBasicBlock>(current_function->get_entry_label());
     current_function->entry_block = current_block;
     current_function->add_block(current_block);
 
@@ -779,7 +786,8 @@ void TACGenerator::generate_function(FunctionDef *func_def)
 
     // Create exit block if not already created
     if (!current_function->exit_block) {
-        current_function->exit_block = std::make_shared<TACBasicBlock>("exit");
+        current_function->exit_block =
+            std::make_shared<TACBasicBlock>(current_function->get_exit_label());
         current_function->add_block(current_function->exit_block);
     }
 
@@ -823,12 +831,14 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
             current_function =
                 std::make_shared<TACFunction>("__ciel_global_init",
                                               "__ciel_global_init",
-                                              void_type);
+                                              void_type,
+                                              0,
+                                              get_symbol_table());
 
-            current_function->entry_block =
-                std::make_shared<TACBasicBlock>("entry");
-            current_function->exit_block =
-                std::make_shared<TACBasicBlock>("exit");
+            current_function->entry_block = std::make_shared<TACBasicBlock>(
+                current_function->get_entry_label());
+            current_function->exit_block = std::make_shared<TACBasicBlock>(
+                current_function->get_exit_label());
             current_function->add_block(current_function->entry_block);
             current_block = current_function->entry_block;
 
