@@ -162,10 +162,8 @@ int main(int argc, char *argv[])
                     std::cout << "└─────────────────────┘\n";
 
                     auto translation_unit = get_parsed_translation_unit();
-                    auto &symbol_table = get_symbol_table();
-                    auto &type_factory = get_type_factory();
 
-                    TACGenerator tac_gen(symbol_table, type_factory);
+                    TACGenerator tac_gen;
                     tac_gen.generate(translation_unit);
 
                     std::cout << "TAC generation completed successfully\n\n";
@@ -228,10 +226,8 @@ int main(int argc, char *argv[])
                 std::cout << "└─────────────────────┘\n";
 
                 auto translation_unit = get_parsed_translation_unit();
-                auto &symbol_table = get_symbol_table();
-                auto &type_factory = get_type_factory();
 
-                TACGenerator tac_gen(symbol_table, type_factory);
+                TACGenerator tac_gen;
                 tac_gen.generate(translation_unit);
 
                 std::cout << "TAC generation completed successfully\n\n";
