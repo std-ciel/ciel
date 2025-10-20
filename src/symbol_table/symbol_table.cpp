@@ -1,4 +1,5 @@
 #include "symbol_table/symbol_table.hpp"
+#include "symbol.hpp"
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -143,6 +144,24 @@ SymbolTable::lookup_operator(const std::string &mangled_name) const
     return std::nullopt;
 }
 
+Result<SymbolPtr, SymbolTableError> SymbolTable::remove_symbol(SymbolPtr symbol)
+{
+    auto scope_id = symbol->get_scope_id();
+    auto name = symbol->get_name();
+    auto scope_iter = scopes.find(scope_id);
+    if (scope_iter == scopes.end()) {
+        return SymbolTableError::INVALID_SCOPE;
+    }
+
+    Scope &scope = scope_iter->second;
+    auto symbol_iter = scope.symbols.find(name);
+    if (symbol_iter != scope.symbols.end()) {
+        scope.symbols.erase(symbol_iter);
+        return symbol;
+    } else {
+        return SymbolTableError::SYMBOL_NOT_FOUND;
+    }
+}
 void SymbolTable::print_symbols() const
 {
     // Compute column widths
