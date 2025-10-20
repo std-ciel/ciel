@@ -663,7 +663,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
     }
 
     // Get member offset
-    auto offset_opt = get_member_offset(record_type.get(), member_name);
+    auto offset_opt = get_member_offset(*record_type, member_name);
     if (!offset_opt.has_value()) {
         throw std::runtime_error("Member '" + member_name +
                                  "' not found in struct");
@@ -678,7 +678,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
     // For unions, offset stays 0 for all members
 
     // Get member type
-    TypePtr member_type = get_member_type(record_type.get(), member_name);
+    TypePtr member_type = get_member_type(*record_type, member_name);
     if (!member_type) {
         throw std::runtime_error("Could not determine member type");
     }
@@ -716,7 +716,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
     }
 
     // Get member offset
-    auto offset_opt = get_member_offset(record_type.get(), member_name);
+    auto offset_opt = get_member_offset(*record_type, member_name);
     if (!offset_opt.has_value()) {
         throw std::runtime_error("Member '" + member_name +
                                  "' not found in struct");
@@ -731,7 +731,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
     // For unions, offset stays 0 for all members
 
     // Get member type
-    TypePtr member_type = get_member_type(record_type.get(), member_name);
+    TypePtr member_type = get_member_type(*record_type, member_name);
 
     // Create member operand with offset info
     TACOperand member_op = TACOperand::member_access(base_object,
