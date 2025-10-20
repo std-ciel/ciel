@@ -2810,12 +2810,14 @@ declaration
                 if (sym.has_value()) {
                   // Create an identifier expression for the variable
                   auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
+                  auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
                   // Create an assignment expression: var = initializer
                   auto assign_expr = std::make_shared<AssignmentExpr>(
                     Operator::ASSIGN,
                     id_expr,
                     di.initializer,
-                    sym.value()->get_type().type
+                    sym.value()->get_type().type,
+                    is_static
                   );
                   init_stmts.push_back(assign_expr);
                 }
