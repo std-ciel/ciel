@@ -299,6 +299,37 @@ std::string TACInstruction::to_string() const
     return oss.str();
 }
 
+// Format: __<mangled_name>_<scope_id>_
+std::string TACFunction::get_function_prefix() const
+{
+    return "__" + mangled_name + "_" + std::to_string(body_scope_id) + "_";
+}
+
+// Format: __<mangled_name>_<scope_id>_t<counter>__
+std::string TACFunction::mangle_temporary_name(int counter) const
+{
+    return get_function_prefix() + "t" + std::to_string(counter) + "__";
+}
+
+// Format: __<mangled_name>_<scope_id>_<prefix><counter>__
+std::string TACFunction::mangle_label_name(const std::string &prefix,
+                                           int counter) const
+{
+    return get_function_prefix() + prefix + std::to_string(counter) + "__";
+}
+
+// Format: __<mangled_name>_<scope_id>_entry__
+std::string TACFunction::get_entry_label() const
+{
+    return get_function_prefix() + "entry__";
+}
+
+// Format: __<mangled_name>_<scope_id>_exit__
+std::string TACFunction::get_exit_label() const
+{
+    return get_function_prefix() + "exit__";
+}
+
 std::string TACFunction::new_temp(TypePtr type)
 {
     return "t" + std::to_string(temp_counter++);
