@@ -1,5 +1,6 @@
 #include "tac/tac_generator.hpp"
 #include "parser/parser_helper.hpp"
+#include "symbol_table/mangling.hpp"
 #include "tac/tac_utils.hpp"
 #include <stdexcept>
 
@@ -765,8 +766,9 @@ void TACGenerator::generate_function(FunctionDef *func_def)
                                                      body_scope,
                                                      get_symbol_table());
 
-    current_block =
-        std::make_shared<TACBasicBlock>(current_function->get_entry_label());
+    current_block = std::make_shared<TACBasicBlock>(
+        tac_get_entry_label(current_function->mangled_name,
+                            current_function->body_scope_id));
     current_function->entry_block = current_block;
     current_function->add_block(current_block);
 
@@ -786,8 +788,9 @@ void TACGenerator::generate_function(FunctionDef *func_def)
 
     // Create exit block if not already created
     if (!current_function->exit_block) {
-        current_function->exit_block =
-            std::make_shared<TACBasicBlock>(current_function->get_exit_label());
+        current_function->exit_block = std::make_shared<TACBasicBlock>(
+            tac_get_exit_label(current_function->mangled_name,
+                               current_function->body_scope_id));
         current_function->add_block(current_function->exit_block);
     }
 
@@ -836,9 +839,11 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                                               get_symbol_table());
 
             current_function->entry_block = std::make_shared<TACBasicBlock>(
-                current_function->get_entry_label());
+                tac_get_entry_label(current_function->mangled_name,
+                                    current_function->body_scope_id));
             current_function->exit_block = std::make_shared<TACBasicBlock>(
-                current_function->get_exit_label());
+                tac_get_exit_label(current_function->mangled_name,
+                                   current_function->body_scope_id));
             current_function->add_block(current_function->entry_block);
             current_block = current_function->entry_block;
 

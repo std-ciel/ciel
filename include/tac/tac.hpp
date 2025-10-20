@@ -187,12 +187,6 @@ struct TACFunction {
     {
     }
 
-    std::string get_function_prefix() const;
-    std::string mangle_temporary_name(int counter) const;
-    std::string mangle_label_name(const std::string &prefix, int counter) const;
-    std::string get_entry_label() const;
-    std::string get_exit_label() const;
-
     std::string new_temp(TypePtr type);
     std::string new_label(const std::string &prefix = "L");
     void add_block(TACBasicBlockPtr block);
