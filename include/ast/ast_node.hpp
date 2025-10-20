@@ -383,14 +383,17 @@ class AssignmentExpr : public ASTNode {
     ASTNodePtr target;
     ASTNodePtr value;
     TypePtr expr_type;
+    bool is_static_assignment = false;
 
     AssignmentExpr(Operator op,
                    ASTNodePtr target,
                    ASTNodePtr value,
-                   TypePtr expr_type)
+                   TypePtr expr_type,
+                   bool is_static_assignment = false)
         : ASTNode(ASTNodeType::ASSIGNMENT_EXPR), op(op),
           target(std::move(target)), value(std::move(value)),
-          expr_type(std::move(expr_type))
+          expr_type(std::move(expr_type)),
+          is_static_assignment(is_static_assignment)
     {
     }
     ~AssignmentExpr() override = default;
