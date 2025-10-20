@@ -68,6 +68,11 @@ SymbolTable::add_symbol(const std::string &name,
                                                 storage_class,
                                                 current_scope_id,
                                                 scope.parent_id);
+
+    if (function_meta.has_value()) {
+        symbol->set_function_meta(std::move(*function_meta));
+    }
+
     scope.symbols[name] = symbol;
 
     for (auto it = scope_stack.rbegin(); it != scope_stack.rend(); ++it) {
@@ -80,6 +85,25 @@ SymbolTable::add_symbol(const std::string &name,
             }
         }
     }
+    return true;
+}
+
+Result<bool, SymbolTableError>
+SymbolTable::add_symbol_in_scope(const std::string &name,
+                                 SymbolPtr symbol,
+                                 ScopeID target_scope)
+{
+    auto scope_iter = scopes.find(target_scope);
+    if (scope_iter == scopes.end()) {
+        return SymbolTableError::INVALID_SCOPE;
+    }
+
+    Scope &scope = scope_iter->second;
+
+    // For temporaries, we allow duplicates (shouldn't happen but just in case)
+    // Overwrite if exists
+    scope.symbols[name] = symbol;
+
     return true;
 }
 

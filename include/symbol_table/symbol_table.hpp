@@ -47,6 +47,10 @@ class SymbolTable {
                     StorageClass storage_class = StorageClass::AUTO,
                     std::optional<FunctionMeta> function_meta = std::nullopt);
 
+    Result<bool, SymbolTableError> add_symbol_in_scope(const std::string &name,
+                    SymbolPtr symbol,
+                    ScopeID target_scope);
+
     std::optional<SymbolPtr> lookup_symbol(const std::string &name) const;
 
     std::optional<SymbolPtr> lookup_operator(const std::string &mangled_name) const;
