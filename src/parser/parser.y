@@ -172,6 +172,10 @@
   static GlobalParserState parser_state;
   std::unordered_set<std::string> encountered_function_names;
 
+  // Track current function being defined for body_scope_id capture
+  static std::optional<std::string> current_function_mangled;
+  static TypePtr current_function_type;
+
   // External reference to the global parsed_translation_unit
   extern std::vector<ASTNodePtr> parsed_translation_unit;
 
@@ -608,6 +612,19 @@
     }
   }
 
+  static void set_function_body_scope(const std::string& mangled_name, ScopeID body_scope) {
+    auto sym_opt = symbol_table.lookup_symbol(mangled_name);
+    if (sym_opt.has_value() && sym_opt.value()) {
+      auto fm_opt = sym_opt.value()->get_function_meta();
+      if (fm_opt.has_value()) {
+        FunctionMeta updated_meta = *fm_opt;
+        updated_meta.body_scope_id = body_scope;
+        sym_opt.value()->set_function_meta(std::move(updated_meta));
+      }
+    }
+    current_function_mangled.reset();
+  }
+
   static void handle_operator_overload_definition(
       TypePtr return_type,
       const std::string& operator_name,
@@ -649,6 +666,10 @@
                        "unable to mangle operator '" + operator_name + "'");
       return;
     }
+
+    meta.is_defined = true;
+    meta.mangled_name = *mangled;
+    current_function_mangled = *mangled;
 
     // Check that the function body returns properly
     check_function_returns(return_type, body, loc_ret);
@@ -711,6 +732,10 @@
       return;
     }
 
+    meta.is_defined = true;
+    meta.mangled_name = *mangled;
+    current_function_mangled = *mangled;
+
     note_function_definition(*mangled, loc);
 
     auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
@@ -768,6 +793,10 @@
                        "unable to mangle destructor '~" + name + "'");
       return;
     }
+
+    meta.is_defined = true;
+    meta.mangled_name = *mangled;
+    current_function_mangled = *mangled;
 
     note_function_definition(*mangled, loc);
 
@@ -1393,6 +1422,11 @@ open_brace
         symbol_table.enter_scope();
         parser_state.push_ctx(ContextKind::BLOCK);
         add_pending_parameters_to_scope(@1);
+
+        if (current_function_mangled.has_value()) {
+          ScopeID body_scope = symbol_table.get_current_scope_id();
+          set_function_body_scope(*current_function_mangled, body_scope);
+        }
       }
     ;
 
@@ -3963,6 +3997,7 @@ function_definition
     : declaration_specifiers declarator { /* begin function body: set function return context */
 		TypePtr ret_t = $1;
 		const DeclaratorInfo &di = $2;
+		current_function_type = nullptr;
 		if (ret_t && di.is_function) {
 		  if (di.pointer_levels > 0) {
 		    QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(ret_t, Qualifier::NONE),
@@ -3974,6 +4009,47 @@ function_definition
 		  }
 		  parser_state.push_function(ret_t);
 		  prepare_parameters_for_scope(di.param_types, di.param_names);
+
+		  // Compute mangled name early and store it for body scope capture
+		  TypePtr fn = make_function_type_or_error(ret_t,
+		                   di.param_types,
+		                   di.is_variadic,
+		                   "function definition",
+		                   @1.begin.line,
+		                   @2.begin.column);
+		  if (fn) {
+		    current_function_type = fn; // Store for reuse
+		    FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
+		    auto mangled = mangle_function_name(di.name,
+		                                        *std::static_pointer_cast<FunctionType>(fn),
+		                                        meta,
+		                                        std::nullopt);
+		    if (mangled.has_value()) {
+		      current_function_mangled = *mangled;
+		      meta.is_defined = true;
+		      meta.mangled_name = *mangled;
+
+		      // Add symbol if not present, or update existing
+		      auto sym_opt = symbol_table.lookup_symbol(*mangled);
+		      if (!sym_opt.has_value()) {
+		        add_symbol_if_valid(*mangled,
+		                          QualifiedType(fn, Qualifier::NONE),
+		                          @1,
+		                          std::optional<FunctionMeta>{meta});
+		      } else {
+		        // Update the meta with is_defined and mangled_name
+		        auto existing = sym_opt.value()->get_function_meta();
+		        if (existing.has_value()) {
+		          FunctionMeta updated = *existing;
+		          updated.is_defined = true;
+		          updated.mangled_name = *mangled;
+		          sym_opt.value()->set_function_meta(std::move(updated));
+		        } else {
+		          sym_opt.value()->set_function_meta(meta);
+		        }
+		      }
+		    }
+		  }
 		}
 	 } compound_statement {
 		auto base = $1;
@@ -4006,13 +4082,8 @@ function_definition
 			    check_complete_type(return_type, @1, TypeUsageContext::FUNCTION_RETURN_TYPE);
 			  }
 
-			  // Build function type
-      TypePtr fn = make_function_type_or_error(return_type,
-                       di.param_types,
-                       di.is_variadic,
-                       "function definition",
-                       @1.begin.line,
-                       @2.begin.column);
+			  // Reuse function type from mid-rule action
+        TypePtr fn = current_function_type;
         if (fn) {
             FunctionMeta meta(FunctionKind::NORMAL, di.param_names, std::nullopt);
             auto mangled = mangle_function_name(di.name,
@@ -4020,14 +4091,15 @@ function_definition
                                                 meta,
                                                 std::nullopt);
             if (!mangled.has_value()) {
-            parser_add_error(@2.begin.line, @2.begin.column, "unable to mangle function '" + di.name + "'");
-            } else {
+              parser_add_error(@2.begin.line, @2.begin.column, "unable to mangle function name for '" + di.name + "'");
+            }
             // Check for redefinition
             note_function_definition(*mangled, @2);
 
-            // Reuse existing symbol if present (from prior declaration); otherwise add it
+            // Lookup existing symbol (should exist from mid-rule action)
             auto sym_opt = symbol_table.lookup_symbol(*mangled);
             if (!sym_opt.has_value()) {
+              // Should not happen, but add as fallback
               add_symbol_if_valid(*mangled,
                                 QualifiedType(fn, Qualifier::NONE),
                                 @1,
@@ -4035,13 +4107,12 @@ function_definition
               sym_opt = symbol_table.lookup_symbol(*mangled);
             }
 
-            // Build FunctionDef AST node (parameters can be filled later if needed)
+            // Build FunctionDef AST node
             $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), return_type, std::vector<SymbolPtr>{}, $4);
 
             // Check that non-void functions have a return statement
             check_function_returns(return_type, $4, @4);
-			}
-		}
+		    }
 			}
 		}
 
