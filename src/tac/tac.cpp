@@ -1,4 +1,5 @@
 #include "tac/tac.hpp"
+#include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type.hpp"
 #include <iostream>
 #include <sstream>
