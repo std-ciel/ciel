@@ -6,6 +6,7 @@
 
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
+#include "local_static_pass/local_static_pass.hpp"
 #include "parser.hpp"
 #include "parser/parser.hpp"
 #include "parser/parser_errors.hpp"
@@ -131,77 +132,43 @@ int main(int argc, char *argv[])
         lexer.switch_streams(&file, &std::cout);
     }
 
-    bool parse_failed = false;
-
+    // Lexer-only mode: just tokenize
     if (lexer_only) {
         while (lexer.yylex_standalone() != 0) {
         }
-    } else {
-        yy::Parser parser(lexer);
 
-        std::cout << "\n┌─────────────────────┐\n";
-        std::cout << "│   PARSING PHASE     │\n";
-        std::cout << "└─────────────────────┘\n";
-
-        // Initialize location tracking
-        yy::Parser::location_type initial_loc;
-        initial_loc.begin.line = initial_loc.end.line = 1;
-        initial_loc.begin.column = initial_loc.end.column = 1;
-
-        parser.set_debug_level(debug_mode ? 1 : 0);
-        int parse_result = parser.parse();
-
-        if (parse_result == 0) {
-            std::cout << "Parsing completed successfully" << std::endl;
-
-            // Generate TAC after successful parsing
-            if (!parser_only && !debug_mode) {
-                try {
-                    std::cout << "\n┌─────────────────────┐\n";
-                    std::cout << "│ TAC GENERATION      │\n";
-                    std::cout << "└─────────────────────┘\n";
-
-                    auto translation_unit = get_parsed_translation_unit();
-
-                    TACGenerator tac_gen;
-                    tac_gen.generate(translation_unit);
-
-                    std::cout << "TAC generation completed successfully\n\n";
-
-                    // Print the generated TAC
-                    tac_gen.get_program().print();
-
-                } catch (const std::exception &e) {
-                    std::cerr << "\nTAC generation error: " << e.what()
-                              << std::endl;
-                    return 1;
-                }
-            }
-        } else {
-            std::cout << "Parsing failed with errors" << std::endl;
-            parse_failed = true;
+        if (lexer_had_errors()) {
+            print_lexer_errors();
+            lexer_clear_errors();
+            return 1;
         }
-    }
 
-    if (lexer_had_errors()) {
-        print_lexer_errors();
-        lexer_clear_errors();
-        return 1;
-    }
-
-    const auto &tokens = lexer_get_tokens();
-
-    if (debug_mode || lexer_only) {
+        const auto &tokens = lexer_get_tokens();
         std::cout << "\n┌─────────────────────────┐\n";
         std::cout << "│   LEXICAL ANALYSIS      │\n";
         std::cout << "└─────────────────────────┘\n";
         print_tokens_table(tokens, std::cout);
         std::cout << std::endl;
-    }
 
-    if (lexer_only) {
         lexer_clear_tokens();
         return 0;
+    }
+
+    // Parse the input
+    yy::Parser parser(lexer);
+
+    std::cout << "\n┌─────────────────────┐\n";
+    std::cout << "│   PARSING PHASE     │\n";
+    std::cout << "└─────────────────────┘\n";
+
+    parser.set_debug_level(debug_mode ? 1 : 0);
+    int parse_result = parser.parse();
+
+    // Check for errors
+    if (lexer_had_errors()) {
+        print_lexer_errors();
+        lexer_clear_errors();
+        return 1;
     }
 
     if (parser_had_errors()) {
@@ -210,40 +177,80 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (parser_only || debug_mode || (!lexer_only && !parser_only)) {
+    if (parse_result != 0) {
+        std::cout << "Parsing failed with errors" << std::endl;
+        return 1;
+    }
+
+    std::cout << "Parsing completed successfully" << std::endl;
+
+    // Debug: print tokens
+    if (debug_mode) {
+        const auto &tokens = lexer_get_tokens();
+        std::cout << "\n┌─────────────────────────┐\n";
+        std::cout << "│   LEXICAL ANALYSIS      │\n";
+        std::cout << "└─────────────────────────┘\n";
+        print_tokens_table(tokens, std::cout);
+        std::cout << std::endl;
+    }
+
+    // Debug: print parse results
+    if (debug_mode) {
+        std::cout << "\n┌─────────────────────┐\n";
+        std::cout << "│   PARSING RESULTS   │\n";
+        std::cout << "└─────────────────────┘\n";
+        print_parse_results();
+    }
+
+    // Parser-only mode: stop here
+    if (parser_only) {
+        lexer_clear_tokens();
+        return 0;
+    }
+
+    // Apply local static pass
+    try {
+        std::cout << "\n┌─────────────────────────────┐\n";
+        std::cout << "│ LOCAL STATIC TRANSFORMATION │\n";
+        std::cout << "└─────────────────────────────┘\n";
+
+        auto translation_unit = get_parsed_translation_unit();
+        auto &symbol_table = get_symbol_table();
+        auto &type_factory = get_type_factory();
+
+        LocalStaticPass local_static_pass(symbol_table, type_factory);
+        local_static_pass.process(translation_unit);
+
+        std::cout << "Local static pass completed successfully" << std::endl;
+
         if (debug_mode) {
-            std::cout << "\n┌─────────────────────┐\n";
-            std::cout << "│   PARSING RESULTS   │\n";
-            std::cout << "└─────────────────────┘\n";
-            print_parse_results();
+            get_symbol_table().print_symbols();
         }
+    } catch (const std::exception &e) {
+        std::cerr << "\nLocal static pass error: " << e.what() << std::endl;
+        lexer_clear_tokens();
+        return 1;
+    }
 
-        // Generate TAC in debug mode
-        if (debug_mode && !parse_failed) {
-            try {
-                std::cout << "\n┌─────────────────────┐\n";
-                std::cout << "│ TAC GENERATION      │\n";
-                std::cout << "└─────────────────────┘\n";
+    // Generate TAC
+    try {
+        std::cout << "\n┌─────────────────────┐\n";
+        std::cout << "│ TAC GENERATION      │\n";
+        std::cout << "└─────────────────────┘\n";
 
-                auto translation_unit = get_parsed_translation_unit();
+        auto translation_unit = get_parsed_translation_unit();
 
-                TACGenerator tac_gen;
-                tac_gen.generate(translation_unit);
+        TACGenerator tac_gen;
+        tac_gen.generate(translation_unit);
 
-                std::cout << "TAC generation completed successfully\n\n";
-                tac_gen.get_program().print();
-
-            } catch (const std::exception &e) {
-                std::cerr << "\nTAC generation error: " << e.what()
-                          << std::endl;
-                return 1;
-            }
-        }
+        std::cout << "TAC generation completed successfully\n\n";
+        tac_gen.get_program().print();
+    } catch (const std::exception &e) {
+        std::cerr << "\nTAC generation error: " << e.what() << std::endl;
+        lexer_clear_tokens();
+        return 1;
     }
 
     lexer_clear_tokens();
-    if (parse_failed) {
-        return 1;
-    }
     return 0;
 }

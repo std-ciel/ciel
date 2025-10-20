@@ -46,6 +46,7 @@ add_library(ciel_parser STATIC
     src/symbol_table/type.cpp
     src/symbol_table/type_factory.cpp
     src/symbol_table/mangling.cpp
+    src/local_static_pass/local_static_pass.cpp
     src/tac/tac.cpp
     src/tac/tac_generator.cpp
     src/tac/tac_utils.cpp
@@ -56,6 +57,7 @@ target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/lexer
     ${CMAKE_SOURCE_DIR}/include/parser
     ${CMAKE_SOURCE_DIR}/include/symbol_table
+    ${CMAKE_SOURCE_DIR}/include/local_static_pass
     ${CMAKE_SOURCE_DIR}/include/tac
     ${CMAKE_SOURCE_DIR}/include/ast
     ${CMAKE_CURRENT_BINARY_DIR})
