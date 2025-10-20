@@ -1,5 +1,6 @@
 #include "symbol_table/mangling.hpp"
 #include <optional>
+#include <string>
 #include <unordered_map>
 
 static const std::unordered_map<std::string, std::string>
@@ -79,4 +80,56 @@ std::optional<std::string> mangle_function_name(const std::string &name,
         }
     }
     return result;
+}
+
+std::string get_function_prefix(const std::string &mangled_name,
+                                ScopeID body_scope_id)
+{
+    return "__" + mangled_name + "_" + std::to_string(body_scope_id) + "_";
+}
+
+std::string mangle_temporary_name(const std::string &mangled_name,
+                                  ScopeID body_scope_id,
+                                  int counter)
+{
+    return get_function_prefix(mangled_name, body_scope_id) + "t" +
+           std::to_string(counter) + "__";
+}
+
+std::string tac_mangle_label_name(const std::string &mangled_name,
+                                  ScopeID body_scope_id,
+                                  const std::string &prefix,
+                                  int counter)
+{
+    return get_function_prefix(mangled_name, body_scope_id) + prefix +
+           std::to_string(counter) + "__";
+}
+
+std::string tac_get_entry_label(const std::string &mangled_name,
+                                ScopeID body_scope_id)
+{
+    return get_function_prefix(mangled_name, body_scope_id) + "entry__";
+}
+
+std::string tac_get_exit_label(const std::string &mangled_name,
+                               ScopeID body_scope_id)
+{
+    return get_function_prefix(mangled_name, body_scope_id) + "exit__";
+}
+
+std::string mangle_local_static_name(const std::string &function_mangled_name,
+                                     ScopeID function_scope_id,
+                                     const std::string &var_name)
+{
+    return "__ZL" + function_mangled_name + "_" +
+           std::to_string(function_scope_id) + "_" + var_name + "__";
+}
+
+std::string
+mangle_local_static_guard_name(const std::string &function_mangled_name,
+                               ScopeID function_scope_id,
+                               const std::string &var_name)
+{
+    return "__ZGL" + function_mangled_name + "_" +
+           std::to_string(function_scope_id) + "_" + var_name + "__";
 }
