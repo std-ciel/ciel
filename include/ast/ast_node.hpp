@@ -733,4 +733,24 @@ get_expression_type(const ASTNodePtr &node)
     }
 }
 
+inline std::optional<std::variant<int64_t, uint64_t, char>>
+extract_case_literal_value(const ASTNodePtr &expr)
+{
+    if (!expr || expr->type != ASTNodeType::LITERAL_EXPR) {
+        return std::nullopt;
+    }
+
+    auto lit = std::static_pointer_cast<LiteralExpr>(expr);
+
+    if (auto *int_val = std::get_if<int64_t>(&lit->value)) {
+        return *int_val;
+    } else if (auto *uint_val = std::get_if<uint64_t>(&lit->value)) {
+        return *uint_val;
+    } else if (auto *char_val = std::get_if<char>(&lit->value)) {
+        return *char_val;
+    }
+
+    return std::nullopt;
+}
+
 #endif // AST_NODE_HPP
