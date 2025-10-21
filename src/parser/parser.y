@@ -425,6 +425,52 @@
   }
   static bool in_loop_or_switch() { return in_loop() || in_switch(); }
 
+
+  static bool is_literal_expression(const ASTNodePtr& expr) {
+    if (!expr) return false;
+    return expr->type == ASTNodeType::LITERAL_EXPR;
+  }
+
+  static bool has_duplicate_case_value(const ASTNodePtr& new_case_expr, const yy::location& loc) {
+    if (parser_state.case_stmt_stack.empty()) return false;
+
+    auto new_value = extract_case_literal_value(new_case_expr);
+    if (!new_value.has_value()) return false;
+
+    for (const auto& existing_case : parser_state.case_stmt_stack.back()) {
+      if (!existing_case) continue;
+
+      auto case_stmt = std::dynamic_pointer_cast<CaseStmt>(existing_case);
+      if (!case_stmt || !case_stmt->value) continue;
+
+      auto existing_value = extract_case_literal_value(case_stmt->value);
+      if (!existing_value.has_value()) continue;
+
+      // Compare values (handles int64_t, uint64_t, and char)
+      if (new_value.value().index() == existing_value.value().index()) {
+        // Same type, compare values
+        bool is_duplicate = false;
+
+        if (auto* new_int = std::get_if<int64_t>(&new_value.value())) {
+          auto* existing_int = std::get_if<int64_t>(&existing_value.value());
+          is_duplicate = (*new_int == *existing_int);
+        } else if (auto* new_uint = std::get_if<uint64_t>(&new_value.value())) {
+          auto* existing_uint = std::get_if<uint64_t>(&existing_value.value());
+          is_duplicate = (*new_uint == *existing_uint);
+        } else if (auto* new_char = std::get_if<char>(&new_value.value())) {
+          auto* existing_char = std::get_if<char>(&existing_value.value());
+          is_duplicate = (*new_char == *existing_char);
+        }
+
+        if (is_duplicate) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   // -------- Function definition semantic helpers --------
 
   // Check if a non-void function body contains at least one return with a value
