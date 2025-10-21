@@ -144,7 +144,7 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
 
     switch (node->type) {
     case ASTNodeType::LITERAL_EXPR: {
-        auto *lit = static_cast<LiteralExpr *>(node.get());
+        auto lit = std::static_pointer_cast<LiteralExpr>(node);
         if (std::holds_alternative<int64_t>(lit->value)) {
             return TACOperand::constant_int(std::get<int64_t>(lit->value),
                                             lit->expr_type);
@@ -174,34 +174,35 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 
     case ASTNodeType::IDENTIFIER_EXPR: {
-        auto *id = static_cast<IdentifierExpr *>(node.get());
+        auto id = std::static_pointer_cast<IdentifierExpr>(node);
         return TACOperand::symbol(id->symbol, id->expr_type);
     }
 
     case ASTNodeType::ENUM_IDENTIFIER_EXPR: {
-        auto *enum_id = static_cast<EnumIdentifierExpr *>(node.get());
+        auto enum_id = std::static_pointer_cast<EnumIdentifierExpr>(node);
         // Enum identifiers are constant integers
         // Would need to look up the enum value from the type
         return TACOperand::constant_int(0, enum_id->expr_type); // Placeholder
     }
 
     case ASTNodeType::BINARY_EXPR:
-        return generate_binary_op(static_cast<BinaryExpr *>(node.get()));
+        return generate_binary_op(std::static_pointer_cast<BinaryExpr>(node));
 
     case ASTNodeType::UNARY_EXPR:
-        return generate_unary_op(static_cast<UnaryExpr *>(node.get()));
+        return generate_unary_op(std::static_pointer_cast<UnaryExpr>(node));
 
     case ASTNodeType::ASSIGNMENT_EXPR:
-        return generate_assignment(static_cast<AssignmentExpr *>(node.get()));
+        return generate_assignment(
+            std::static_pointer_cast<AssignmentExpr>(node));
 
     case ASTNodeType::CALL_EXPR:
-        return generate_call(static_cast<CallExpr *>(node.get()));
+        return generate_call(std::static_pointer_cast<CallExpr>(node));
 
     case ASTNodeType::TERNARY_EXPR:
-        return generate_ternary(static_cast<TernaryExpr *>(node.get()));
+        return generate_ternary(std::static_pointer_cast<TernaryExpr>(node));
 
     case ASTNodeType::CAST_EXPR: {
-        auto *cast = static_cast<CastExpr *>(node.get());
+        auto cast = std::static_pointer_cast<CastExpr>(node);
         auto operand = generate_expression(cast->expression);
         auto result_temp = new_temp(cast->target_type);
         auto result = TACOperand::temporary(result_temp, cast->target_type);
@@ -215,7 +216,7 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 
     case ASTNodeType::MEMBER_EXPR: {
-        auto *member = static_cast<MemberExpr *>(node.get());
+        auto member = std::static_pointer_cast<MemberExpr>(node);
         auto base = generate_expression(member->object);
 
         // Get base type from expression
@@ -247,7 +248,7 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 
     case ASTNodeType::NEW_EXPR: {
-        auto *new_expr = static_cast<NewExpr *>(node.get());
+        auto new_expr = std::static_pointer_cast<NewExpr>(node);
         size_t size = calculate_type_size(new_expr->allocated_type);
 
         // Call malloc or allocation function
@@ -269,7 +270,7 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 
     case ASTNodeType::DELETE_EXPR: {
-        auto *delete_expr = static_cast<DeleteExpr *>(node.get());
+        auto delete_expr = std::static_pointer_cast<DeleteExpr>(node);
         auto operand = generate_expression(delete_expr->operand);
 
         // Call free or deallocation function
@@ -289,7 +290,7 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 }
 
-TACOperand TACGenerator::generate_binary_op(BinaryExpr *expr)
+TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
 {
     // Handle short-circuit evaluation for logical operators
     if (expr->op == Operator::LOGICAL_AND || expr->op == Operator::LOGICAL_OR) {
@@ -399,7 +400,7 @@ TACOperand TACGenerator::generate_binary_op(BinaryExpr *expr)
     return result;
 }
 
-TACOperand TACGenerator::generate_unary_op(UnaryExpr *expr)
+TACOperand TACGenerator::generate_unary_op(std::shared_ptr<UnaryExpr> expr)
 {
     // Handle pre/post increment and decrement
     if (expr->op == Operator::INCREMENT || expr->op == Operator::DECREMENT ||
@@ -461,13 +462,14 @@ TACOperand TACGenerator::generate_unary_op(UnaryExpr *expr)
     return result;
 }
 
-TACOperand TACGenerator::generate_assignment(AssignmentExpr *expr)
+TACOperand
+TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 {
     auto value = generate_expression(expr->value);
 
     // Handle member assignment
     if (expr->target->type == ASTNodeType::MEMBER_EXPR) {
-        auto *member = static_cast<MemberExpr *>(expr->target.get());
+        auto member = std::dynamic_pointer_cast<MemberExpr>(expr->target);
         auto base = generate_expression(member->object);
 
         auto base_type_result = get_expression_type(member->object);
@@ -512,7 +514,7 @@ TACOperand TACGenerator::generate_assignment(AssignmentExpr *expr)
 
     // Handle array subscript assignment
     if (expr->target->type == ASTNodeType::BINARY_EXPR) {
-        auto *binary = static_cast<BinaryExpr *>(expr->target.get());
+        auto binary = std::static_pointer_cast<BinaryExpr>(expr->target);
         if (binary->op == Operator::SUBSCRIPT_OP) {
             auto base = generate_expression(binary->left);
             auto index = generate_expression(binary->right);
@@ -581,7 +583,7 @@ TACOperand TACGenerator::generate_assignment(AssignmentExpr *expr)
     return target;
 }
 
-TACOperand TACGenerator::generate_call(CallExpr *expr)
+TACOperand TACGenerator::generate_call(std::shared_ptr<CallExpr> expr)
 {
     // Generate arguments in reverse order (right-to-left evaluation)
     std::vector<TACOperand> args;
@@ -619,7 +621,7 @@ TACOperand TACGenerator::generate_call(CallExpr *expr)
     return result;
 }
 
-TACOperand TACGenerator::generate_ternary(TernaryExpr *expr)
+TACOperand TACGenerator::generate_ternary(std::shared_ptr<TernaryExpr> expr)
 {
     auto condition = generate_expression(expr->condition);
 
@@ -748,7 +750,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
     emit(instr);
 }
 
-void TACGenerator::generate_function(FunctionDef *func_def)
+void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
 {
     // Create function
     auto func_type = std::static_pointer_cast<FunctionType>(
@@ -816,7 +818,7 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
     // Global declarations with initializers come as BlockStmt containing
     // AssignmentExpr nodes (similar to local variable initializations)
     if (node->type == ASTNodeType::BLOCK_STMT) {
-        auto *block = static_cast<BlockStmt *>(node.get());
+        auto block = std::static_pointer_cast<BlockStmt>(node);
 
         if (block->statements.empty())
             return;
@@ -899,7 +901,7 @@ void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
             continue;
 
         if (node->type == ASTNodeType::FUNCTION_DEF) {
-            generate_function(static_cast<FunctionDef *>(node.get()));
+            generate_function(std::static_pointer_cast<FunctionDef>(node));
         }
     }
 }
@@ -912,25 +914,26 @@ void TACGenerator::generate_statement(ASTNodePtr node)
     switch (node->type) {
     case ASTNodeType::COMPOUND_STMT:
     case ASTNodeType::BLOCK_STMT:
-        generate_block_stmt(static_cast<BlockStmt *>(node.get()));
+        generate_block_stmt(std::static_pointer_cast<BlockStmt>(node));
         break;
 
     case ASTNodeType::IF_STMT:
-        generate_if_stmt(static_cast<IfStmt *>(node.get()));
+        generate_if_stmt(std::static_pointer_cast<IfStmt>(node));
         break;
 
     case ASTNodeType::ELSE_STMT: {
-        auto *stmt = static_cast<ElseStmt *>(node.get());
+        auto stmt = std::static_pointer_cast<ElseStmt>(node);
         generate_statement(stmt->body);
         break;
     }
 
     case ASTNodeType::WHILE_STMT:
-        generate_while_stmt(static_cast<WhileStmt *>(node.get()));
+        generate_while_stmt(std::static_pointer_cast<WhileStmt>(node));
         break;
 
     case ASTNodeType::DO_WHILE_STMT: {
-        auto *stmt = static_cast<DoWhileStmt *>(node.get());
+        auto stmt = std::static_pointer_cast<DoWhileStmt>(node);
+
         auto body_label = new_label("do_body");
         auto cond_label = new_label("do_cond");
         auto end_label = new_label("do_end");
@@ -953,7 +956,8 @@ void TACGenerator::generate_statement(ASTNodePtr node)
     }
 
     case ASTNodeType::UNTIL_STMT: {
-        auto *stmt = static_cast<UntilStmt *>(node.get());
+        auto stmt = std::static_pointer_cast<UntilStmt>(node);
+
         auto body_label = new_label("until_body");
         auto cond_label = new_label("until_cond");
         auto end_label = new_label("until_end");
@@ -977,15 +981,15 @@ void TACGenerator::generate_statement(ASTNodePtr node)
     }
 
     case ASTNodeType::FOR_STMT:
-        generate_for_stmt(static_cast<ForStmt *>(node.get()));
+        generate_for_stmt(std::static_pointer_cast<ForStmt>(node));
         break;
 
     case ASTNodeType::SWITCH_STMT:
-        generate_switch_stmt(static_cast<SwitchStmt *>(node.get()));
+        generate_switch_stmt(std::static_pointer_cast<SwitchStmt>(node));
         break;
 
     case ASTNodeType::RET_EXPR:
-        generate_return_stmt(static_cast<RetExpr *>(node.get()));
+        generate_return_stmt(std::static_pointer_cast<RetExpr>(node));
         break;
 
     case ASTNodeType::BREAK_STMT:
@@ -1001,7 +1005,7 @@ void TACGenerator::generate_statement(ASTNodePtr node)
         break;
 
     case ASTNodeType::GOTO_STMT: {
-        auto *stmt = static_cast<GotoStmt *>(node.get());
+        auto stmt = std::static_pointer_cast<GotoStmt>(node);
         if (stmt->target_label) {
             emit_goto(stmt->target_label->get_name());
         }
@@ -1009,7 +1013,7 @@ void TACGenerator::generate_statement(ASTNodePtr node)
     }
 
     case ASTNodeType::LABEL_STMT: {
-        auto *stmt = static_cast<LabelStmt *>(node.get());
+        auto stmt = std::static_pointer_cast<LabelStmt>(node);
         if (stmt->label) {
             emit_label(stmt->label->get_name());
         }
@@ -1026,14 +1030,14 @@ void TACGenerator::generate_statement(ASTNodePtr node)
     }
 }
 
-void TACGenerator::generate_block_stmt(BlockStmt *stmt)
+void TACGenerator::generate_block_stmt(std::shared_ptr<BlockStmt> stmt)
 {
     for (auto &s : stmt->statements) {
         generate_statement(s);
     }
 }
 
-void TACGenerator::generate_if_stmt(IfStmt *stmt)
+void TACGenerator::generate_if_stmt(std::shared_ptr<IfStmt> stmt)
 {
     auto condition = generate_expression(stmt->condition);
     auto else_label = new_label("else");
@@ -1055,7 +1059,7 @@ void TACGenerator::generate_if_stmt(IfStmt *stmt)
     emit_label(end_label);
 }
 
-void TACGenerator::generate_while_stmt(WhileStmt *stmt)
+void TACGenerator::generate_while_stmt(std::shared_ptr<WhileStmt> stmt)
 {
     auto cond_label = new_label("while_cond");
     auto body_label = new_label("while_body");
@@ -1078,7 +1082,7 @@ void TACGenerator::generate_while_stmt(WhileStmt *stmt)
     loop_labels.pop();
 }
 
-void TACGenerator::generate_for_stmt(ForStmt *stmt)
+void TACGenerator::generate_for_stmt(std::shared_ptr<ForStmt> stmt)
 {
     auto cond_label = new_label("for_cond");
     auto body_label = new_label("for_body");
@@ -1117,7 +1121,7 @@ void TACGenerator::generate_for_stmt(ForStmt *stmt)
     loop_labels.pop();
 }
 
-void TACGenerator::generate_return_stmt(RetExpr *stmt)
+void TACGenerator::generate_return_stmt(std::shared_ptr<RetExpr> stmt)
 {
     if (stmt->value.has_value()) {
         auto return_value = generate_expression(stmt->value.value());
@@ -1129,7 +1133,7 @@ void TACGenerator::generate_return_stmt(RetExpr *stmt)
     }
 }
 
-void TACGenerator::generate_switch_stmt(SwitchStmt *stmt)
+void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
 {
     auto expr = generate_expression(stmt->expression);
     auto end_label = new_label("switch_end");
@@ -1147,14 +1151,20 @@ void TACGenerator::generate_switch_stmt(SwitchStmt *stmt)
 
     // Generate case labels and extract constant values
     for (size_t i = 0; i < stmt->cases.size(); ++i) {
-        auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+        if (stmt->cases[i]->type != ASTNodeType::CASE_STMT)
+            continue;
+        auto case_stmt = std::static_pointer_cast<CaseStmt>(stmt->cases[i]);
 
         // Try to extract constant integer value
         int64_t case_val = 0;
         bool is_constant = false;
 
-        if (case_stmt->value->type == ASTNodeType::LITERAL_EXPR) {
-            auto *lit = static_cast<LiteralExpr *>(case_stmt->value.get());
+        if (case_stmt->value &&
+            case_stmt->value->type == ASTNodeType::LITERAL_EXPR) {
+            auto lit = std::static_pointer_cast<LiteralExpr>(case_stmt->value);
+            if (!lit)
+                continue; // Skip if cast fails
+
             // Try to extract integer or char value
             if (auto *int_val = std::get_if<int64_t>(&lit->value)) {
                 case_val = *int_val;
@@ -1287,10 +1297,11 @@ void TACGenerator::generate_switch_stmt(SwitchStmt *stmt)
         // Generate default case
         if (stmt->default_case.has_value()) {
             emit_label(default_label);
-            auto *default_stmt =
-                static_cast<DefaultStmt *>(stmt->default_case.value().get());
-            generate_statement(default_stmt->statement);
-            emit_goto(end_label);
+            auto default_stmt = std::static_pointer_cast<DefaultStmt>(
+                stmt->default_case.value());
+            if (default_stmt->statement) {
+                generate_statement(default_stmt->statement);
+            }
         }
 
     } else {
@@ -1305,7 +1316,10 @@ void TACGenerator::generate_switch_stmt(SwitchStmt *stmt)
 
         // Generate comparisons for each case
         for (size_t i = 0; i < stmt->cases.size(); ++i) {
-            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+            auto case_stmt = std::static_pointer_cast<CaseStmt>(stmt->cases[i]);
+            if (!case_stmt->value)
+                continue; // Skip if invalid
+
             auto case_value = generate_expression(case_stmt->value);
 
             auto cmp_temp = new_temp(nullptr);
@@ -1331,18 +1345,23 @@ void TACGenerator::generate_switch_stmt(SwitchStmt *stmt)
         // Generate case bodies
         for (size_t i = 0; i < stmt->cases.size(); ++i) {
             emit_label(case_labels[i]);
-            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
-            generate_statement(case_stmt->statement);
-            emit_goto(end_label);
+            if (!stmt->cases[i])
+                continue; // Skip null entries
+
+            auto case_stmt = std::static_pointer_cast<CaseStmt>(stmt->cases[i]);
+
+            if (case_stmt->statement) {
+                generate_statement(case_stmt->statement);
+            }
         }
 
-        // Generate default case
         if (stmt->default_case.has_value()) {
             emit_label(default_label);
-            auto *default_stmt =
-                static_cast<DefaultStmt *>(stmt->default_case.value().get());
-            generate_statement(default_stmt->statement);
-            emit_goto(end_label);
+            auto default_stmt = std::static_pointer_cast<DefaultStmt>(
+                stmt->default_case.value());
+            if (default_stmt->statement) {
+                generate_statement(default_stmt->statement);
+            }
         }
     }
 

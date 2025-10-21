@@ -23,19 +23,19 @@ class TACGenerator {
 
     // Helper methods
     TACOperand generate_expression(ASTNodePtr node);
-    TACOperand generate_binary_op(BinaryExpr *expr);
-    TACOperand generate_unary_op(UnaryExpr *expr);
-    TACOperand generate_assignment(AssignmentExpr *expr);
-    TACOperand generate_call(CallExpr *expr);
-    TACOperand generate_ternary(TernaryExpr *expr);
+    TACOperand generate_binary_op(std::shared_ptr<BinaryExpr> expr);
+    TACOperand generate_unary_op(std::shared_ptr<UnaryExpr> expr);
+    TACOperand generate_assignment(std::shared_ptr<AssignmentExpr> expr);
+    TACOperand generate_call(std::shared_ptr<CallExpr> expr);
+    TACOperand generate_ternary(std::shared_ptr<TernaryExpr> expr);
 
     void generate_statement(ASTNodePtr node);
-    void generate_if_stmt(IfStmt *stmt);
-    void generate_while_stmt(WhileStmt *stmt);
-    void generate_for_stmt(ForStmt *stmt);
-    void generate_return_stmt(RetExpr *stmt);
-    void generate_block_stmt(BlockStmt *stmt);
-    void generate_switch_stmt(class SwitchStmt *stmt);
+    void generate_if_stmt(std::shared_ptr<IfStmt> stmt);
+    void generate_while_stmt(std::shared_ptr<WhileStmt> stmt);
+    void generate_for_stmt(std::shared_ptr<ForStmt> stmt);
+    void generate_return_stmt(std::shared_ptr<RetExpr> stmt);
+    void generate_block_stmt(std::shared_ptr<BlockStmt> stmt);
+    void generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt);
 
     TACOpcode operator_to_tac_opcode(Operator op);
 
@@ -49,7 +49,7 @@ class TACGenerator {
   public:
     TACGenerator();
 
-    void generate_function(FunctionDef *func_def);
+    void generate_function(std::shared_ptr<FunctionDef> func_def);
     void generate_global_declaration(ASTNodePtr node);
 
     // NEW: Generate TAC for entire translation unit
