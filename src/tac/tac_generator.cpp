@@ -13,11 +13,35 @@ void TACGenerator::emit(TACInstructionPtr instr)
 {
     if (current_block) {
         current_block->add_instruction(instr);
+
+        // Increment instruction counter after adding to block
+        if (current_function) {
+            current_function->current_instruction_number++;
+        }
     }
 }
 
 void TACGenerator::emit_label(const std::string &label)
 {
+    // The label will be at the next instruction number
+    size_t target_line = 0;
+    if (current_function) {
+        target_line = current_function->current_instruction_number + 1;
+
+        // Record this label's line number for backward jumps
+        current_function->emitted_labels[label] = target_line;
+
+        // Backpatch all pending forward jumps to this label
+        auto it = current_function->pending_jumps.find(label);
+        if (it != current_function->pending_jumps.end()) {
+            for (auto &jump_instr : it->second) {
+                jump_instr->target_line_number = target_line;
+            }
+            // Clear the pending jumps for this label
+            current_function->pending_jumps.erase(it);
+        }
+    }
+
     auto label_instr =
         std::make_shared<TACInstruction>(TACOpcode::LABEL,
                                          TACOperand(),
@@ -31,7 +55,47 @@ void TACGenerator::emit_goto(const std::string &label)
         std::make_shared<TACInstruction>(TACOpcode::GOTO,
                                          TACOperand(),
                                          TACOperand::label(label));
+    goto_instr->is_backpatch_target = true;
+
+    if (current_function) {
+        // Check if this is a backward jump (label already emitted)
+        auto it = current_function->emitted_labels.find(label);
+        if (it != current_function->emitted_labels.end()) {
+            // Backward jump - resolve immediately
+            goto_instr->target_line_number = it->second;
+        } else {
+            // Forward jump - add to pending jumps
+            current_function->pending_jumps[label].push_back(goto_instr);
+        }
+    }
+
     emit(goto_instr);
+}
+
+void TACGenerator::emit_conditional_jump(TACOpcode opcode,
+                                         const TACOperand &condition,
+                                         const std::string &label)
+{
+    auto jump_instr =
+        std::make_shared<TACInstruction>(opcode,
+                                         TACOperand(),
+                                         condition,
+                                         TACOperand::label(label));
+    jump_instr->is_backpatch_target = true;
+
+    if (current_function) {
+        // Check if this is a backward jump (label already emitted)
+        auto it = current_function->emitted_labels.find(label);
+        if (it != current_function->emitted_labels.end()) {
+            // Backward jump - resolve immediately
+            jump_instr->target_line_number = it->second;
+        } else {
+            // Forward jump - add to pending jumps
+            current_function->pending_jumps[label].push_back(jump_instr);
+        }
+    }
+
+    emit(jump_instr);
 }
 
 std::string TACGenerator::new_temp(TypePtr type)
@@ -352,11 +416,9 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
 
         if (expr->op == Operator::LOGICAL_AND) {
             // If left is false, short-circuit to false
-            emit(std::make_shared<TACInstruction>(
-                TACOpcode::IF_FALSE,
-                TACOperand(),
-                left,
-                TACOperand::label(short_circuit_label)));
+            emit_conditional_jump(TACOpcode::IF_FALSE,
+                                  left,
+                                  short_circuit_label);
 
             auto right = generate_expression(expr->right);
             emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
@@ -371,11 +433,9 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
                 TACOperand::constant_int(0, expr->expr_type)));
         } else {
             // If left is true, short-circuit to true
-            emit(std::make_shared<TACInstruction>(
-                TACOpcode::IF_TRUE,
-                TACOperand(),
-                left,
-                TACOperand::label(short_circuit_label)));
+            emit_conditional_jump(TACOpcode::IF_TRUE,
+                                  left,
+                                  short_circuit_label);
 
             auto right = generate_expression(expr->right);
             emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
@@ -677,10 +737,7 @@ TACOperand TACGenerator::generate_ternary(std::shared_ptr<TernaryExpr> expr)
     auto false_label = new_label("ternary_false");
     auto end_label = new_label("ternary_end");
 
-    emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
-                                          TACOperand(),
-                                          condition,
-                                          TACOperand::label(false_label)));
+    emit_conditional_jump(TACOpcode::IF_FALSE, condition, false_label);
 
     // True branch
     emit_label(true_label);
@@ -1146,10 +1203,7 @@ void TACGenerator::generate_statement(ASTNodePtr node)
 
         emit_label(cond_label);
         auto condition = generate_expression(stmt->condition);
-        emit(std::make_shared<TACInstruction>(TACOpcode::IF_TRUE,
-                                              TACOperand(),
-                                              condition,
-                                              TACOperand::label(body_label)));
+        emit_conditional_jump(TACOpcode::IF_TRUE, condition, body_label);
 
         emit_label(end_label);
         loop_labels.pop();
@@ -1167,10 +1221,7 @@ void TACGenerator::generate_statement(ASTNodePtr node)
 
         emit_label(cond_label);
         auto condition = generate_expression(stmt->condition);
-        emit(std::make_shared<TACInstruction>(TACOpcode::IF_TRUE,
-                                              TACOperand(),
-                                              condition,
-                                              TACOperand::label(end_label)));
+        emit_conditional_jump(TACOpcode::IF_TRUE, condition, end_label);
 
         emit_label(body_label);
         generate_statement(stmt->body);
@@ -1272,10 +1323,7 @@ void TACGenerator::generate_if_stmt(std::shared_ptr<IfStmt> stmt)
     auto else_label = new_label("else");
     auto end_label = new_label("endif");
 
-    emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
-                                          TACOperand(),
-                                          condition,
-                                          TACOperand::label(else_label)));
+    emit_conditional_jump(TACOpcode::IF_FALSE, condition, else_label);
 
     generate_statement(stmt->then_branch);
     emit_goto(end_label);
@@ -1298,10 +1346,7 @@ void TACGenerator::generate_while_stmt(std::shared_ptr<WhileStmt> stmt)
 
     emit_label(cond_label);
     auto condition = generate_expression(stmt->condition);
-    emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
-                                          TACOperand(),
-                                          condition,
-                                          TACOperand::label(end_label)));
+    emit_conditional_jump(TACOpcode::IF_FALSE, condition, end_label);
 
     emit_label(body_label);
     generate_statement(stmt->body);
@@ -1329,10 +1374,7 @@ void TACGenerator::generate_for_stmt(std::shared_ptr<ForStmt> stmt)
     emit_label(cond_label);
     if (stmt->condition.has_value()) {
         auto condition = generate_expression(stmt->condition.value());
-        emit(std::make_shared<TACInstruction>(TACOpcode::IF_FALSE,
-                                              TACOperand(),
-                                              condition,
-                                              TACOperand::label(end_label)));
+        emit_conditional_jump(TACOpcode::IF_FALSE, condition, end_label);
     }
 
     // Body

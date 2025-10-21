@@ -45,6 +45,9 @@ class TACGenerator {
     void emit(TACInstructionPtr instr);
     void emit_label(const std::string &label);
     void emit_goto(const std::string &label);
+    void emit_conditional_jump(TACOpcode opcode,
+                               const TACOperand &condition,
+                               const std::string &label);
 
     std::string new_temp(TypePtr type = nullptr);
     std::string new_label(const std::string &prefix = "L");

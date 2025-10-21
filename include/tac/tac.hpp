@@ -3,6 +3,7 @@
 
 #include "symbol_table/symbol.hpp"
 #include "symbol_table/type.hpp"
+#include <map>
 #include <memory>
 #include <string>
 #include <variant>
@@ -135,6 +136,10 @@ struct TACInstruction {
     int64_t jump_table_min = 0;
     int64_t jump_table_max = 0;
 
+    // For backpatching: store target line number for goto/conditional jumps
+    size_t target_line_number = 0;
+    bool is_backpatch_target = false; // true if this needs backpatching
+
     TACInstruction(TACOpcode op,
                    TACOperand res = TACOperand(),
                    TACOperand op1 = TACOperand(),
@@ -186,6 +191,15 @@ struct TACFunction {
     ScopeID body_scope_id = 0;
     SymbolTable &sym_table;
 
+    // For single-pass backpatching during code generation
+    size_t current_instruction_number = 0;
+
+    // Map label names to list of instructions that jump to them (forward jumps)
+    std::map<std::string, std::vector<TACInstructionPtr>> pending_jumps;
+
+    // Map label names to their line numbers (for backward jumps)
+    std::map<std::string, size_t> emitted_labels;
+
     TACFunction(const std::string &n,
                 const std::string &mn,
                 TypePtr ret,
@@ -199,7 +213,7 @@ struct TACFunction {
     std::string new_temp(TypePtr type);
     std::string new_label(const std::string &prefix = "L");
     void add_block(TACBasicBlockPtr block);
-    void print() const;
+    void print(size_t &line_number) const;
 };
 
 using TACFunctionPtr = std::shared_ptr<TACFunction>;

@@ -2,6 +2,7 @@
 #include "symbol_table/mangling.hpp"
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type.hpp"
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 
@@ -219,12 +220,18 @@ std::string TACInstruction::to_string() const
 
     if (opcode == TACOpcode::GOTO) {
         oss << "    GOTO " << operand1.to_string();
+        if (target_line_number > 0) {
+            oss << " (" << target_line_number << ")";
+        }
         return oss.str();
     }
 
     if (opcode == TACOpcode::IF_FALSE || opcode == TACOpcode::IF_TRUE) {
         oss << "    " << opcode_to_string(opcode) << " " << operand1.to_string()
             << " GOTO " << operand2.to_string();
+        if (target_line_number > 0) {
+            oss << " (" << target_line_number << ")";
+        }
         return oss.str();
     }
 
@@ -378,7 +385,7 @@ void TACFunction::add_block(TACBasicBlockPtr block)
     basic_blocks.push_back(block);
 }
 
-void TACFunction::print() const
+void TACFunction::print(size_t &line_number) const
 {
     std::cout << "\nFunction: " << name << " (mangled: " << mangled_name
               << ")\n";
@@ -390,12 +397,28 @@ void TACFunction::print() const
     }
     std::cout << "\n\n";
 
+    // Calculate the offset to convert relative line numbers to global
+    size_t function_start_line = line_number;
+
     for (const auto &block : basic_blocks) {
         if (!block->label.empty()) {
-            std::cout << block->label << ":\n";
+            std::cout << std::setw(4) << std::right << line_number++ << ": "
+                      << block->label << ":\n";
         }
         for (const auto &instr : block->instructions) {
-            std::cout << instr->to_string() << "\n";
+            // Temporarily adjust target_line_number for printing
+            size_t original_target = instr->target_line_number;
+            if (original_target > 0) {
+                const_cast<TACInstruction *>(instr.get())->target_line_number =
+                    function_start_line + original_target;
+            }
+
+            std::cout << std::setw(4) << std::right << line_number++ << ": "
+                      << instr->to_string() << "\n";
+
+            // Restore original relative line number
+            const_cast<TACInstruction *>(instr.get())->target_line_number =
+                original_target;
         }
         std::cout << "\n";
     }
@@ -405,16 +428,19 @@ void TACProgram::print() const
 {
     std::cout << "========== THREE ADDRESS CODE ==========\n";
 
+    size_t global_line_number = 1;
+
     if (!global_variables.empty()) {
         std::cout << "\nGlobal Variables:\n";
         for (const auto &var : global_variables) {
-            std::cout << "  " << var->get_name() << " : "
+            std::cout << std::setw(4) << std::right << global_line_number++
+                      << ": " << var->get_name() << " : "
                       << var->get_type().debug_name() << "\n";
         }
     }
 
     for (const auto &func : functions) {
-        func->print();
+        func->print(global_line_number);
     }
 
     std::cout << "========================================\n";
