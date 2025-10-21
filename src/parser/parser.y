@@ -3742,7 +3742,7 @@ labeled_statement
           parser_state.resolve_label(label_sym_opt.value());
         }
 	  }
-    | CASE constant_expression COLON_OP statement
+    | CASE constant_expression COLON_OP compound_statement
     {
       if (!in_switch()) {
         parser_add_error(@1.begin.line, @1.begin.column, "'case' label not within a switch statement");
@@ -3760,7 +3760,7 @@ labeled_statement
         }
       }
     }
-    | DEFAULT COLON_OP statement
+    | DEFAULT COLON_OP compound_statement
     {
       if (!in_switch()) {
         parser_add_error(@1.begin.line, @1.begin.column, "'default' label not within a switch statement");

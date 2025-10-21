@@ -61,18 +61,21 @@ int ultra_complex(int x, int y, int z) {
         while (i != 0) {
             if (y != 0) {
                 switch (z) {
-                    case 0:
+                    case 0: {
                         if (result != 0) {
                             goto inner_exit;
                         }
                         result = 1;
                         break;
-                    case 1:
+                    }
+                    case 1: {
                         result = 2;
                         goto outer_exit;
-                    default:
+                    }
+                    default: {
                         result = 3;
                         break;
+                    }
                 }
             } else {
                 until (result == 0) {
@@ -83,7 +86,7 @@ int ultra_complex(int x, int y, int z) {
         }
     } else {
         switch (x) {
-            case 0:
+            case 0: {
                 while (y != 0) {
                     if (z != 0) {
                         goto inner_exit;
@@ -91,13 +94,16 @@ int ultra_complex(int x, int y, int z) {
                     y = y - 1;
                 }
                 break;
-            case 1:
+            }
+            case 1: {
                 until (y == 0) {
                     y = y + 1;
                 }
                 break;
-            default:
+            }
+            default: {
                 goto outer_exit;
+            }
         }
     }
 

@@ -3,36 +3,43 @@
 int main() {
     int x = 5;
     int result = 0;
-    
+
     // Basic switch
     switch (x) {
-        case 1:
+        case 1: {
             result = 10;
             break;
-        case 2:
+        }
+        case 2: {
             result = 20;
             break;
-        case 5:
+        }
+        case 5: {
             result = 50;
             break;
-        default:
+        }
+        default: {
             result = 0;
             break;
+        }
     }
-    
+
     // Switch with multiple cases
     char c = 'a';
     switch (c) {
-        case 'a':
+        case 'a': {
             result = 1;
             break;
-        case 'b':
+        }
+        case 'b': {
             result = 2;
             break;
-        case 'c':
+        }
+        case 'c': {
             result = 3;
             break;
+        }
     }
-    
+
     return 0;
 }
