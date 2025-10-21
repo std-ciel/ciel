@@ -1,0 +1,40 @@
+// Test: valid switch with char literal cases
+
+int main() {
+    char c = 'b';
+    int result = 0;
+
+    // Valid: unique char literal cases
+    switch (c) {
+        case 'a': {
+            result = 1;
+            break;
+        }
+        case 'b': {
+            result = 2;
+            break;
+        }
+        case 'c': {
+            result = 3;
+            break;
+        }
+        case 'x': {
+            result = 10;
+            break;
+        }
+        case 'y': {
+            result = 20;
+            break;
+        }
+        case 'z': {
+            result = 30;
+            break;
+        }
+        default: {
+            result = 0;
+            break;
+        }
+    }
+
+    return 0;
+}

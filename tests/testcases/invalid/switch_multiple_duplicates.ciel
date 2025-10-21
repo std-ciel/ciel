@@ -1,0 +1,35 @@
+// Test: multiple duplicate cases in same switch
+
+int main() {
+    int x = 5;
+
+    // ERROR: multiple duplicates
+    switch (x) {
+        case 1: {
+            x = 10;
+            break;
+        }
+        case 2: {
+            x = 20;
+            break;
+        }
+        case 1: {  // Duplicate of case 1
+            x = 30;
+            break;
+        }
+        case 2: {  // Duplicate of case 2
+            x = 40;
+            break;
+        }
+        case 3: {
+            x = 50;
+            break;
+        }
+        case 3: {  // Duplicate of case 3
+            x = 60;
+            break;
+        }
+    }
+
+    return 0;
+}

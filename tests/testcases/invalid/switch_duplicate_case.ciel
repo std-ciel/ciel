@@ -1,0 +1,23 @@
+// Test: duplicate case values in switch
+
+int main() {
+    int x = 5;
+
+    // ERROR: duplicate case value
+    switch (x) {
+        case 1: {
+            x = 10;
+            break;
+        }
+        case 2: {
+            x = 20;
+            break;
+        }
+        case 1: {  // Should fail - duplicate of first case
+            x = 30;
+            break;
+        }
+    }
+
+    return 0;
+}

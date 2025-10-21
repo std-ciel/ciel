@@ -1,0 +1,20 @@
+// Test: case labels must be literal constants, not variables or expressions
+
+int main() {
+    int x = 5;
+    int value = 10;
+
+    // ERROR: case value must be a literal, not a variable
+    switch (x) {
+        case value: {  // Should fail - not a literal
+            x = 1;
+            break;
+        }
+        case 2: {
+            x = 2;
+            break;
+        }
+    }
+
+    return 0;
+}

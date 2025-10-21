@@ -1,0 +1,27 @@
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+int main() {
+    enum Color c;
+
+    // Switch on enum
+    switch (c) {
+        case Color.RED: {
+            c = Color.GREEN;
+            break;
+        }
+        case Color.GREEN: {
+            c = Color.BLUE;
+            break;
+        }
+        case Color.BLUE: {
+            c = Color.RED;
+            break;
+        }
+    }
+
+    return 0;
+}

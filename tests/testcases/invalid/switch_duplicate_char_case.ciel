@@ -1,0 +1,23 @@
+// Test: duplicate case values with char literals
+
+int main() {
+    char c = 'a';
+
+    // ERROR: duplicate case value (char)
+    switch (c) {
+        case 'a': {
+            c = 'x';
+            break;
+        }
+        case 'b': {
+            c = 'y';
+            break;
+        }
+        case 'a': {  // Should fail - duplicate
+            c = 'z';
+            break;
+        }
+    }
+
+    return 0;
+}
