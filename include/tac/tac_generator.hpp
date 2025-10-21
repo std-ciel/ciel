@@ -35,6 +35,7 @@ class TACGenerator {
     void generate_for_stmt(ForStmt *stmt);
     void generate_return_stmt(RetExpr *stmt);
     void generate_block_stmt(BlockStmt *stmt);
+    void generate_switch_stmt(class SwitchStmt *stmt);
 
     TACOpcode operator_to_tac_opcode(Operator op);
 

@@ -2,6 +2,7 @@
 #include "parser/parser_helper.hpp"
 #include "symbol_table/mangling.hpp"
 #include "tac/tac_utils.hpp"
+#include <algorithm>
 #include <stdexcept>
 
 TACGenerator::TACGenerator()
@@ -979,78 +980,9 @@ void TACGenerator::generate_statement(ASTNodePtr node)
         generate_for_stmt(static_cast<ForStmt *>(node.get()));
         break;
 
-    case ASTNodeType::SWITCH_STMT: {
-        auto *stmt = static_cast<SwitchStmt *>(node.get());
-        auto expr = generate_expression(stmt->expression);
-        auto end_label = new_label("switch_end");
-
-        loop_labels.push(
-            {end_label, ""}); // Switch allows break but not continue
-
-        std::vector<std::string> case_labels;
-        std::string default_label;
-
-        // Generate case labels
-        for (size_t i = 0; i < stmt->cases.size(); ++i) {
-            case_labels.push_back(new_label("case"));
-        }
-
-        if (stmt->default_case.has_value()) {
-            default_label = new_label("default");
-        }
-
-        // Generate comparisons for each case
-        for (size_t i = 0; i < stmt->cases.size(); ++i) {
-            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
-            auto case_value = generate_expression(case_stmt->value);
-
-            auto cmp_temp = new_temp(nullptr);
-            auto cmp = TACOperand::temporary(cmp_temp, nullptr);
-            emit(std::make_shared<TACInstruction>(TACOpcode::EQ,
-                                                  cmp,
-                                                  expr,
-                                                  case_value));
-            emit(std::make_shared<TACInstruction>(
-                TACOpcode::IF_TRUE,
-                TACOperand(),
-                cmp,
-                TACOperand::label(case_labels[i])));
-        }
-
-        // Jump to default or end
-        if (!default_label.empty()) {
-            emit_goto(default_label);
-        } else {
-            emit_goto(end_label);
-        }
-
-        // Generate case bodies
-        for (size_t i = 0; i < stmt->cases.size(); ++i) {
-            emit_label(case_labels[i]);
-            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
-            generate_statement(case_stmt->statement);
-            // Add implicit break (goto end) after each case to prevent
-            // fall-through This is necessary because the parser doesn't include
-            // break statements in the case's statement - they're separate
-            // statements in the enclosing compound block that get discarded
-            // TODO: Fix parser to properly associate breaks with their cases
-            emit_goto(end_label);
-        }
-
-        // Generate default case
-        if (stmt->default_case.has_value()) {
-            emit_label(default_label);
-            auto *default_stmt =
-                static_cast<DefaultStmt *>(stmt->default_case.value().get());
-            generate_statement(default_stmt->statement);
-            // Add implicit break for default case too
-            emit_goto(end_label);
-        }
-
-        emit_label(end_label);
-        loop_labels.pop();
+    case ASTNodeType::SWITCH_STMT:
+        generate_switch_stmt(static_cast<SwitchStmt *>(node.get()));
         break;
-    }
 
     case ASTNodeType::RET_EXPR:
         generate_return_stmt(static_cast<RetExpr *>(node.get()));
@@ -1195,4 +1127,225 @@ void TACGenerator::generate_return_stmt(RetExpr *stmt)
     } else {
         emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
     }
+}
+
+void TACGenerator::generate_switch_stmt(SwitchStmt *stmt)
+{
+    auto expr = generate_expression(stmt->expression);
+    auto end_label = new_label("switch_end");
+
+    loop_labels.push({end_label, ""}); // Switch allows break but not continue
+
+    // Collect case values and labels
+    struct CaseInfo {
+        int64_t value;
+        std::string label;
+        size_t index;
+    };
+    std::vector<CaseInfo> cases;
+    std::string default_label;
+
+    // Generate case labels and extract constant values
+    for (size_t i = 0; i < stmt->cases.size(); ++i) {
+        auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+
+        // Try to extract constant integer value
+        int64_t case_val = 0;
+        bool is_constant = false;
+
+        if (case_stmt->value->type == ASTNodeType::LITERAL_EXPR) {
+            auto *lit = static_cast<LiteralExpr *>(case_stmt->value.get());
+            // Try to extract integer or char value
+            if (auto *int_val = std::get_if<int64_t>(&lit->value)) {
+                case_val = *int_val;
+                is_constant = true;
+            } else if (auto *uint_val = std::get_if<uint64_t>(&lit->value)) {
+                case_val = static_cast<int64_t>(*uint_val);
+                is_constant = true;
+            } else if (auto *char_val = std::get_if<char>(&lit->value)) {
+                case_val = static_cast<int64_t>(*char_val);
+                is_constant = true;
+            }
+        }
+
+        if (is_constant) {
+            std::string label = new_label("case");
+            cases.push_back({case_val, label, i});
+        }
+    }
+
+    if (stmt->default_case.has_value()) {
+        default_label = new_label("default");
+    }
+
+    // Determine if we should use a jump table
+    // Use jump table if:
+    // 1. We have at least 3 cases
+    // 2. The case values are reasonably dense (density > 0.4)
+    bool use_jump_table = false;
+    if (cases.size() >= 3) {
+        // Sort cases by value to calculate range
+        std::sort(cases.begin(),
+                  cases.end(),
+                  [](const CaseInfo &a, const CaseInfo &b) {
+                      return a.value < b.value;
+                  });
+
+        int64_t min_val = cases.front().value;
+        int64_t max_val = cases.back().value;
+        int64_t range = max_val - min_val + 1;
+
+        // Check density: ratio of cases to range
+        double density = static_cast<double>(cases.size()) / range;
+
+        // Use jump table if density > 0.4 and range is reasonable (< 256)
+        if (density > 0.4 && range <= 256) {
+            use_jump_table = true;
+        }
+    }
+
+    if (use_jump_table) {
+        // JUMP TABLE IMPLEMENTATION
+        int64_t min_val = cases.front().value;
+        int64_t max_val = cases.back().value;
+        int64_t range = max_val - min_val + 1;
+
+        // Create jump table array
+        std::vector<std::string> jump_table(range);
+        std::string fallback_label =
+            default_label.empty() ? end_label : default_label;
+
+        // Initialize all entries to default/end label
+        for (int64_t i = 0; i < range; ++i) {
+            jump_table[i] = fallback_label;
+        }
+
+        // Fill in the actual case labels
+        for (const auto &case_info : cases) {
+            int64_t index = case_info.value - min_val;
+            jump_table[index] = case_info.label;
+        }
+
+        // Generate bounds check
+        // if (expr < min_val || expr > max_val) goto default/end
+        auto min_cmp_temp = new_temp(nullptr);
+        auto min_cmp = TACOperand::temporary(min_cmp_temp, nullptr);
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::LT,
+            min_cmp,
+            expr,
+            TACOperand::constant_int(min_val, nullptr)));
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::IF_TRUE,
+            TACOperand(),
+            min_cmp,
+            TACOperand::label(fallback_label)));
+
+        auto max_cmp_temp = new_temp(nullptr);
+        auto max_cmp = TACOperand::temporary(max_cmp_temp, nullptr);
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::GT,
+            max_cmp,
+            expr,
+            TACOperand::constant_int(max_val, nullptr)));
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::IF_TRUE,
+            TACOperand(),
+            max_cmp,
+            TACOperand::label(fallback_label)));
+
+        // Calculate jump table index: index_temp = expr - min_val
+        auto index_temp = new_temp(nullptr);
+        auto index = TACOperand::temporary(index_temp, nullptr);
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::SUB,
+            index,
+            expr,
+            TACOperand::constant_int(min_val, nullptr)));
+
+        // Emit jump table instruction
+        auto jump_instr =
+            std::make_shared<TACInstruction>(TACOpcode::JUMP_TABLE,
+                                             TACOperand(),
+                                             index);
+        jump_instr->jump_table_labels = jump_table;
+        jump_instr->jump_table_min = min_val;
+        jump_instr->jump_table_max = max_val;
+        jump_instr->comment =
+            "Jump table with " + std::to_string(cases.size()) + " cases";
+        emit(jump_instr);
+
+        // Generate case bodies
+        for (const auto &case_info : cases) {
+            emit_label(case_info.label);
+            auto *case_stmt =
+                static_cast<CaseStmt *>(stmt->cases[case_info.index].get());
+            generate_statement(case_stmt->statement);
+            emit_goto(end_label);
+        }
+
+        // Generate default case
+        if (stmt->default_case.has_value()) {
+            emit_label(default_label);
+            auto *default_stmt =
+                static_cast<DefaultStmt *>(stmt->default_case.value().get());
+            generate_statement(default_stmt->statement);
+            emit_goto(end_label);
+        }
+
+    } else {
+        // FALLBACK: IF-ELSE CHAIN IMPLEMENTATION
+        // For sparse cases or few cases, use traditional if-else
+        std::vector<std::string> case_labels;
+
+        // Generate case labels
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            case_labels.push_back(new_label("case"));
+        }
+
+        // Generate comparisons for each case
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+            auto case_value = generate_expression(case_stmt->value);
+
+            auto cmp_temp = new_temp(nullptr);
+            auto cmp = TACOperand::temporary(cmp_temp, nullptr);
+            emit(std::make_shared<TACInstruction>(TACOpcode::EQ,
+                                                  cmp,
+                                                  expr,
+                                                  case_value));
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::IF_TRUE,
+                TACOperand(),
+                cmp,
+                TACOperand::label(case_labels[i])));
+        }
+
+        // Jump to default or end
+        if (!default_label.empty()) {
+            emit_goto(default_label);
+        } else {
+            emit_goto(end_label);
+        }
+
+        // Generate case bodies
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            emit_label(case_labels[i]);
+            auto *case_stmt = static_cast<CaseStmt *>(stmt->cases[i].get());
+            generate_statement(case_stmt->statement);
+            emit_goto(end_label);
+        }
+
+        // Generate default case
+        if (stmt->default_case.has_value()) {
+            emit_label(default_label);
+            auto *default_stmt =
+                static_cast<DefaultStmt *>(stmt->default_case.value().get());
+            generate_statement(default_stmt->statement);
+            emit_goto(end_label);
+        }
+    }
+
+    emit_label(end_label);
+    loop_labels.pop();
 }

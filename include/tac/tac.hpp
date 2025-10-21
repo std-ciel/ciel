@@ -79,6 +79,10 @@ enum class TACOpcode {
     // Type Operations
     CAST,
 
+    // Jump Table Operations
+    JUMP_TABLE,      // Jump using a table: JUMP_TABLE index, table_label
+    JUMP_TABLE_INIT, // Initialize jump table metadata
+
     // Special
     NOP,
     PHI
@@ -125,6 +129,11 @@ struct TACInstruction {
     TACOperand operand2; // second source (optional)
 
     std::string comment; // for debugging
+
+    // For jump table instructions
+    std::vector<std::string> jump_table_labels;
+    int64_t jump_table_min = 0;
+    int64_t jump_table_max = 0;
 
     TACInstruction(TACOpcode op,
                    TACOperand res = TACOperand(),

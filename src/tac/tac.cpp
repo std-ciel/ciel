@@ -186,6 +186,10 @@ std::string opcode_to_string(TACOpcode op)
         return "MEMBER_ADDR";
     case TACOpcode::CAST:
         return "CAST";
+    case TACOpcode::JUMP_TABLE:
+        return "JUMP_TABLE";
+    case TACOpcode::JUMP_TABLE_INIT:
+        return "JUMP_TABLE_INIT";
     case TACOpcode::NOP:
         return "NOP";
     case TACOpcode::PHI:
@@ -245,6 +249,31 @@ std::string TACInstruction::to_string() const
         oss << "    RETURN";
         if (operand1.is_valid()) {
             oss << " " << operand1.to_string();
+        }
+        return oss.str();
+    }
+
+    // Handle jump table operations
+    if (opcode == TACOpcode::JUMP_TABLE) {
+        oss << "    JUMP_TABLE " << operand1.to_string() << " ["
+            << jump_table_min << ".." << jump_table_max << "] {";
+        for (size_t i = 0; i < jump_table_labels.size(); ++i) {
+            if (i > 0)
+                oss << ", ";
+            oss << jump_table_labels[i];
+        }
+        oss << "}";
+        if (!comment.empty()) {
+            oss << "  // " << comment;
+        }
+        return oss.str();
+    }
+
+    if (opcode == TACOpcode::JUMP_TABLE_INIT) {
+        oss << "    JUMP_TABLE_INIT " << result.to_string()
+            << " min=" << jump_table_min << " max=" << jump_table_max;
+        if (!comment.empty()) {
+            oss << "  // " << comment;
         }
         return oss.str();
     }
