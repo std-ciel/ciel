@@ -3793,6 +3793,12 @@ labeled_statement
       if (!in_switch()) {
         parser_add_error(@1.begin.line, @1.begin.column, "'case' label not within a switch statement");
         $$ = nullptr; // TODO: replace with error node
+      } else if (!is_literal_expression($2)) {
+        parser_add_error(@2.begin.line, @2.begin.column, "'case' value must be a literal constant expression");
+        $$ = nullptr;
+      } else if (has_duplicate_case_value($2, @2)) {
+        parser_add_error(@2.begin.line, @2.begin.column, "duplicate 'case' value in switch statement");
+        $$ = nullptr;
       } else {
         auto t = parser_state.current_switch_subject();
         if (t) {
