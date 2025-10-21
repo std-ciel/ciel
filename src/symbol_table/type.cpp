@@ -122,11 +122,10 @@ bool is_integral_or_enum_non_bool(TypePtr type)
 {
     if (!type)
         return false;
-    // enum is also considered integral
     if (is_integral_type(type)) {
         return !is_bool_type(type); // exclude bool
     }
-    return false;
+    return type->kind == TypeKind::ENUM;
 }
 
 bool is_function_type(TypePtr type)
