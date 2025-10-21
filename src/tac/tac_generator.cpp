@@ -1021,6 +1021,34 @@ void TACGenerator::generate_statement(ASTNodePtr node)
         break;
     }
 
+    case ASTNodeType::CASE_STMT: {
+        auto stmt = std::static_pointer_cast<CaseStmt>(node);
+        // Emit the label for this case if it exists in the map
+        auto it = case_labels_map.find(node);
+        if (it != case_labels_map.end()) {
+            emit_label(it->second);
+        }
+        // Process the statement associated with this case
+        if (stmt->statement) {
+            generate_statement(stmt->statement);
+        }
+        break;
+    }
+
+    case ASTNodeType::DEFAULT_STMT: {
+        auto stmt = std::static_pointer_cast<DefaultStmt>(node);
+        // Emit the label for default if it exists in the map
+        auto it = case_labels_map.find(node);
+        if (it != case_labels_map.end()) {
+            emit_label(it->second);
+        }
+        // Process the statement associated with default
+        if (stmt->statement) {
+            generate_statement(stmt->statement);
+        }
+        break;
+    }
+
     // Expression statements
     default:
         if (is_expression_node(node->type)) {
@@ -1140,6 +1168,8 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
 
     loop_labels.push({end_label, ""}); // Switch allows break but not continue
 
+    case_labels_map.clear();
+
     // Collect case values and labels
     struct CaseInfo {
         int64_t value;
@@ -1181,11 +1211,13 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
         if (is_constant) {
             std::string label = new_label("case");
             cases.push_back({case_val, label, i});
+            case_labels_map[stmt->cases[i]] = label;
         }
     }
 
     if (stmt->default_case.has_value()) {
         default_label = new_label("default");
+        case_labels_map[stmt->default_case.value()] = default_label;
     }
 
     // Determine if we should use a jump table
@@ -1285,13 +1317,31 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
             "Jump table with " + std::to_string(cases.size()) + " cases";
         emit(jump_instr);
 
-        // Generate case bodies
-        for (const auto &case_info : cases) {
-            emit_label(case_info.label);
-            auto *case_stmt =
-                static_cast<CaseStmt *>(stmt->cases[case_info.index].get());
-            generate_statement(case_stmt->statement);
-            emit_goto(end_label);
+        for (size_t i = 0; i < stmt->cases.size(); ++i) {
+            if (!stmt->cases[i])
+                continue; // Skip null entries
+
+            auto case_stmt = std::static_pointer_cast<CaseStmt>(stmt->cases[i]);
+
+            // Find the label for this case
+            std::string case_label;
+            for (const auto &case_info : cases) {
+                if (case_info.index == i) {
+                    case_label = case_info.label;
+                    break;
+                }
+            }
+
+            // Only emit label if this case has a valid label (constant
+            // expression)
+            if (!case_label.empty()) {
+                emit_label(case_label);
+            }
+
+            // Generate the case body - no automatic goto, allow fall-through
+            if (case_stmt->statement) {
+                generate_statement(case_stmt->statement);
+            }
         }
 
         // Generate default case
@@ -1309,9 +1359,10 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
         // For sparse cases or few cases, use traditional if-else
         std::vector<std::string> case_labels;
 
-        // Generate case labels
         for (size_t i = 0; i < stmt->cases.size(); ++i) {
-            case_labels.push_back(new_label("case"));
+            std::string label = new_label("case");
+            case_labels.push_back(label);
+            case_labels_map[stmt->cases[i]] = label;
         }
 
         // Generate comparisons for each case
@@ -1342,7 +1393,7 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
             emit_goto(end_label);
         }
 
-        // Generate case bodies
+        // Generate case bodies IN ORIGINAL ORDER to support fall-through
         for (size_t i = 0; i < stmt->cases.size(); ++i) {
             emit_label(case_labels[i]);
             if (!stmt->cases[i])

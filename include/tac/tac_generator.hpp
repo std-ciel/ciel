@@ -6,6 +6,7 @@
 #include "symbol_table/type_factory.hpp"
 #include "tac/tac.hpp"
 #include <stack>
+#include <unordered_map>
 
 class TACGenerator {
   private:
@@ -20,6 +21,8 @@ class TACGenerator {
     // Stack for loop labels (for break/continue)
     std::stack<std::pair<std::string, std::string>>
         loop_labels; // (break_label, continue_label)
+
+    std::unordered_map<ASTNodePtr, std::string> case_labels_map;
 
     // Helper methods
     TACOperand generate_expression(ASTNodePtr node);
