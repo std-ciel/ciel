@@ -3905,52 +3905,49 @@ iteration_statement
     $$ = std::make_shared<DoWhileStmt>( $3, $6);
         parser_state.pop_ctx();
     }
-    | FOR OPEN_PAREN_OP
-    { symbol_table.enter_scope(); }
-      expression_statement expression_statement CLOSE_PAREN_OP
+    | for_start expression_statement expression_statement CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
       statement
     {
-        if ($5) ensure_condition_is_bool($5, @5, "for");
-        $$ = std::make_shared<ForStmt>($4, $5, std::nullopt, $8);
+        if ($3) ensure_condition_is_bool($3, @3, "for");
+        $$ = std::make_shared<ForStmt>($2, $3, std::nullopt, $6);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
-    | FOR OPEN_PAREN_OP
-    { symbol_table.enter_scope(); }
-      expression_statement expression_statement expression CLOSE_PAREN_OP
+    | for_start expression_statement expression_statement expression CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
       statement
     {
-        if ($5) ensure_condition_is_bool($5, @5, "for");
-        $$ = std::make_shared<ForStmt>($4, $5, $6, $9);
+        if ($3) ensure_condition_is_bool($3, @3, "for");
+        $$ = std::make_shared<ForStmt>($2, $3, $4, $7);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
-    | FOR OPEN_PAREN_OP
-    { symbol_table.enter_scope(); }
-      declaration expression_statement CLOSE_PAREN_OP
+    | for_start declaration expression_statement CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
       statement
     {
-        if ($5) ensure_condition_is_bool($5, @5, "for");
-        // TODO: handle intializer declaration
-        $$ = std::make_shared<ForStmt>(std::nullopt, $5, std::nullopt, $8);
+        if ($3) ensure_condition_is_bool($3, @3, "for");
+        auto decl_opt = $2 == nullptr ? std::nullopt : std::make_optional($2);
+        $$ = std::make_shared<ForStmt>(decl_opt, $3, std::nullopt, $6);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
-    | FOR OPEN_PAREN_OP
-    { symbol_table.enter_scope(); }
-      declaration expression_statement expression CLOSE_PAREN_OP
+    | for_start declaration expression_statement expression CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
       statement
     {
-        if ($5) ensure_condition_is_bool($5, @5, "for");
-        // TODO: handle intializer declaration
-        $$ = std::make_shared<ForStmt>(std::nullopt, $5, $6, $9);
+        if ($3) ensure_condition_is_bool($3, @3, "for");
+        auto decl_opt = $2 == nullptr ? std::nullopt : std::make_optional($2);
+        $$ = std::make_shared<ForStmt>(decl_opt, $3, $4, $7);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
+    ;
+
+for_start :
+FOR OPEN_PAREN_OP
+    { symbol_table.enter_scope(); }
     ;
 
 jump_statement
