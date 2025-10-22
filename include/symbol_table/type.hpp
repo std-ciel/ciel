@@ -10,6 +10,22 @@
 struct Type;
 using TypePtr = std::shared_ptr<Type>;
 
+struct TypeLayout {
+    uint32_t size;
+    uint32_t alignment;
+
+    TypeLayout() : size(0), alignment(0) {}
+    TypeLayout(uint32_t size, uint32_t alignment)
+        : size(size), alignment(alignment)
+    {
+    }
+
+    bool is_valid() const
+    {
+        return size > 0 && alignment > 0;
+    }
+};
+
 enum class TypeKind {
     BUILTIN,
     POINTER,
@@ -23,15 +39,7 @@ enum class TypeKind {
 
 enum class Qualifier { NONE = 0, CONST = 1, VOLATILE = 2, CONST_VOLATILE = 3 };
 
-enum class BuiltinTypeKind {
-    VOID,
-    BOOL,
-    CHAR,
-    INT,
-    FLOAT,
-    UNSIGNED,
-    LABEL
-};
+enum class BuiltinTypeKind { VOID, BOOL, CHAR, INT, FLOAT, UNSIGNED, LABEL };
 
 enum class Access { PUBLIC, PROTECTED, PRIVATE };
 
@@ -50,11 +58,21 @@ struct BaseSpecifier {
 
 struct Type {
     TypeKind kind;
+    TypeLayout layout;
+
     Type() = default;
-    explicit Type(TypeKind kind) : kind(kind) {}
+    explicit Type(TypeKind kind) : kind(kind), layout() {}
+    explicit Type(TypeKind kind, TypeLayout layout) : kind(kind), layout(layout)
+    {
+    }
     virtual ~Type() = default;
     virtual std::string debug_name() const = 0;
     virtual std::string mangled_name() const = 0;
+
+    bool has_layout() const
+    {
+        return layout.is_valid();
+    }
 };
 
 struct QualifiedType {
@@ -116,12 +134,25 @@ struct MemberInfo {
     QualifiedType type;
     Access access;
     bool is_static;
+    uint32_t offset; // Offset in bytes from the start of the object (0 for
+                     // static members)
 
     // Default constructor (needed for std::unordered_map)
-    MemberInfo() : type(), access(Access::PRIVATE), is_static(false) {}
+    MemberInfo() : type(), access(Access::PRIVATE), is_static(false), offset(0)
+    {
+    }
 
     MemberInfo(QualifiedType type, Access access, bool is_static)
-        : type(std::move(type)), access(access), is_static(is_static)
+        : type(std::move(type)), access(access), is_static(is_static), offset(0)
+    {
+    }
+
+    MemberInfo(QualifiedType type,
+               Access access,
+               bool is_static,
+               uint32_t offset)
+        : type(std::move(type)), access(access), is_static(is_static),
+          offset(offset)
     {
     }
 };
@@ -268,17 +299,26 @@ struct FunctionType : public Type {
 struct RecordType : public Type {
     std::string tag;
     std::unordered_map<std::string, QualifiedType> fields;
+    std::unordered_map<std::string, uint32_t> field_offsets;
     bool is_union;
     bool is_defined;
+
     RecordType(std::string tag, bool is_union = false, bool is_defined = false)
         : Type(TypeKind::RECORD), tag(std::move(tag)), is_union(is_union),
           is_defined(is_defined)
     {
     }
+
     void add_field(const std::string &name, QualifiedType type)
     {
         fields[name] = std::move(type);
     }
+
+    void set_field_offset(const std::string &name, uint32_t offset)
+    {
+        field_offsets[name] = offset;
+    }
+
     std::string debug_name() const override
     {
         return (is_union ? "union " : "struct ") + tag;
@@ -387,6 +427,10 @@ bool is_function_type(TypePtr type);
 bool is_array_type(TypePtr type);
 bool is_user_defined_type(TypePtr type);
 bool is_complete_type(TypePtr type);
+
+bool has_layout(TypePtr type);
+uint32_t get_type_size(TypePtr type);
+uint32_t get_type_alignment(TypePtr type);
 
 using TypeId = size_t;
 
