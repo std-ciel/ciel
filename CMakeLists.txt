@@ -51,7 +51,6 @@ add_library(ciel_parser STATIC
     src/layout_pass/layout_pass.cpp
     src/tac/tac.cpp
     src/tac/tac_generator.cpp
-    src/tac/tac_utils.cpp
 )
 
 target_include_directories(ciel_parser PUBLIC
