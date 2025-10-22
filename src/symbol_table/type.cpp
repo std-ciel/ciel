@@ -190,3 +190,32 @@ bool is_complete_type(TypePtr type)
         return false;
     }
 }
+bool has_layout(TypePtr type)
+{
+    if (!type)
+        return false;
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return false;
+    return canonical->has_layout();
+}
+
+uint32_t get_type_size(TypePtr type)
+{
+    if (!type)
+        return 0;
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return 0;
+    return canonical->layout.size;
+}
+
+uint32_t get_type_alignment(TypePtr type)
+{
+    if (!type)
+        return 0;
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return 0;
+    return canonical->layout.alignment;
+}

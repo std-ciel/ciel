@@ -3,7 +3,20 @@
 #include <iomanip>
 #include <iostream>
 
-TypeFactory::TypeFactory() : next_id(0)
+TypePtr TypeFactory::define_builtin(const std::string &name,
+                                    BuiltinTypeKind kind)
+{
+    auto type = std::make_shared<BuiltinType>(kind);
+    // Set layout for builtin types
+    type->layout = target_layout.get_builtin_layout(kind);
+    TypeId id = next_id++;
+    types[id] = type;
+    name_to_id[name] = id;
+    id_to_name[id] = name;
+    return type;
+}
+
+TypeFactory::TypeFactory() : next_id(0), target_layout()
 {
     define_builtin("void", BuiltinTypeKind::VOID);
     define_builtin("bool", BuiltinTypeKind::BOOL);
@@ -145,6 +158,71 @@ void TypeFactory::print_custom_types() const
     }
 
     std::cout << sep << '\n';
+}
+
+void TypeFactory::print_type_layouts() const
+{
+    auto custom_types = get_custom_types();
+
+    for (const auto &[id, type] : custom_types) {
+        if (!type->has_layout()) {
+            continue;
+        }
+
+        std::cout << type->debug_name() << " - Size: " << type->layout.size
+                  << " bytes, Alignment: " << type->layout.alignment << " bytes"
+                  << std::endl;
+
+        // Print field offsets for records (structs/unions)
+        if (type->kind == TypeKind::RECORD) {
+            auto record = std::static_pointer_cast<RecordType>(type);
+            if (!record->field_offsets.empty()) {
+                std::cout << "  Fields:" << std::endl;
+                for (const auto &[name, offset] : record->field_offsets) {
+                    std::cout << "    " << name << " @ offset " << offset
+                              << std::endl;
+                }
+            }
+        }
+        // Print member offsets for classes
+        else if (type->kind == TypeKind::CLASS) {
+            auto class_type = std::static_pointer_cast<ClassType>(type);
+
+            // Recursive lambda to print members including inherited ones
+            auto print_class_members = [](auto &&print_class_members,
+                                          const ClassTypePtr &cls,
+                                          bool is_base = false) -> void {
+                // First print base class members if any
+                if (cls->base.base_type) {
+                    TypePtr base = strip_typedefs(cls->base.base_type);
+                    if (base && base->kind == TypeKind::CLASS) {
+                        print_class_members(
+                            print_class_members,
+                            std::static_pointer_cast<ClassType>(base),
+                            true);
+                    }
+                }
+
+                // Then print this class's members
+                for (const auto &[name, member] : cls->members) {
+                    // Skip static and function members
+                    if (member.is_static) {
+                        continue;
+                    }
+                    auto member_type = strip_typedefs(member.type.type);
+                    if (member_type &&
+                        member_type->kind == TypeKind::FUNCTION) {
+                        continue;
+                    }
+                    std::cout << "    " << name << " @ offset " << member.offset
+                              << (is_base ? " (inherited)" : "") << std::endl;
+                }
+            };
+
+            std::cout << "  Members:" << std::endl;
+            print_class_members(print_class_members, class_type);
+        }
+    }
 }
 
 std::optional<TypePtr>

@@ -3,6 +3,7 @@
 
 #include "symbol_table/result.hpp"
 #include "symbol_table/symbol.hpp"
+#include "symbol_table/target_layout.hpp"
 #include "symbol_table/type.hpp"
 #include <memory>
 #include <optional>
@@ -45,16 +46,9 @@ class TypeFactory {
     std::unordered_map<std::string, TypeId> name_to_id;
     std::unordered_map<TypeId, std::string> id_to_name;
     std::unordered_map<ScopeID, std::vector<TypeId>> scope_defined_types;
+    TargetLayout target_layout;
 
-    TypePtr define_builtin(const std::string &name, BuiltinTypeKind kind)
-    {
-        auto type = std::make_shared<BuiltinType>(kind);
-        TypeId id = next_id++;
-        types[id] = type;
-        name_to_id[name] = id;
-        id_to_name[id] = name;
-        return type;
-    }
+    TypePtr define_builtin(const std::string &name, BuiltinTypeKind kind);
 
   public:
     template <typename T, typename... Args>
@@ -209,7 +203,14 @@ class TypeFactory {
 
     Result<TypePtr, TypeFactoryError> get_pointer(QualifiedType pointee)
     {
-        return make<PointerType>(std::move(pointee));
+        auto result = make<PointerType>(std::move(pointee));
+        if (result.is_ok()) {
+            // Set pointer layout
+            result.value()->layout =
+                TypeLayout(target_layout.pointer_size,
+                           target_layout.pointer_alignment);
+        }
+        return result;
     }
 
     Result<TypePtr, TypeFactoryError> get_array(QualifiedType element_type,
@@ -228,6 +229,8 @@ class TypeFactory {
     std::vector<std::pair<TypeId, TypePtr>> get_custom_types() const;
 
     void print_custom_types() const;
+
+    void print_type_layouts() const;
 
     QualifiedType make_qualified(TypePtr base, Qualifier qualifier)
     {
@@ -251,6 +254,11 @@ class TypeFactory {
     Result<TypePtr, TypeFactoryError> pointer_from(TypePtr base);
 
     Result<TypePtr, TypeFactoryError> dereference_pointer(TypePtr pointer_type);
+
+    const TargetLayout &get_target_layout() const
+    {
+        return target_layout;
+    }
 };
 
 #endif // TYPE_FACTORY_HPP
