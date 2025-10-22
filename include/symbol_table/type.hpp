@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -431,6 +432,16 @@ bool is_complete_type(TypePtr type);
 bool has_layout(TypePtr type);
 uint32_t get_type_size(TypePtr type);
 uint32_t get_type_alignment(TypePtr type);
+
+std::optional<size_t> get_class_member_offset(const ClassType &class_type,
+                                              const std::string &member_name);
+TypePtr get_class_member_type(const ClassType &class_type,
+                              const std::string &member_name);
+
+std::optional<size_t> get_member_offset(const RecordType &record_type,
+                                        const std::string &member_name);
+TypePtr get_member_type(const RecordType &record_type,
+                        const std::string &member_name);
 
 using TypeId = size_t;
 
