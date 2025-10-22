@@ -260,46 +260,52 @@ ASTNodePtr LocalStaticPass::create_guarded_init(SymbolPtr symbol,
                                                 SymbolPtr guard_symbol,
                                                 ASTNodePtr initializer)
 {
-    // Create: if (guard_var) { var = init; guard_var = false; }
+    // Create: if (!guard_var) { var = init; guard_var = true; }
 
     // 1. Guard variable identifier for condition
     auto guard_id_expr =
         std::make_shared<IdentifierExpr>(guard_symbol,
                                          guard_symbol->get_type().type);
 
-    // 2. Variable identifier for assignment
+    // 2. Logical NOT of guard (!guard)
+    auto not_guard = std::make_shared<UnaryExpr>(
+        Operator::LOGICAL_NOT,
+        guard_id_expr,
+        type_factory.get_builtin_type("bool").value());
+
+    // 3. Variable identifier for assignment
     auto var_id_expr =
         std::make_shared<IdentifierExpr>(symbol, symbol->get_type().type);
 
-    // 3. Assignment: var = init
+    // 4. Assignment: var = init
     auto var_assign = std::make_shared<AssignmentExpr>(Operator::ASSIGN,
                                                        var_id_expr,
                                                        initializer,
                                                        symbol->get_type().type);
 
-    // 4. Guard identifier for setting to false
+    // 5. Guard identifier for setting to true
     auto guard_id_expr2 =
         std::make_shared<IdentifierExpr>(guard_symbol,
                                          guard_symbol->get_type().type);
 
-    // 5. False literal
-    auto false_literal = std::make_shared<LiteralExpr>(
-        false,
+    // 6. True literal
+    auto true_literal = std::make_shared<LiteralExpr>(
+        true,
         type_factory.get_builtin_type("bool").value());
 
-    // 6. Assignment: guard_var = false
+    // 7. Assignment: guard_var = true
     auto guard_assign = std::make_shared<AssignmentExpr>(
         Operator::ASSIGN,
         guard_id_expr2,
-        false_literal,
+        true_literal,
         type_factory.get_builtin_type("bool").value());
 
-    // 7. Block containing both assignments
+    // 8. Block containing both assignments
     std::vector<ASTNodePtr> then_stmts;
     then_stmts.push_back(var_assign);
     then_stmts.push_back(guard_assign);
     auto then_block = std::make_shared<BlockStmt>(std::move(then_stmts));
 
-    // 8. If statement
-    return std::make_shared<IfStmt>(guard_id_expr, then_block, std::nullopt);
+    // 9. If statement with negated guard
+    return std::make_shared<IfStmt>(not_guard, then_block, std::nullopt);
 }
