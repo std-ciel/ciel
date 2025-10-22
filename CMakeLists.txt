@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Define release type flags
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -Wpedantic -Wfatal-errors")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -Wpedantic -Wfatal-errors -Wno-unused-but-set-variable")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-missing-braces -Wno-unused-parameter")
 endif()
 
@@ -45,8 +45,10 @@ add_library(ciel_parser STATIC
     src/symbol_table/symbol.cpp
     src/symbol_table/type.cpp
     src/symbol_table/type_factory.cpp
+    src/symbol_table/target_layout.cpp
     src/symbol_table/mangling.cpp
     src/local_static_pass/local_static_pass.cpp
+    src/layout_pass/layout_pass.cpp
     src/tac/tac.cpp
     src/tac/tac_generator.cpp
     src/tac/tac_utils.cpp
@@ -58,6 +60,7 @@ target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/parser
     ${CMAKE_SOURCE_DIR}/include/symbol_table
     ${CMAKE_SOURCE_DIR}/include/local_static_pass
+    ${CMAKE_SOURCE_DIR}/include/layout_pass
     ${CMAKE_SOURCE_DIR}/include/tac
     ${CMAKE_SOURCE_DIR}/include/ast
     ${CMAKE_CURRENT_BINARY_DIR})

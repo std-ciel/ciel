@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "layout_pass/layout_pass.hpp"
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
 #include "local_static_pass/local_static_pass.hpp"
@@ -228,6 +229,33 @@ int main(int argc, char *argv[])
         }
     } catch (const std::exception &e) {
         std::cerr << "\nLocal static pass error: " << e.what() << std::endl;
+        lexer_clear_tokens();
+        return 1;
+    }
+
+    try {
+        std::cout << "\n┌─────────────────────┐\n";
+        std::cout << "│   LAYOUT PASS       │\n";
+        std::cout << "└─────────────────────┘\n";
+
+        auto &type_factory = get_type_factory();
+        LayoutPass layout_pass(type_factory);
+
+        if (!layout_pass.run()) {
+            std::cerr << "Layout pass failed" << std::endl;
+            return 1;
+        }
+
+        std::cout << "Layout pass completed successfully" << std::endl;
+
+        if (debug_mode) {
+            std::cout << "\n┌─────────────────────┐\n";
+            std::cout << "│   TYPE LAYOUTS      │\n";
+            std::cout << "└─────────────────────┘\n";
+            type_factory.print_type_layouts();
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "\nLayout pass error: " << e.what() << std::endl;
         lexer_clear_tokens();
         return 1;
     }
