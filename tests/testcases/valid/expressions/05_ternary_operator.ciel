@@ -1,0 +1,60 @@
+// Test ternary operator (conditional expression)
+
+int max(int a, int b) {
+    return a > b ? a : b;
+}
+
+int min(int a, int b) {
+    return a < b ? a : b;
+}
+
+int abs(int x) {
+    return x < 0 ? -x : x;
+}
+
+int main() {
+    int x = 10;
+    int y = 20;
+    int z = 0;
+    
+    // Basic ternary
+    z = x > y ? x : y;
+    
+    // Nested ternary
+    z = x > y ? (x > 100 ? 100 : x) : (y > 100 ? 100 : y);
+    
+    // Ternary with different operators
+    z = x == y ? 0 : 1;
+    z = x != y ? 1 : 0;
+    z = x >= y ? x : y;
+    z = x <= y ? x : y;
+    
+    // Ternary in arithmetic expressions
+    z = (x > y ? x : y) + 10;
+    z = 5 * (x < y ? x : y);
+    z = (x > 0 ? x : -x) - (y > 0 ? y : -y);
+    
+    // Ternary with function calls
+    z = max(x, y) > 50 ? max(x, y) : min(x, y);
+    
+    // Ternary in assignments
+    int result = x > 0 ? (y > 0 ? 1 : -1) : (y > 0 ? -1 : 0);
+    
+    // Ternary with boolean conditions
+    bool flag = x > y;
+    z = flag ? 100 : 200;
+    
+    // Chained ternary (right associative)
+    z = x > 10 ? 1 : x > 5 ? 2 : x > 0 ? 3 : 4;
+    
+    // Ternary with pointers
+    int* ptr = x > 0 ? &x : &y;
+    
+    // Ternary with char
+    char c = x > y ? 'a' : 'b';
+    
+    // Ternary with float
+    float f = x > y ? 1.5 : 2.5;
+    
+    return 0;
+}

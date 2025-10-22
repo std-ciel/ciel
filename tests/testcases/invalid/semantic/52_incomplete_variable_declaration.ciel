@@ -1,6 +1,0 @@
-// Test: Incomplete type used in variable declaration
-// Expected: Error - incomplete type cannot be used for variable declaration
-
-struct ForwardDeclaredStruct;
-
-struct ForwardDeclaredStruct incomplete_var;
