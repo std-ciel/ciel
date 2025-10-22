@@ -1,7 +1,6 @@
 #include "tac/tac_generator.hpp"
 #include "parser/parser_helper.hpp"
 #include "symbol_table/mangling.hpp"
-#include "tac/tac_utils.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -238,8 +237,8 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
             base = deref_result;
 
             // Get pointed-to type - use pointee member of PointerType
-            if (auto ptr_type =
-                    std::dynamic_pointer_cast<PointerType>(base_type)) {
+            if (base_type->kind == TypeKind::POINTER) {
+                auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
                 base_type = ptr_type->pointee.type;
             }
         }
@@ -249,7 +248,7 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
 
     case ASTNodeType::NEW_EXPR: {
         auto new_expr = std::static_pointer_cast<NewExpr>(node);
-        size_t size = calculate_type_size(new_expr->allocated_type);
+        size_t size = get_type_size(new_expr->allocated_type);
 
         // Call malloc or allocation function
         auto size_operand = TACOperand::constant_int(size, nullptr);
@@ -360,7 +359,7 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
         // Calculate address: base + (index * element_size)
         auto base_type_result = get_expression_type(expr->left);
         TypePtr element_type = expr->expr_type;
-        size_t element_size = calculate_type_size(element_type);
+        size_t element_size = get_type_size(element_type);
 
         auto size_operand = TACOperand::constant_int(element_size, nullptr);
         auto offset_temp = new_temp(nullptr);
@@ -469,7 +468,7 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
     // Handle member assignment
     if (expr->target->type == ASTNodeType::MEMBER_EXPR) {
-        auto member = std::dynamic_pointer_cast<MemberExpr>(expr->target);
+        auto member = std::static_pointer_cast<MemberExpr>(expr->target);
         auto base = generate_expression(member->object);
 
         auto base_type_result = get_expression_type(member->object);
@@ -489,8 +488,8 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
             base = deref_result;
 
             // Get pointed-to type - use pointee member of PointerType
-            if (auto ptr_type =
-                    std::dynamic_pointer_cast<PointerType>(base_type)) {
+            if (base_type->kind == TypeKind::POINTER) {
+                auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
                 base_type = ptr_type->pointee.type;
             }
         }
@@ -520,7 +519,7 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
             auto index = generate_expression(binary->right);
 
             auto base_type_result = get_expression_type(binary->left);
-            size_t element_size = calculate_type_size(expr->expr_type);
+            size_t element_size = get_type_size(expr->expr_type);
 
             auto size_operand = TACOperand::constant_int(element_size, nullptr);
             auto offset_temp = new_temp(nullptr);
@@ -659,31 +658,48 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
                                                 const std::string &member_name,
                                                 TypePtr base_type)
 {
-    // Get the record type (struct/union/class)
-    auto record_type = std::dynamic_pointer_cast<RecordType>(base_type);
-    if (!record_type) {
-        throw std::runtime_error("Member access on non-struct/class type");
-    }
-
-    // Get member offset
-    auto offset_opt = get_member_offset(*record_type, member_name);
-    if (!offset_opt.has_value()) {
-        throw std::runtime_error("Member '" + member_name +
-                                 "' not found in struct");
-    }
-
-    // FIXED: For unions, all members start at offset 0
     size_t offset = 0;
-    if (!record_type->is_union) {
-        // Only use calculated offset for structs
-        offset = offset_opt.value();
-    }
-    // For unions, offset stays 0 for all members
+    TypePtr member_type = nullptr;
 
-    // Get member type
-    TypePtr member_type = get_member_type(*record_type, member_name);
-    if (!member_type) {
-        throw std::runtime_error("Could not determine member type");
+    // Handle struct/union types
+    if (base_type->kind == TypeKind::RECORD) {
+        auto record_type = std::static_pointer_cast<RecordType>(base_type);
+        // Get member offset from precomputed field_offsets
+        auto offset_opt = get_member_offset(*record_type, member_name);
+        if (!offset_opt.has_value()) {
+            throw std::runtime_error("Member '" + member_name +
+                                     "' not found in struct/union");
+        }
+
+        // For unions, all members are at offset 0 (already handled by layout pass)
+        offset = offset_opt.value();
+
+        // Get member type
+        member_type = get_member_type(*record_type, member_name);
+        if (!member_type) {
+            throw std::runtime_error("Could not determine member type");
+        }
+    }
+    // Handle class types
+    else if (base_type->kind == TypeKind::CLASS) {
+        auto class_type = std::static_pointer_cast<ClassType>(base_type);
+        // Get member offset (includes inherited members)
+        auto offset_opt = get_class_member_offset(*class_type, member_name);
+        if (!offset_opt.has_value()) {
+            throw std::runtime_error("Member '" + member_name +
+                                     "' not found in class");
+        }
+
+        offset = offset_opt.value();
+
+        // Get member type (includes inherited members)
+        member_type = get_class_member_type(*class_type, member_name);
+        if (!member_type) {
+            throw std::runtime_error("Could not determine member type");
+        }
+    }
+    else {
+        throw std::runtime_error("Member access on non-struct/class type");
     }
 
     // Create temporary for result
@@ -712,29 +728,49 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
                                          TypePtr base_type,
                                          const TACOperand &value)
 {
-    // Get the record type (struct/union/class)
-    auto record_type = std::dynamic_pointer_cast<RecordType>(base_type);
-    if (!record_type) {
+    size_t offset = 0;
+    TypePtr member_type = nullptr;
+
+    // Handle struct/union types
+    if (base_type->kind == TypeKind::RECORD) {
+        auto record_type = std::static_pointer_cast<RecordType>(base_type);
+        // Get member offset from precomputed field_offsets
+        auto offset_opt = get_member_offset(*record_type, member_name);
+        if (!offset_opt.has_value()) {
+            throw std::runtime_error("Member '" + member_name +
+                                     "' not found in struct/union");
+        }
+
+        // For unions, all members are at offset 0 (already handled by layout pass)
+        offset = offset_opt.value();
+
+        // Get member type
+        member_type = get_member_type(*record_type, member_name);
+        if (!member_type) {
+            throw std::runtime_error("Could not determine member type");
+        }
+    }
+    // Handle class types
+    else if (base_type->kind == TypeKind::CLASS) {
+        auto class_type = std::static_pointer_cast<ClassType>(base_type);
+        // Get member offset (includes inherited members)
+        auto offset_opt = get_class_member_offset(*class_type, member_name);
+        if (!offset_opt.has_value()) {
+            throw std::runtime_error("Member '" + member_name +
+                                     "' not found in class");
+        }
+
+        offset = offset_opt.value();
+
+        // Get member type (includes inherited members)
+        member_type = get_class_member_type(*class_type, member_name);
+        if (!member_type) {
+            throw std::runtime_error("Could not determine member type");
+        }
+    }
+    else {
         throw std::runtime_error("Member access on non-struct/class type");
     }
-
-    // Get member offset
-    auto offset_opt = get_member_offset(*record_type, member_name);
-    if (!offset_opt.has_value()) {
-        throw std::runtime_error("Member '" + member_name +
-                                 "' not found in struct");
-    }
-
-    // FIXED: For unions, all members start at offset 0
-    size_t offset = 0;
-    if (!record_type->is_union) {
-        // Only use calculated offset for structs
-        offset = offset_opt.value();
-    }
-    // For unions, offset stays 0 for all members
-
-    // Get member type
-    TypePtr member_type = get_member_type(*record_type, member_name);
 
     // Create member operand with offset info
     TACOperand member_op = TACOperand::member_access(base_object,
