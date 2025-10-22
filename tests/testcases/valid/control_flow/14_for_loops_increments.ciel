@@ -1,0 +1,22 @@
+// For loops with different increment patterns
+
+int main() {
+    int sum = 0;
+    
+    // Test 1: For loop with increment by 10
+    for (int i = 0; i < 100; i = i + 10) {
+        sum = sum + 1;
+    }
+    
+    // Test 2: For loop with multiplication in increment
+    for (int i = 1; i < 1000; i = i * 2) {
+        sum = sum + 1;
+    }
+    
+    // Test 3: For loop with complex increment expression
+    for (int i = 0; i < 10; i = i + 1 + 1) {
+        sum = sum + 1;
+    }
+    
+    return 0;
+}

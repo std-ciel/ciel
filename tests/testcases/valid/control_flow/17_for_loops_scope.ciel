@@ -1,0 +1,22 @@
+// For loops with variable scope and shadowing
+
+int main() {
+    int sum = 0;
+    
+    // Test 1: Multiple sequential for loops with same variable name (different scopes)
+    for (int i = 0; i < 3; i = i + 1) {
+        sum = sum + i;
+    }
+    for (int i = 0; i < 3; i = i + 1) {
+        sum = sum + i;
+    }
+    
+    // Test 2: For loop variable shadowing outer variable
+    int x = 10;
+    for (int x = 0; x < 5; x = x + 1) {
+        sum = sum + x;  // uses loop variable x
+    }
+    sum = sum + x;  // uses outer x (10)
+    
+    return 0;
+}

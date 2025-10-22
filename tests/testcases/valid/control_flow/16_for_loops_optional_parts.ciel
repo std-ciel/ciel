@@ -1,0 +1,28 @@
+// For loop with optional parts
+
+int main() {
+    int sum = 0;
+    
+    // Test 1: For loop without increment expression
+    for (int n = 0; n < 10;) {
+        sum = sum + n;
+        n = n + 1;
+    }
+    
+    // Test 2: For loop with empty initialization (pre-declared variable)
+    int p = 0;
+    for (; p < 5; p = p + 1) {
+        sum = sum + p;
+    }
+    
+    // Test 3: Empty for loop (infinite loop with break)
+    int counter = 0;
+    for (;;) {
+        counter = counter + 1;
+        if (counter >= 10) {
+            break;
+        }
+    }
+    
+    return 0;
+}
