@@ -11,6 +11,9 @@ std::vector<ASTNodePtr> parsed_translation_unit;
 extern SymbolTable symbol_table;
 extern TypeFactory type_factory;
 
+// Forward declare functions from parser.y
+extern void check_global_forward_declarations_impl();
+
 // Implement getter functions to access parser.y globals
 std::vector<ASTNodePtr> get_parsed_translation_unit()
 {
@@ -26,3 +29,9 @@ TypeFactory &get_type_factory()
 {
     return type_factory;
 }
+
+void check_global_forward_declarations()
+{
+    check_global_forward_declarations_impl();
+}
+

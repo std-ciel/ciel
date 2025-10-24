@@ -14,4 +14,7 @@ std::vector<ASTNodePtr> get_parsed_translation_unit();
 SymbolTable &get_symbol_table();
 TypeFactory &get_type_factory();
 
+// Forward declaration checking
+void check_global_forward_declarations();
+
 #endif // PARSER_HELPER_HPP

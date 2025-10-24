@@ -173,6 +173,11 @@ int main(int argc, char *argv[])
     parser.set_debug_level(debug_mode ? 1 : 0);
     int parse_result = parser.parse();
 
+    // Check global forward declarations after parsing completes
+    if (parse_result == 0) {
+        check_global_forward_declarations();
+    }
+
     // Check for errors
     if (lexer_had_errors()) {
         print_lexer_errors();

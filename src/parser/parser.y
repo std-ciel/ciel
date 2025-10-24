@@ -91,6 +91,7 @@
     std::unordered_set<std::string> forward_declared_types;
     std::unordered_set<std::string> defined_types;
     std::unordered_map<std::string, std::pair<int, int>> forward_decl_locations; // type name -> (line, column)
+    std::unordered_map<std::string, ScopeID> forward_decl_scopes; // type name -> scope where it was forward declared
 
     std::vector<QualifiedType> pending_param_types;
     std::vector<std::string> pending_param_names;
@@ -179,7 +180,38 @@
   // External reference to the global parsed_translation_unit
   extern std::vector<ASTNodePtr> parsed_translation_unit;
 
-  void check_forward_declarations(){
+  void check_forward_declarations(ScopeID exiting_scope){
+     // Check forward declarations made in the scope we're exiting
+     // Only report errors for declarations made in THIS specific scope
+     
+     // Collect types to remove after checking (can't modify set while iterating)
+     std::vector<std::string> types_to_remove;
+     
+     for (const auto& type_name : parser_state.forward_declared_types) {
+        auto decl_scope = parser_state.forward_decl_scopes[type_name];
+        
+        // Only check forward declarations made in the exact scope we're exiting
+        if (decl_scope == exiting_scope) {
+            if (parser_state.defined_types.find(type_name) == parser_state.defined_types.end()) {
+                auto loc = parser_state.forward_decl_locations[type_name];
+                parser_add_error(loc.first, loc.second,
+                "forward declaration of '" + type_name + "' is never defined");
+            }
+            // Remove from tracking since we've checked this scope
+            types_to_remove.push_back(type_name);
+        }
+    }
+    
+    // Remove checked types from tracking
+    for (const auto& type_name : types_to_remove) {
+        parser_state.forward_declared_types.erase(type_name);
+        parser_state.forward_decl_locations.erase(type_name);
+        parser_state.forward_decl_scopes.erase(type_name);
+    }
+  }
+  
+  void check_global_forward_declarations_impl(){
+     // Check all forward declarations at the end of the translation unit
      for (const auto& type_name : parser_state.forward_declared_types) {
         if (parser_state.defined_types.find(type_name) == parser_state.defined_types.end()) {
             auto loc = parser_state.forward_decl_locations[type_name];
@@ -322,6 +354,22 @@
                                   const yy::location& loc,
                                   std::optional<FunctionMeta> function_meta = std::nullopt) {
     if (!name.empty()) {
+      // Check if the variable name conflicts with a user-defined type name
+      std::string struct_name = "struct " + name;
+      std::string union_name = "union " + name;
+      std::string enum_name = "enum " + name;
+      std::string class_name = "class " + name;
+      
+      if (parser_state.defined_types.count(struct_name) > 0 ||
+          parser_state.defined_types.count(union_name) > 0 ||
+          parser_state.defined_types.count(enum_name) > 0 ||
+          parser_state.defined_types.count(class_name) > 0) {
+        parser_add_error(loc.begin.line,
+                         loc.begin.column,
+                         "variable '" + name + "' conflicts with user-defined type name");
+        return;
+      }
+      
       auto result = symbol_table.add_symbol(name, type, parser_state.current_storage, function_meta);
       if (result.is_err()) {
         parser_add_error(loc.begin.line,
@@ -329,6 +377,67 @@
                          symbol_table_error_to_string(result.error()));
       }
     }
+  }
+
+  // Helper function to check if a type name conflicts with any other defined type
+  // Returns true if there's a conflict, false otherwise
+  static bool check_type_name_conflict(const std::string& tag, const std::string& current_full_name) {
+    std::string struct_name = "struct " + tag;
+    std::string union_name = "union " + tag;
+    std::string enum_name = "enum " + tag;
+    std::string class_name = "class " + tag;
+    
+    // Check if any other type category with this name is already defined OR forward declared
+    // (excluding the current type we're trying to define)
+    if (current_full_name != struct_name) {
+      // Check if struct is defined
+      auto found = type_factory.lookup(struct_name);
+      if (found.has_value() && std::static_pointer_cast<RecordType>(found.value())->is_defined) {
+        return true;
+      }
+      // Check if struct is forward declared
+      if (parser_state.forward_declared_types.find(struct_name) != parser_state.forward_declared_types.end()) {
+        return true;
+      }
+    }
+    
+    if (current_full_name != union_name) {
+      // Check if union is defined
+      auto found = type_factory.lookup(union_name);
+      if (found.has_value() && std::static_pointer_cast<RecordType>(found.value())->is_defined) {
+        return true;
+      }
+      // Check if union is forward declared
+      if (parser_state.forward_declared_types.find(union_name) != parser_state.forward_declared_types.end()) {
+        return true;
+      }
+    }
+    
+    if (current_full_name != enum_name) {
+      // Check if enum is defined
+      auto found = type_factory.lookup(enum_name);
+      if (found.has_value() && std::static_pointer_cast<EnumType>(found.value())->is_defined) {
+        return true;
+      }
+      // Check if enum is forward declared
+      if (parser_state.forward_declared_types.find(enum_name) != parser_state.forward_declared_types.end()) {
+        return true;
+      }
+    }
+    
+    if (current_full_name != class_name) {
+      // Check if class is defined
+      auto found = type_factory.lookup(class_name);
+      if (found.has_value() && std::static_pointer_cast<ClassType>(found.value())->is_defined) {
+        return true;
+      }
+      // Check if class is forward declared
+      if (parser_state.forward_declared_types.find(class_name) != parser_state.forward_declared_types.end()) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   static TypePtr make_string_literal_type(const yy::location& loc) {
@@ -1477,7 +1586,12 @@ open_brace
     ;
 
 close_brace
-  : CLOSE_BRACE_OP { symbol_table.exit_scope(); parser_state.pop_ctx(); check_forward_declarations(); }
+  : CLOSE_BRACE_OP { 
+      ScopeID exiting_scope = symbol_table.get_current_scope_id();
+      symbol_table.exit_scope(); 
+      parser_state.pop_ctx(); 
+      check_forward_declarations(exiting_scope); 
+    }
   ;
 
 class_open_brace
@@ -3135,28 +3249,111 @@ struct_or_union_specifier
         bool is_union = ($1 == "union");
         std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
 
-        // Mark as defined
-        parser_state.defined_types.insert(full_name);
-
-        // Check if a forward declaration already exists (e.g., from self-referential pointers)
-        auto found = type_factory.lookup(full_name);
-        TypePtr rec;
-        if (found.has_value()) {
-          rec = found.value();
-          auto record_type = std::static_pointer_cast<RecordType>(rec);
-          record_type->is_defined = true;
+        // Check for conflicts with other type categories
+        if (check_type_name_conflict(tag, full_name)) {
+          parser_add_error(
+            @1.begin.line,
+            @2.begin.column,
+            "'" + tag + "' is already defined as a different type"
+          );
+          $$ = nullptr;
         } else {
-          rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
+          // Check if a forward declaration already exists (e.g., from self-referential pointers)
+          auto found = type_factory.lookup(full_name);
+          TypePtr rec;
+          if (found.has_value()) {
+            rec = found.value();
+            auto record_type = std::static_pointer_cast<RecordType>(rec);
+            // Check if already defined - this is a redeclaration error
+            if (record_type->is_defined) {
+              parser_add_error(
+                @1.begin.line,
+                @2.begin.column,
+                "redeclaration of '" + full_name + "'; type is already defined"
+              );
+              $$ = rec; // Return the existing type to avoid cascading errors
+            } else {
+              // Mark as defined
+              parser_state.defined_types.insert(full_name);
+              record_type->is_defined = true;
+              $$ = rec;
+              
+              symbol_table.enter_scope();
+              for (const auto &kv : $4) {
+                record_type->add_field(kv.first, kv.second);
+              }
+              symbol_table.exit_scope();
+            }
+          } else {
+            // Mark as defined
+            parser_state.defined_types.insert(full_name);
+            rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
+            $$ = rec;
+            
+            symbol_table.enter_scope();
+            auto record_type = std::static_pointer_cast<RecordType>($$);
+            for (const auto &kv : $4) {
+              record_type->add_field(kv.first, kv.second);
+            }
+            symbol_table.exit_scope();
+          }
         }
+      }
+    | struct_or_union TYPE_NAME OPEN_BRACE_OP struct_declaration_list CLOSE_BRACE_OP
+      {
+        std::string tag = $2;
+        bool is_union = ($1 == "union");
+        std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
 
-        $$ = rec;
-
-        symbol_table.enter_scope();
-        auto record_type = std::static_pointer_cast<RecordType>($$);
-        for (const auto &kv : $4) {
-          record_type->add_field(kv.first, kv.second);
+        // Check for conflicts with other type categories
+        if (check_type_name_conflict(tag, full_name)) {
+          parser_add_error(
+            @1.begin.line,
+            @2.begin.column,
+            "'" + tag + "' is already defined as a different type"
+          );
+          $$ = nullptr;
+        } else {
+          // Check if a forward declaration already exists (e.g., from self-referential pointers)
+          auto found = type_factory.lookup(full_name);
+          TypePtr rec;
+          if (found.has_value()) {
+            rec = found.value();
+            auto record_type = std::static_pointer_cast<RecordType>(rec);
+            // Check if already defined - this is a redeclaration error
+            if (record_type->is_defined) {
+              parser_add_error(
+                @1.begin.line,
+                @2.begin.column,
+                "redeclaration of '" + full_name + "'; type is already defined"
+              );
+              $$ = rec; // Return the existing type to avoid cascading errors
+            } else {
+              // Mark as defined
+              parser_state.defined_types.insert(full_name);
+              record_type->is_defined = true;
+              $$ = rec;
+              
+              symbol_table.enter_scope();
+              for (const auto &kv : $4) {
+                record_type->add_field(kv.first, kv.second);
+              }
+              symbol_table.exit_scope();
+            }
+          } else {
+            // Mark as defined
+            parser_state.defined_types.insert(full_name);
+            rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
+            $$ = rec;
+            
+            symbol_table.enter_scope();
+            auto record_type = std::static_pointer_cast<RecordType>($$);
+            for (const auto &kv : $4) {
+              record_type->add_field(kv.first, kv.second);
+            }
+            symbol_table.exit_scope();
+          }
         }
-        symbol_table.exit_scope();
       }
     | struct_or_union OPEN_BRACE_OP struct_declaration_list CLOSE_BRACE_OP
       {
@@ -3197,10 +3394,44 @@ struct_or_union_specifier
         if (found.has_value()) {
           $$ = found.value();
         } else {
-          // Type doesn't exist - create a forward declaration and track it
-          parser_state.forward_declared_types.insert(full_name);
-          parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
-          $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, false), "struct/union forward declaration", @1.begin.line, @2.begin.column);
+          // Check for cross-type conflicts before creating forward declaration
+          if (check_type_name_conflict(tag, full_name)) {
+            parser_add_error(@1.begin.line, @2.begin.column, 
+              "'" + tag + "' is already declared as a different type");
+            $$ = nullptr;
+          } else {
+            // Type doesn't exist - create a forward declaration and track it
+            parser_state.forward_declared_types.insert(full_name);
+            parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
+            parser_state.forward_decl_scopes[full_name] = symbol_table.get_current_scope_id();
+            $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, false), "struct/union forward declaration", @1.begin.line, @2.begin.column);
+          }
+        }
+      }
+    | struct_or_union TYPE_NAME
+      {
+        // Tag name without "struct"/"union" prefix (debug_name() adds it)
+        std::string tag = $2;
+        std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
+        bool is_union = ($1 == "union");
+
+        // Try to find an existing type globally
+        auto found = type_factory.lookup(full_name);
+        if (found.has_value()) {
+          $$ = found.value();
+        } else {
+          // Check for cross-type conflicts before creating forward declaration
+          if (check_type_name_conflict(tag, full_name)) {
+            parser_add_error(@1.begin.line, @2.begin.column, 
+              "'" + tag + "' is already declared as a different type");
+            $$ = nullptr;
+          } else {
+            // Type doesn't exist - create a forward declaration and track it
+            parser_state.forward_declared_types.insert(full_name);
+            parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
+            parser_state.forward_decl_scopes[full_name] = symbol_table.get_current_scope_id();
+            $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, false), "struct/union forward declaration", @1.begin.line, @2.begin.column);
+          }
         }
       }
 	  | struct_or_union IDENTIFIER OPEN_BRACE_OP CLOSE_BRACE_OP // to allow empty structs/unions
@@ -3209,10 +3440,77 @@ struct_or_union_specifier
         bool is_union = ($1 == "union");
         std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
 
-        // Mark as defined
-        parser_state.defined_types.insert(full_name);
+        // Check for conflicts with other type categories
+        if (check_type_name_conflict(tag, full_name)) {
+          parser_add_error(
+            @1.begin.line,
+            @2.begin.column,
+            "'" + tag + "' is already defined as a different type"
+          );
+          $$ = nullptr;
+        } else {
+          // Check if already defined
+          auto found = type_factory.lookup(full_name);
+          if (found.has_value()) {
+            auto record_type = std::static_pointer_cast<RecordType>(found.value());
+            if (record_type->is_defined) {
+              parser_add_error(
+                @1.begin.line,
+                @2.begin.column,
+                "redeclaration of '" + full_name + "'; type is already defined"
+              );
+              $$ = found.value();
+            } else {
+              // Mark as defined
+              parser_state.defined_types.insert(full_name);
+              record_type->is_defined = true;
+              $$ = found.value();
+            }
+          } else {
+            // Mark as defined
+            parser_state.defined_types.insert(full_name);
+            $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "empty struct/union", @1.begin.line, @2.begin.column);
+          }
+        }
+      }
+    | struct_or_union TYPE_NAME OPEN_BRACE_OP CLOSE_BRACE_OP // to allow empty structs/unions
+      {
+        std::string tag = $2;
+        bool is_union = ($1 == "union");
+        std::string full_name = ($1 == "struct" ? std::string("struct ") : std::string("union ")) + tag;
 
-        $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "empty struct/union", @1.begin.line, @2.begin.column);
+        // Check for conflicts with other type categories
+        if (check_type_name_conflict(tag, full_name)) {
+          parser_add_error(
+            @1.begin.line,
+            @2.begin.column,
+            "'" + tag + "' is already defined as a different type"
+          );
+          $$ = nullptr;
+        } else {
+          // Check if already defined
+          auto found = type_factory.lookup(full_name);
+          if (found.has_value()) {
+            auto record_type = std::static_pointer_cast<RecordType>(found.value());
+            if (record_type->is_defined) {
+              parser_add_error(
+                @1.begin.line,
+                @2.begin.column,
+                "redeclaration of '" + full_name + "'; type is already defined"
+              );
+              $$ = found.value();
+            } else {
+              // Mark as defined
+              parser_state.defined_types.insert(full_name);
+              record_type->is_defined = true;
+              $$ = found.value();
+            }
+          } else {
+            // Mark as defined
+            parser_state.defined_types.insert(full_name);
+            $$ = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "empty struct/union", @1.begin.line, @2.begin.column);
+          }
+        }
       }
     ;
 
@@ -3307,17 +3605,106 @@ enum_specifier
         std::string tag = $2;
         std::string full_name = "enum " + tag;
 
-        // Mark as defined
-        parser_state.defined_types.insert(full_name);
+        // Check for conflicts with other type categories
+        if (check_type_name_conflict(tag, full_name)) {
+          parser_add_error(
+            @1.begin.line,
+            @2.begin.column,
+            "'" + tag + "' is already defined as a different type"
+          );
+          $$ = nullptr;
+        } else {
+          // Check if already defined
+          auto found = type_factory.lookup(full_name);
+          TypePtr t;
+          if (found.has_value()) {
+            auto enum_type = std::static_pointer_cast<EnumType>(found.value());
+            if (enum_type->is_defined) {
+              parser_add_error(
+                @1.begin.line,
+                @2.begin.column,
+                "redeclaration of '" + full_name + "'; type is already defined"
+              );
+              $$ = found.value();
+            } else {
+              // Mark as defined
+              parser_state.defined_types.insert(full_name);
+              enum_type->is_defined = true;
+              t = found.value();
+              
+              int64_t v = 0;
+              for (const auto& nm : $4) {
+                enum_type->add_enumerator(nm, v);
+                v++;
+              }
+              $$ = t;
+            }
+          } else {
+            // Mark as defined
+            parser_state.defined_types.insert(full_name);
+            t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
 
-        TypePtr t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
-
-        int64_t v = 0;
-        for (const auto& nm : $4) {
-          std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
-          v++;
+            int64_t v = 0;
+            for (const auto& nm : $4) {
+              std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
+              v++;
+            }
+            $$ = t;
+          }
         }
-        $$ = t;
+      }
+    | ENUM TYPE_NAME OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
+      {
+        std::string tag = $2;
+        std::string full_name = "enum " + tag;
+
+        // Check for conflicts with other type categories
+        if (check_type_name_conflict(tag, full_name)) {
+          parser_add_error(
+            @1.begin.line,
+            @2.begin.column,
+            "'" + tag + "' is already defined as a different type"
+          );
+          $$ = nullptr;
+        } else {
+          // Check if already defined
+          auto found = type_factory.lookup(full_name);
+          TypePtr t;
+          if (found.has_value()) {
+            auto enum_type = std::static_pointer_cast<EnumType>(found.value());
+            if (enum_type->is_defined) {
+              parser_add_error(
+                @1.begin.line,
+                @2.begin.column,
+                "redeclaration of '" + full_name + "'; type is already defined"
+              );
+              $$ = found.value();
+            } else {
+              // Mark as defined
+              parser_state.defined_types.insert(full_name);
+              enum_type->is_defined = true;
+              t = found.value();
+              
+              int64_t v = 0;
+              for (const auto& nm : $4) {
+                enum_type->add_enumerator(nm, v);
+                v++;
+              }
+              $$ = t;
+            }
+          } else {
+            // Mark as defined
+            parser_state.defined_types.insert(full_name);
+            t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
+
+            int64_t v = 0;
+            for (const auto& nm : $4) {
+              std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
+              v++;
+            }
+            $$ = t;
+          }
+        }
       }
     | ENUM OPEN_BRACE_OP enumerator_list CLOSE_BRACE_OP
       {
@@ -3339,9 +3726,39 @@ enum_specifier
         if (found.has_value()) {
           $$ = found.value();
         } else {
-          parser_state.forward_declared_types.insert(full_name);
-          parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
-          $$ = unwrap_type_or_error(type_factory.make<EnumType>(tag, false), "enum forward declaration", @1.begin.line, @2.begin.column);
+          // Check for cross-type conflicts before creating forward declaration
+          if (check_type_name_conflict(tag, full_name)) {
+            parser_add_error(@1.begin.line, @2.begin.column, 
+              "'" + tag + "' is already declared as a different type");
+            $$ = nullptr;
+          } else {
+            parser_state.forward_declared_types.insert(full_name);
+            parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
+            parser_state.forward_decl_scopes[full_name] = symbol_table.get_current_scope_id();
+            $$ = unwrap_type_or_error(type_factory.make<EnumType>(tag, false), "enum forward declaration", @1.begin.line, @2.begin.column);
+          }
+        }
+      }
+    | ENUM TYPE_NAME
+      {
+        std::string tag = $2;
+        std::string full_name = "enum " + tag;
+        // Try to find existing enum globally; otherwise create a forward declaration
+        auto found = type_factory.lookup(full_name);
+        if (found.has_value()) {
+          $$ = found.value();
+        } else {
+          // Check for cross-type conflicts before creating forward declaration
+          if (check_type_name_conflict(tag, full_name)) {
+            parser_add_error(@1.begin.line, @2.begin.column, 
+              "'" + tag + "' is already declared as a different type");
+            $$ = nullptr;
+          } else {
+            parser_state.forward_declared_types.insert(full_name);
+            parser_state.forward_decl_locations[full_name] = {@1.begin.line, @2.begin.column};
+            parser_state.forward_decl_scopes[full_name] = symbol_table.get_current_scope_id();
+            $$ = unwrap_type_or_error(type_factory.make<EnumType>(tag, false), "enum forward declaration", @1.begin.line, @2.begin.column);
+          }
         }
       }
     ;
@@ -3363,6 +3780,10 @@ enumerator
       { $$ = $1; }
     | IDENTIFIER ASSIGN_OP constant_expression
       { $$ = $1; /* explicit value ignored for now */ }
+    //| TYPE_NAME
+      //{ $$ = $1; }
+    //| TYPE_NAME ASSIGN_OP constant_expression
+      //{ $$ = $1; /* explicit value ignored for now */ }
     ;
 
 type_qualifier
@@ -4219,11 +4640,74 @@ class_specifier_tail
     {
       std::string name = $1;
       std::string full_name = std::string("class ") + name;
-      auto found = type_factory.lookup(full_name);
-      if (found.has_value()) {
-        parser_state.current_class_type = std::static_pointer_cast<ClassType>(found.value());
+      
+      // Check for conflicts with other type categories
+      if (check_type_name_conflict(name, full_name)) {
+        parser_add_error(
+          @1.begin.line,
+          @1.begin.column,
+          "'" + name + "' is already defined as a different type"
+        );
+        parser_state.current_class_type = nullptr;
       } else {
-        parser_state.current_class_type = std::static_pointer_cast<ClassType>(unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class definition", @1.begin.line, @1.begin.column));
+        auto found = type_factory.lookup(full_name);
+        if (found.has_value()) {
+          auto class_type = std::static_pointer_cast<ClassType>(found.value());
+          if (class_type->is_defined) {
+            parser_add_error(
+              @1.begin.line,
+              @1.begin.column,
+              "redeclaration of '" + full_name + "'; type is already defined"
+            );
+          }
+          parser_state.current_class_type = class_type;
+        } else {
+          parser_state.current_class_type = std::static_pointer_cast<ClassType>(unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class definition", @1.begin.line, @1.begin.column));
+        }
+      }
+      parser_state.current_access = Access::PRIVATE;
+    }
+    class_open_brace class_member_list class_close_brace
+    {
+      std::string full_name = std::string("class ") + $1;
+      parser_state.defined_types.insert(full_name);
+
+      if (parser_state.current_class_type) {
+        std::static_pointer_cast<ClassType>(parser_state.current_class_type)->is_defined = true;
+      }
+
+      $$ = parser_state.current_class_type;
+      parser_state.current_class_type = nullptr;
+      parser_state.parent_class_type = nullptr;
+    }
+  | TYPE_NAME inheritance_opt
+    {
+      std::string name = $1;
+      std::string full_name = std::string("class ") + name;
+      
+      // Check for conflicts with other type categories
+      if (check_type_name_conflict(name, full_name)) {
+        parser_add_error(
+          @1.begin.line,
+          @1.begin.column,
+          "'" + name + "' is already defined as a different type"
+        );
+        parser_state.current_class_type = nullptr;
+      } else {
+        auto found = type_factory.lookup(full_name);
+        if (found.has_value()) {
+          auto class_type = std::static_pointer_cast<ClassType>(found.value());
+          if (class_type->is_defined) {
+            parser_add_error(
+              @1.begin.line,
+              @1.begin.column,
+              "redeclaration of '" + full_name + "'; type is already defined"
+            );
+          }
+          parser_state.current_class_type = class_type;
+        } else {
+          parser_state.current_class_type = std::static_pointer_cast<ClassType>(unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class definition", @1.begin.line, @1.begin.column));
+        }
       }
       parser_state.current_access = Access::PRIVATE;
     }
@@ -4248,9 +4732,43 @@ class_specifier_tail
       if (found.has_value()) {
         $$ = found.value();
       } else {
-        parser_state.forward_declared_types.insert(full_name);
-        parser_state.forward_decl_locations[full_name] = {@1.begin.line, @1.begin.column};
-        $$ = unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class forward declaration", @1.begin.line, @1.begin.column);
+        // Check for cross-type conflicts before creating forward declaration
+        if (check_type_name_conflict(name, full_name)) {
+          parser_add_error(@1.begin.line, @1.begin.column, 
+            "'" + name + "' is already declared as a different type");
+          $$ = nullptr;
+        } else {
+          parser_state.forward_declared_types.insert(full_name);
+          parser_state.forward_decl_locations[full_name] = {@1.begin.line, @1.begin.column};
+          parser_state.forward_decl_scopes[full_name] = symbol_table.get_current_scope_id();
+          $$ = unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class forward declaration", @1.begin.line, @1.begin.column);
+        }
+      }
+
+      if (parser_state.parent_class_type) {
+        parser_add_error(@1.begin.line, @1.begin.column, "inheritance list provided without class definition for '" + full_name + "'");
+      }
+      parser_state.parent_class_type = nullptr;
+    }
+  | TYPE_NAME inheritance_opt
+    {
+      std::string name = $1;
+      std::string full_name = std::string("class ") + name;
+      auto found = type_factory.lookup(full_name);
+      if (found.has_value()) {
+        $$ = found.value();
+      } else {
+        // Check for cross-type conflicts before creating forward declaration
+        if (check_type_name_conflict(name, full_name)) {
+          parser_add_error(@1.begin.line, @1.begin.column, 
+            "'" + name + "' is already declared as a different type");
+          $$ = nullptr;
+        } else {
+          parser_state.forward_declared_types.insert(full_name);
+          parser_state.forward_decl_locations[full_name] = {@1.begin.line, @1.begin.column};
+          parser_state.forward_decl_scopes[full_name] = symbol_table.get_current_scope_id();
+          $$ = unwrap_type_or_error(type_factory.make<ClassType>(name, parser_state.parent_class_type, parser_state.inherited_access, false), "class forward declaration", @1.begin.line, @1.begin.column);
+        }
       }
 
       if (parser_state.parent_class_type) {
@@ -4295,7 +4813,39 @@ inheritance_specifier
       parser_state.parent_class_type = nullptr;
     }
 	}
+    | access_specifier TYPE_NAME {
+    std::string name = $2;
+    std::string full = std::string("class ") + name;
+    auto opt = type_factory.lookup(full);
+    if (opt.has_value() && opt.value()->kind == TypeKind::CLASS) {
+      if (!check_complete_type(opt.value(), @2, TypeUsageContext::CLASS_INHERITANCE)) {
+        parser_state.parent_class_type = nullptr;
+      } else {
+        parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
+        parser_state.inherited_access = $1;
+      }
+    } else {
+      parser_add_error(@2.begin.line, @2.begin.column, "unknown class name '" + name + "' for inheritance");
+      parser_state.parent_class_type = nullptr;
+    }
+	}
     | IDENTIFIER {
+    std::string name = $1;
+    std::string full = std::string("class ") + name;
+    auto opt = type_factory.lookup(full);
+    if (opt.has_value() && opt.value()->kind == TypeKind::CLASS) {
+      if (!check_complete_type(opt.value(), @1, TypeUsageContext::CLASS_INHERITANCE)) {
+        parser_state.parent_class_type = nullptr;
+      } else {
+        parser_state.parent_class_type = std::static_pointer_cast<ClassType>(opt.value());
+        parser_state.inherited_access = Access::PRIVATE; // default
+      }
+    } else {
+      parser_add_error(@1.begin.line, @1.begin.column, "unknown class name '" + name + "' for inheritance");
+      parser_state.parent_class_type = nullptr;
+    }
+	}
+    | TYPE_NAME {
     std::string name = $1;
     std::string full = std::string("class ") + name;
     auto opt = type_factory.lookup(full);
