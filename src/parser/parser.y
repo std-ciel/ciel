@@ -494,6 +494,29 @@
     return nullptr;
   }
 
+
+  static ASTNodePtr make_address_of_expr(const ASTNodePtr& operand, const yy::location& loc) {
+    if (!operand) {
+      parser_add_error(loc.begin.line, loc.begin.column, "address-of: operand is null");
+      return nullptr;
+    }
+
+    auto operand_type = get_expression_type(operand, loc, "address-of operand");
+    if (!operand_type) {
+      return nullptr;
+    }
+
+    QualifiedType ptr_type = apply_pointer_levels_or_error(
+        QualifiedType(operand_type, Qualifier::NONE),
+        1,
+        "address-of",
+        loc.begin.line,
+        loc.begin.column
+    );
+
+    return std::make_shared<UnaryExpr>(Operator::ADDRESS_OF, operand, ptr_type.type);
+  }
+
   // -------- Centralized semantic helpers for statements --------
 
   static void ensure_condition_is_bool(const ASTNodePtr& expr, const yy::location& loc, const std::string& context) {
@@ -1106,7 +1129,6 @@
       return nullptr;
     }
 
-    symbol_table.print_symbols();
     auto sym_opt = symbol_table.lookup_operator(mangled_name.value());
     if (sym_opt.has_value()) {
       return sym_opt.value();
@@ -1158,7 +1180,9 @@
     SymbolPtr overload = get_operator_overload(operand_type, op_symbol, right_type);
     if (overload) {
       TypePtr function_type = overload->get_type().type;
+
       TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+
       return std::make_shared<CallExpr>(overload, operands, result_type);
     } else {
       if (op_symbol == "&" && operands.size() == 1) {
@@ -1173,7 +1197,7 @@
           return std::nullopt;
         }
         TypePtr result_type = ptr.type;
-        return std::make_shared<UnaryExpr>(Operator::ADDRESS_OF, operands[0], result_type);
+        return operands[0];
       }
       parser_add_error(loc.begin.line,
                        loc.begin.column,
@@ -1209,7 +1233,7 @@
     }
 
     // Check for operator overload in class types
-    auto overload_result = try_operator_overload(operand_type, op_symbol, {operand}, loc, op_name);
+    auto overload_result = try_operator_overload(operand_type, op_symbol, {make_address_of_expr(operand, loc)}, loc, op_name);
     if (overload_result.has_value()) {
       return overload_result.value();
     }
@@ -1273,7 +1297,7 @@
     }
 
     // Check for operator overload in class types
-    auto overload_result = try_operator_overload(left_type, op_symbol, {left, right}, op_loc, op_name, right_type);
+    auto overload_result = try_operator_overload(left_type, op_symbol, {make_address_of_expr(left, left_loc), right}, op_loc, op_name, right_type);
     if (overload_result.has_value()) {
       return overload_result.value();
     }
@@ -1385,7 +1409,7 @@
 
     // Check for operator overload in class types
     std::string op_symbol = get_operator_string(op_enum);
-    auto overload_result = try_operator_overload(lhs_type, op_symbol, {lhs, rhs}, op_loc, op_name, rhs_type);
+    auto overload_result = try_operator_overload(lhs_type, op_symbol, {make_address_of_expr(lhs, lhs_loc), rhs}, op_loc, op_name, rhs_type);
     if (overload_result.has_value()) {
       return overload_result.value();
     }
@@ -1817,7 +1841,15 @@ postfix_expression
               $$ = nullptr;
             }
             else {
-              std::vector<ASTNodePtr> args = {$1};
+              std::vector<ASTNodePtr> args;
+
+              if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
+                args.push_back(mem_node->object);
+              }
+              else{
+                args.push_back(make_address_of_expr(mem_node->object, @1));
+              }
+
               $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
             }
           }
@@ -1831,7 +1863,7 @@ postfix_expression
           if (overload) {
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-            std::vector<ASTNodePtr> args = {$1};
+            std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1)};
             $$ = std::make_shared<CallExpr>(overload, args, result_type);
           } else {
             parser_add_error(@2.begin.line,
@@ -2055,7 +2087,15 @@ postfix_expression
           }
           else {
             auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
-            std::vector<ASTNodePtr> args = {$1};
+            std::vector<ASTNodePtr> args;
+
+            if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
+              args.push_back(mem_node->object);
+            }
+            else{
+              args.push_back(make_address_of_expr(mem_node->object, @1));
+            }
+
             args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
             $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
           }
@@ -2069,7 +2109,7 @@ postfix_expression
           if (overload) {
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-            std::vector<ASTNodePtr> args = {$1};
+            std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1)};
             $$ = std::make_shared<CallExpr>(overload, args, result_type);
           } else {
             parser_add_error(@2.begin.line,
@@ -2229,12 +2269,6 @@ postfix_expression
             $$ = nullptr;
           }
         }
-
-      //else {
-         // parser_add_error(@1.begin.line, @1.begin.column,
-              //         "member access requires struct, union, or class type");
-          // $$ = nullptr;
-      // }
     }
     | postfix_expression ARROW_OP IDENTIFIER
     {
@@ -2592,7 +2626,7 @@ additive_expression
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
 
-            std::vector<ASTNodePtr> args = {$1, $3};
+            std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1), $3};
             $$ = std::make_shared<CallExpr>(overload, args, result_type);
           }
           else{
@@ -2636,7 +2670,7 @@ additive_expression
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
 
-            std::vector<ASTNodePtr> args = {$1, $3};
+            std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1), $3};
             $$ = std::make_shared<CallExpr>(overload, args, result_type);
           }
           else{
@@ -4482,7 +4516,7 @@ external_declaration
 function_definition
     : declaration_specifiers declarator { /* begin function body: set function return context */
 		TypePtr ret_t = $1;
-		const DeclaratorInfo &di = $2;
+    DeclaratorInfo di = $2;
 		current_function_type = nullptr;
 		if (ret_t && di.is_function) {
 		  if (di.pointer_levels > 0) {
@@ -4886,7 +4920,7 @@ access_specifier
 function_declaration_or_definition
     : declaration_specifiers declarator SEMICOLON_OP
       {
-        const DeclaratorInfo &di = $2;
+        DeclaratorInfo di = $2;
   		  TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
@@ -4967,7 +5001,7 @@ function_declaration_or_definition
     | declaration_specifiers declarator
       { /* enter function context before parsing body if this is a method */
         TypePtr ret = $1;
-        const DeclaratorInfo &di = $2;
+        DeclaratorInfo di = $2;
         if (ret && di.is_function) {
             if (di.pointer_levels > 0) {
               QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(ret, Qualifier::NONE),
@@ -4983,7 +5017,7 @@ function_declaration_or_definition
       }
       compound_statement
       {
-        const DeclaratorInfo &di = $2;
+        DeclaratorInfo di = $2;
   		  TypePtr ret = $1;
         if (!parser_state.ctx_stack.empty() && in_class() && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
