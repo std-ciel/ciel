@@ -284,6 +284,55 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
         return TACOperand(); // Delete doesn't produce a value
     }
 
+    case ASTNodeType::COMPOUND_LITERAL_EXPR: {
+        auto compound = std::static_pointer_cast<CompoundLiteralExpr>(node);
+
+        // Create a temporary for the compound literal
+        auto result_temp = new_temp(compound->expr_type);
+        auto result = TACOperand::temporary(result_temp, compound->expr_type);
+
+        // Process each initializer
+        for (const auto &init : compound->initializers) {
+            if (init->type == ASTNodeType::DESIGNATED_INITIALIZER_EXPR) {
+                auto desig =
+                    std::static_pointer_cast<DesignatedInitializerExpr>(init);
+
+                // Determine the type of the target member
+                TypePtr member_type = compound->type;
+                auto record_type =
+                    std::static_pointer_cast<RecordType>(compound->type);
+                for (const std::string &member : desig->member_path) {
+                    if (record_type) {
+                        member_type = get_member_type(record_type, member);
+                        record_type = std::static_pointer_cast<RecordType>(member_type);
+                    }
+                }
+
+                // Generate the value (handles nested BLOCK_STMT recursively)
+                auto value =
+                    generate_initializer_value(desig->value, member_type);
+
+                // Store to the designated member
+                generate_designated_member_store(result,
+                                                 compound->type,
+                                                 desig->member_path,
+                                                 value);
+            } else {
+                // Regular initializer (non-designated)
+                generate_expression(init);
+            }
+        }
+
+        return result;
+    }
+
+    case ASTNodeType::DESIGNATED_INITIALIZER_EXPR: {
+        // This should generally be handled as part of COMPOUND_LITERAL_EXPR
+        // If encountered standalone, just generate the value
+        auto desig = std::static_pointer_cast<DesignatedInitializerExpr>(node);
+        return generate_expression(desig->value);
+    }
+
     default:
         throw std::runtime_error("Unhandled expression type in TAC generation");
     }
@@ -784,6 +833,122 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
                                                   value);
     instr->comment = "Store to " + base_object.to_string() + "." + member_name;
     emit(instr);
+}
+
+// Helper function to generate TAC for initializer values (handles nested
+// BLOCK_STMT)
+TACOperand TACGenerator::generate_initializer_value(ASTNodePtr value_node,
+                                                    TypePtr target_type)
+{
+    if (!value_node) {
+        return TACOperand();
+    }
+
+    // Check if the value is a nested initializer list (BLOCK_STMT)
+    if (value_node->type == ASTNodeType::BLOCK_STMT) {
+        auto block = std::static_pointer_cast<BlockStmt>(value_node);
+
+        // Create a temporary for the nested struct
+        auto nested_temp = new_temp(target_type);
+        auto result = TACOperand::temporary(nested_temp, target_type);
+
+        // Process each initializer in the nested list
+        for (const auto &init : block->statements) {
+            if (init->type == ASTNodeType::DESIGNATED_INITIALIZER_EXPR) {
+                auto desig =
+                    std::static_pointer_cast<DesignatedInitializerExpr>(init);
+
+                // Determine the type of the nested member
+                TypePtr member_type = target_type;
+                auto record_type =
+                    std::static_pointer_cast<RecordType>(target_type);
+                for (const std::string &member : desig->member_path) {
+                    if (record_type) {
+                        member_type =
+                            get_member_type(record_type, member);
+                        record_type =
+                            std::static_pointer_cast<RecordType>(member_type);
+                    }
+                }
+
+                // Recursively handle the value (which might also be a
+                // BLOCK_STMT)
+                auto value =
+                    generate_initializer_value(desig->value, member_type);
+
+                // Store to the nested member
+                generate_designated_member_store(result,
+                                                 target_type,
+                                                 desig->member_path,
+                                                 value);
+            }
+        }
+
+        return result;
+    } else {
+        // Regular expression value
+        return generate_expression(value_node);
+    }
+}
+
+// Generate designated member store for compound literals: obj.member1.member2 =
+// value
+void TACGenerator::generate_designated_member_store(
+    const TACOperand &base_object,
+    TypePtr base_type,
+    const std::vector<std::string> &member_path,
+    const TACOperand &value)
+{
+    if (member_path.empty()) {
+        return;
+    }
+
+    // Navigate through the member path to find the final member to store
+    TACOperand current_object = base_object;
+    TypePtr current_type = base_type;
+
+    // For all but the last member in the path, we need to access nested members
+    for (size_t i = 0; i < member_path.size() - 1; ++i) {
+        const std::string &member = member_path[i];
+
+        // Get the nested member as an intermediate value
+        auto intermediate_temp = new_temp(nullptr);
+        auto intermediate = TACOperand::temporary(intermediate_temp, nullptr);
+
+        // Get member type
+        auto record_type = std::static_pointer_cast<RecordType>(current_type);
+        if (!record_type) {
+            throw std::runtime_error("Cannot access member on non-struct type");
+        }
+
+        TypePtr member_type = get_member_type(record_type, member);
+        if (!member_type) {
+            throw std::runtime_error("Member '" + member + "' not found");
+        }
+
+        // Load the intermediate member
+        auto offset_opt = get_member_offset(record_type, member);
+        size_t offset = 0;
+        if (!record_type->is_union && offset_opt.has_value()) {
+            offset = offset_opt.value();
+        }
+
+        TACOperand member_op = TACOperand::member_access(current_object,
+                                                         member,
+                                                         offset,
+                                                         member_type);
+
+        auto instr = std::make_shared<TACInstruction>(TACOpcode::LOAD_MEMBER,
+                                                      intermediate,
+                                                      member_op);
+        emit(instr);
+
+        current_object = intermediate;
+        current_type = member_type;
+    }
+
+    const std::string &final_member = member_path.back();
+    generate_member_store(current_object, final_member, current_type, value);
 }
 
 void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)

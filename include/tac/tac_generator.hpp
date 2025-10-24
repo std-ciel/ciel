@@ -75,6 +75,15 @@ class TACGenerator {
                                const std::string &member_name,
                                TypePtr base_type,
                                const TACOperand &value);
+
+    void generate_designated_member_store(
+        const TACOperand &base_object,
+        TypePtr base_type,
+        const std::vector<std::string> &member_path,
+        const TACOperand &value);
+
+    TACOperand generate_initializer_value(ASTNodePtr value_node,
+                                          TypePtr target_type);
 };
 
 #endif // TAC_GENERATOR_HPP
