@@ -1,0 +1,33 @@
+// Test: Variables cannot have same name as user-defined types
+// Expected: Multiple errors for type name conflicts
+
+struct Point {
+    int x;
+    int y;
+};
+
+union Data {
+    int i;
+    float f;
+};
+
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+class MyClass {
+    public:
+    int value;
+};
+
+int main() {
+    // These should all produce errors
+    int Point;      // Error: conflicts with struct Point
+    float Data;     // Error: conflicts with union Data
+    int Color;      // Error: conflicts with enum Color
+    int MyClass;    // Error: conflicts with class MyClass
+    
+    return 0;
+}

@@ -1,0 +1,62 @@
+// Comprehensive typedef test with all forms
+
+// 1. Anonymous struct typedef
+typedef struct { int x; int y; } Point;
+
+// 2. Named struct with typedef
+typedef struct Rectangle { int width; int height; } Rect;
+
+// 3. Anonymous union typedef
+typedef union { int i; float f; } Number;
+
+// 4. Named union with typedef
+typedef union DataUnion { int value; char bytes[4]; } Data;
+
+// 5. Named enum with typedef (anonymous enums not supported by design)
+typedef enum DayEnum { SUNDAY, MONDAY, TUESDAY } Day;
+
+// 6. Named enum with typedef
+typedef enum ColorEnum { RED, GREEN, BLUE } Color;
+
+// 7. Named class with typedef (anonymous classes have access specifier issues)
+typedef class ObjectClass { public: int val; } Object;
+
+// 8. Named class with typedef
+typedef class MyClass { public: int data; } ClassType;
+
+// 9. Simple typedef
+typedef int Integer;
+typedef float Real;
+
+// 10. Pointer typedef
+typedef int* IntPtr;
+
+int main() {
+    // Use all the typedef'd types
+    Point p;
+    Rect r;
+    Number n;
+    Data d;
+    Day day;
+    Color col;
+    Object obj;
+    ClassType ct;
+    Integer i;
+    Real f;
+    IntPtr ptr;
+
+    p.x = 5;
+    p.y = 10;
+    r.width = 100;
+    r.height = 200;
+    n.i = 42;
+    d.value = 99;
+    day = DayEnum.SUNDAY;
+    col = ColorEnum.RED;
+    obj.val = 123;
+    ct.data = 456;
+    i = 7;
+    f = 3.14;
+    
+    return 0;
+}

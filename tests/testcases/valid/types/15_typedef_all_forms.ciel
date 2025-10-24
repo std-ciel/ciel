@@ -1,0 +1,62 @@
+// Test typedef with all aggregate types
+
+// Typedef with inline struct definition
+typedef struct{ int x; } StructAlias;
+
+// Typedef with inline union definition
+typedef union InlineUnion {
+    int i;
+    float f;
+} UnionAlias;
+
+// Typedef with inline enum definition
+typedef enum InlineEnum {
+    VAL1,
+    VAL2,
+    VAL3
+} EnumAlias;
+
+// Typedef with inline class definition
+typedef class InlineClass {
+    public:
+    int data;
+} ClassAlias;
+
+// Forward declarations then typedef
+struct Point;
+union Data;
+enum Color { RED, GREEN, BLUE };
+
+typedef struct Point Point;
+typedef union Data Data;
+typedef enum Color Color;
+
+// Complete definitions
+struct Point {
+    int x;
+    int y;
+};typedef struct Point Point;
+typedef union Data Data;
+typedef enum Color Color;
+
+// Complete definitions
+struct Point {
+    int x;
+    int y;
+};
+
+union Data {
+    int i;
+    float f;
+};
+
+int main() {
+    StructAlias s;
+    UnionAlias u;
+    EnumAlias e;
+    ClassAlias c;
+    Point p;
+    Color col;
+    
+    return 0;
+}

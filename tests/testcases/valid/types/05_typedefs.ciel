@@ -46,6 +46,12 @@ typedef union Data Data;
 typedef enum Color Color;
 
 
+typedef struct Inline{
+    int x;
+    int y;
+} Try;
+
+
 // Function pointer typedef (if supported)
 // typedef int (*FuncPtr)(int, int);
 
