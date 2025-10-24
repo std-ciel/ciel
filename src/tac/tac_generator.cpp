@@ -665,7 +665,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
     if (base_type->kind == TypeKind::RECORD) {
         auto record_type = std::static_pointer_cast<RecordType>(base_type);
         // Get member offset from precomputed field_offsets
-        auto offset_opt = get_member_offset(*record_type, member_name);
+        auto offset_opt = get_member_offset(record_type, member_name);
         if (!offset_opt.has_value()) {
             throw std::runtime_error("Member '" + member_name +
                                      "' not found in struct/union");
@@ -675,7 +675,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         offset = offset_opt.value();
 
         // Get member type
-        member_type = get_member_type(*record_type, member_name);
+        member_type = get_member_type(record_type, member_name);
         if (!member_type) {
             throw std::runtime_error("Could not determine member type");
         }
@@ -684,7 +684,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
     else if (base_type->kind == TypeKind::CLASS) {
         auto class_type = std::static_pointer_cast<ClassType>(base_type);
         // Get member offset (includes inherited members)
-        auto offset_opt = get_class_member_offset(*class_type, member_name);
+        auto offset_opt = get_class_member_offset(class_type, member_name);
         if (!offset_opt.has_value()) {
             throw std::runtime_error("Member '" + member_name +
                                      "' not found in class");
@@ -693,7 +693,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         offset = offset_opt.value();
 
         // Get member type (includes inherited members)
-        member_type = get_class_member_type(*class_type, member_name);
+        member_type = get_class_member_type(class_type, member_name);
         if (!member_type) {
             throw std::runtime_error("Could not determine member type");
         }
@@ -735,7 +735,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
     if (base_type->kind == TypeKind::RECORD) {
         auto record_type = std::static_pointer_cast<RecordType>(base_type);
         // Get member offset from precomputed field_offsets
-        auto offset_opt = get_member_offset(*record_type, member_name);
+        auto offset_opt = get_member_offset(record_type, member_name);
         if (!offset_opt.has_value()) {
             throw std::runtime_error("Member '" + member_name +
                                      "' not found in struct/union");
@@ -745,7 +745,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         offset = offset_opt.value();
 
         // Get member type
-        member_type = get_member_type(*record_type, member_name);
+        member_type = get_member_type(record_type, member_name);
         if (!member_type) {
             throw std::runtime_error("Could not determine member type");
         }
@@ -754,7 +754,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
     else if (base_type->kind == TypeKind::CLASS) {
         auto class_type = std::static_pointer_cast<ClassType>(base_type);
         // Get member offset (includes inherited members)
-        auto offset_opt = get_class_member_offset(*class_type, member_name);
+        auto offset_opt = get_class_member_offset(class_type, member_name);
         if (!offset_opt.has_value()) {
             throw std::runtime_error("Member '" + member_name +
                                      "' not found in class");
@@ -763,7 +763,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         offset = offset_opt.value();
 
         // Get member type (includes inherited members)
-        member_type = get_class_member_type(*class_type, member_name);
+        member_type = get_class_member_type(class_type, member_name);
         if (!member_type) {
             throw std::runtime_error("Could not determine member type");
         }

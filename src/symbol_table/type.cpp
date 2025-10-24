@@ -1,4 +1,5 @@
 #include "symbol_table/type.hpp"
+#include <memory>
 
 std::string type_kind_to_string(TypeKind kind)
 {
@@ -220,16 +221,16 @@ uint32_t get_type_alignment(TypePtr type)
     return canonical->layout.alignment;
 }
 
-std::optional<size_t> get_class_member_offset(const ClassType &class_type,
+std::optional<size_t> get_class_member_offset(ClassTypePtr class_type,
                                               const std::string &member_name)
 {
     auto find_member_offset =
         [](auto &&find_member_offset,
-           const ClassType &cls,
+           std::shared_ptr<ClassType> cls,
            const std::string &name) -> std::optional<size_t> {
         // First check this class's own members
-        auto it = cls.members.find(name);
-        if (it != cls.members.end()) {
+        auto it = cls->members.find(name);
+        if (it != cls->members.end()) {
             // Skip function members - they don't have offsets
             auto member_type = strip_typedefs(it->second.type.type);
             if (!member_type || member_type->kind == TypeKind::FUNCTION) {
@@ -239,13 +240,11 @@ std::optional<size_t> get_class_member_offset(const ClassType &class_type,
         }
 
         // If not found in this class, search in base class
-        if (cls.base.base_type) {
-            TypePtr base = strip_typedefs(cls.base.base_type);
+        if (cls->base.base_type) {
+            TypePtr base = strip_typedefs(cls->base.base_type);
             if (base && base->kind == TypeKind::CLASS) {
                 auto base_class = std::static_pointer_cast<ClassType>(base);
-                return find_member_offset(find_member_offset,
-                                          *base_class,
-                                          name);
+                return find_member_offset(find_member_offset, base_class, name);
             }
         }
 
@@ -255,24 +254,24 @@ std::optional<size_t> get_class_member_offset(const ClassType &class_type,
     return find_member_offset(find_member_offset, class_type, member_name);
 }
 
-TypePtr get_class_member_type(const ClassType &class_type,
+TypePtr get_class_member_type(ClassTypePtr class_type,
                               const std::string &member_name)
 {
     auto find_member_type = [](auto &&find_member_type,
-                               const ClassType &cls,
+                               ClassTypePtr cls,
                                const std::string &name) -> TypePtr {
         // First check this class's own members
-        auto it = cls.members.find(name);
-        if (it != cls.members.end()) {
+        auto it = cls->members.find(name);
+        if (it != cls->members.end()) {
             return it->second.type.type;
         }
 
         // If not found in this class, search in base class
-        if (cls.base.base_type) {
-            TypePtr base = strip_typedefs(cls.base.base_type);
+        if (cls->base.base_type) {
+            TypePtr base = strip_typedefs(cls->base.base_type);
             if (base && base->kind == TypeKind::CLASS) {
                 auto base_class = std::static_pointer_cast<ClassType>(base);
-                return find_member_type(find_member_type, *base_class, name);
+                return find_member_type(find_member_type, base_class, name);
             }
         }
 
@@ -282,21 +281,21 @@ TypePtr get_class_member_type(const ClassType &class_type,
     return find_member_type(find_member_type, class_type, member_name);
 }
 
-std::optional<size_t> get_member_offset(const RecordType &record_type,
+std::optional<size_t> get_member_offset(RecordTypePtr record_type,
                                         const std::string &member_name)
 {
-    auto it = record_type.field_offsets.find(member_name);
-    if (it != record_type.field_offsets.end()) {
+    auto it = record_type->field_offsets.find(member_name);
+    if (it != record_type->field_offsets.end()) {
         return it->second;
     }
     return std::nullopt; // Member not found
 }
 
-TypePtr get_member_type(const RecordType &record_type,
+TypePtr get_member_type(RecordTypePtr record_type,
                         const std::string &member_name)
 {
-    auto it = record_type.fields.find(member_name);
-    if (it != record_type.fields.end()) {
+    auto it = record_type->fields.find(member_name);
+    if (it != record_type->fields.end()) {
         return it->second.type;
     }
     return nullptr;

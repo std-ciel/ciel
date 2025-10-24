@@ -411,6 +411,17 @@ struct TypedefType : public Type {
     }
 };
 
+using TypeId = size_t;
+
+using BuiltinTypePtr = std::shared_ptr<BuiltinType>;
+using PointerTypePtr = std::shared_ptr<PointerType>;
+using ArrayTypePtr = std::shared_ptr<ArrayType>;
+using FunctionTypePtr = std::shared_ptr<FunctionType>;
+using RecordTypePtr = std::shared_ptr<RecordType>;
+using EnumTypePtr = std::shared_ptr<EnumType>;
+using ClassTypePtr = std::shared_ptr<ClassType>;
+using TypedefTypePtr = std::shared_ptr<TypedefType>;
+
 std::string type_kind_to_string(TypeKind kind);
 
 TypePtr strip_typedefs(TypePtr type);
@@ -433,25 +444,17 @@ bool has_layout(TypePtr type);
 uint32_t get_type_size(TypePtr type);
 uint32_t get_type_alignment(TypePtr type);
 
-std::optional<size_t> get_class_member_offset(const ClassType &class_type,
+std::optional<size_t> get_class_member_offset(ClassTypePtr class_type,
                                               const std::string &member_name);
-TypePtr get_class_member_type(const ClassType &class_type,
+
+TypePtr get_class_member_type(ClassTypePtr class_type,
                               const std::string &member_name);
 
-std::optional<size_t> get_member_offset(const RecordType &record_type,
-                                        const std::string &member_name);
-TypePtr get_member_type(const RecordType &record_type,
+std::optional<size_t>
+get_member_offset(RecordTypePtr record_type,
+                  const std::string &member_name);
+
+TypePtr get_member_type(RecordTypePtr record_type,
                         const std::string &member_name);
-
-using TypeId = size_t;
-
-using BuiltinTypePtr = std::shared_ptr<BuiltinType>;
-using PointerTypePtr = std::shared_ptr<PointerType>;
-using ArrayTypePtr = std::shared_ptr<ArrayType>;
-using FunctionTypePtr = std::shared_ptr<FunctionType>;
-using RecordTypePtr = std::shared_ptr<RecordType>;
-using EnumTypePtr = std::shared_ptr<EnumType>;
-using ClassTypePtr = std::shared_ptr<ClassType>;
-using TypedefTypePtr = std::shared_ptr<TypedefType>;
 
 #endif // TYPE_HPP
