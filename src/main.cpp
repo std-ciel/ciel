@@ -95,6 +95,11 @@ int main(int argc, char *argv[])
         .default_value(false)
         .implicit_value(true);
 
+    program.add_argument("-i", "--irgen-only")
+        .help("Run all phases up to and including IR generation (TAC)")
+        .default_value(false)
+        .implicit_value(true);
+
     try {
         program.parse_args(argc, argv);
     } catch (const std::runtime_error &err) {
@@ -106,12 +111,15 @@ int main(int argc, char *argv[])
     bool debug_mode = program.get<bool>("--debug");
     bool lexer_only = program.get<bool>("--lexer-only");
     bool parser_only = program.get<bool>("--parser-only");
+    bool irgen_only = program.get<bool>("--irgen-only");
 
     // Validate mutually exclusive options
-    if (lexer_only && parser_only) {
-        std::cerr
-            << "Error: --lexer-only and --parser-only are mutually exclusive"
-            << std::endl;
+    int exclusive_count =
+        (lexer_only ? 1 : 0) + (parser_only ? 1 : 0) + (irgen_only ? 1 : 0);
+    if (exclusive_count > 1) {
+        std::cerr << "Error: --lexer-only, --parser-only, and --irgen-only are "
+                     "mutually exclusive"
+                  << std::endl;
         return 1;
     }
 
@@ -277,6 +285,12 @@ int main(int argc, char *argv[])
         std::cerr << "\nTAC generation error: " << e.what() << std::endl;
         lexer_clear_tokens();
         return 1;
+    }
+
+    // IR generation-only mode: stop here
+    if (irgen_only) {
+        lexer_clear_tokens();
+        return 0;
     }
 
     lexer_clear_tokens();
