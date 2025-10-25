@@ -183,13 +183,13 @@
   void check_forward_declarations(ScopeID exiting_scope){
      // Check forward declarations made in the scope we're exiting
      // Only report errors for declarations made in THIS specific scope
-     
+
      // Collect types to remove after checking (can't modify set while iterating)
      std::vector<std::string> types_to_remove;
-     
+
      for (const auto& type_name : parser_state.forward_declared_types) {
         auto decl_scope = parser_state.forward_decl_scopes[type_name];
-        
+
         // Only check forward declarations made in the exact scope we're exiting
         if (decl_scope == exiting_scope) {
             if (parser_state.defined_types.find(type_name) == parser_state.defined_types.end()) {
@@ -201,7 +201,7 @@
             types_to_remove.push_back(type_name);
         }
     }
-    
+
     // Remove checked types from tracking
     for (const auto& type_name : types_to_remove) {
         parser_state.forward_declared_types.erase(type_name);
@@ -209,7 +209,7 @@
         parser_state.forward_decl_scopes.erase(type_name);
     }
   }
-  
+
   void check_global_forward_declarations_impl(){
      // Check all forward declarations at the end of the translation unit
      for (const auto& type_name : parser_state.forward_declared_types) {
@@ -359,7 +359,7 @@
       std::string union_name = "union " + name;
       std::string enum_name = "enum " + name;
       std::string class_name = "class " + name;
-      
+
       if (parser_state.defined_types.count(struct_name) > 0 ||
           parser_state.defined_types.count(union_name) > 0 ||
           parser_state.defined_types.count(enum_name) > 0 ||
@@ -369,7 +369,7 @@
                          "variable '" + name + "' conflicts with user-defined type name");
         return;
       }
-      
+
       auto result = symbol_table.add_symbol(name, type, parser_state.current_storage, function_meta);
       if (result.is_err()) {
         parser_add_error(loc.begin.line,
@@ -386,7 +386,7 @@
     std::string union_name = "union " + tag;
     std::string enum_name = "enum " + tag;
     std::string class_name = "class " + tag;
-    
+
     // Check if any other type category with this name is already defined OR forward declared
     // (excluding the current type we're trying to define)
     if (current_full_name != struct_name) {
@@ -400,7 +400,7 @@
         return true;
       }
     }
-    
+
     if (current_full_name != union_name) {
       // Check if union is defined
       auto found = type_factory.lookup(union_name);
@@ -412,7 +412,7 @@
         return true;
       }
     }
-    
+
     if (current_full_name != enum_name) {
       // Check if enum is defined
       auto found = type_factory.lookup(enum_name);
@@ -424,7 +424,7 @@
         return true;
       }
     }
-    
+
     if (current_full_name != class_name) {
       // Check if class is defined
       auto found = type_factory.lookup(class_name);
@@ -436,7 +436,7 @@
         return true;
       }
     }
-    
+
     return false;
   }
 
@@ -1586,11 +1586,11 @@ open_brace
     ;
 
 close_brace
-  : CLOSE_BRACE_OP { 
+  : CLOSE_BRACE_OP {
       ScopeID exiting_scope = symbol_table.get_current_scope_id();
-      symbol_table.exit_scope(); 
-      parser_state.pop_ctx(); 
-      check_forward_declarations(exiting_scope); 
+      symbol_table.exit_scope();
+      parser_state.pop_ctx();
+      check_forward_declarations(exiting_scope);
     }
   ;
 
@@ -3128,7 +3128,7 @@ init_declarator
             parser_add_error(@2.begin.line, @2.begin.column,
                            "function '" + di.name + "' cannot have an initializer");
           } else {
-            QualifiedType final_t = base;
+            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), Qualifier::NONE};
 
             // Apply pointer levels first if present
             if(di.pointer_levels > 0){
@@ -3174,7 +3174,7 @@ init_declarator
           // Skip adding as a variable if this is a function declarator
           // Function declarations are handled separately in the declaration rule
           if (!di.is_function) {
-            QualifiedType final_t = base;
+            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), Qualifier::NONE};
 
             // Apply pointer levels first if present
             if(di.pointer_levels > 0){
@@ -3277,7 +3277,7 @@ struct_or_union_specifier
               parser_state.defined_types.insert(full_name);
               record_type->is_defined = true;
               $$ = rec;
-              
+
               symbol_table.enter_scope();
               for (const auto &kv : $4) {
                 record_type->add_field(kv.first, kv.second);
@@ -3289,7 +3289,7 @@ struct_or_union_specifier
             parser_state.defined_types.insert(full_name);
             rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
             $$ = rec;
-            
+
             symbol_table.enter_scope();
             auto record_type = std::static_pointer_cast<RecordType>($$);
             for (const auto &kv : $4) {
@@ -3333,7 +3333,7 @@ struct_or_union_specifier
               parser_state.defined_types.insert(full_name);
               record_type->is_defined = true;
               $$ = rec;
-              
+
               symbol_table.enter_scope();
               for (const auto &kv : $4) {
                 record_type->add_field(kv.first, kv.second);
@@ -3345,7 +3345,7 @@ struct_or_union_specifier
             parser_state.defined_types.insert(full_name);
             rec = unwrap_type_or_error(type_factory.make<RecordType>(tag, is_union, true), "struct/union definition", @1.begin.line, @2.begin.column);
             $$ = rec;
-            
+
             symbol_table.enter_scope();
             auto record_type = std::static_pointer_cast<RecordType>($$);
             for (const auto &kv : $4) {
@@ -3396,7 +3396,7 @@ struct_or_union_specifier
         } else {
           // Check for cross-type conflicts before creating forward declaration
           if (check_type_name_conflict(tag, full_name)) {
-            parser_add_error(@1.begin.line, @2.begin.column, 
+            parser_add_error(@1.begin.line, @2.begin.column,
               "'" + tag + "' is already declared as a different type");
             $$ = nullptr;
           } else {
@@ -3422,7 +3422,7 @@ struct_or_union_specifier
         } else {
           // Check for cross-type conflicts before creating forward declaration
           if (check_type_name_conflict(tag, full_name)) {
-            parser_add_error(@1.begin.line, @2.begin.column, 
+            parser_add_error(@1.begin.line, @2.begin.column,
               "'" + tag + "' is already declared as a different type");
             $$ = nullptr;
           } else {
@@ -3631,7 +3631,7 @@ enum_specifier
               parser_state.defined_types.insert(full_name);
               enum_type->is_defined = true;
               t = found.value();
-              
+
               int64_t v = 0;
               for (const auto& nm : $4) {
                 enum_type->add_enumerator(nm, v);
@@ -3684,7 +3684,7 @@ enum_specifier
               parser_state.defined_types.insert(full_name);
               enum_type->is_defined = true;
               t = found.value();
-              
+
               int64_t v = 0;
               for (const auto& nm : $4) {
                 enum_type->add_enumerator(nm, v);
@@ -3728,7 +3728,7 @@ enum_specifier
         } else {
           // Check for cross-type conflicts before creating forward declaration
           if (check_type_name_conflict(tag, full_name)) {
-            parser_add_error(@1.begin.line, @2.begin.column, 
+            parser_add_error(@1.begin.line, @2.begin.column,
               "'" + tag + "' is already declared as a different type");
             $$ = nullptr;
           } else {
@@ -3750,7 +3750,7 @@ enum_specifier
         } else {
           // Check for cross-type conflicts before creating forward declaration
           if (check_type_name_conflict(tag, full_name)) {
-            parser_add_error(@1.begin.line, @2.begin.column, 
+            parser_add_error(@1.begin.line, @2.begin.column,
               "'" + tag + "' is already declared as a different type");
             $$ = nullptr;
           } else {
@@ -4640,7 +4640,7 @@ class_specifier_tail
     {
       std::string name = $1;
       std::string full_name = std::string("class ") + name;
-      
+
       // Check for conflicts with other type categories
       if (check_type_name_conflict(name, full_name)) {
         parser_add_error(
@@ -4684,7 +4684,7 @@ class_specifier_tail
     {
       std::string name = $1;
       std::string full_name = std::string("class ") + name;
-      
+
       // Check for conflicts with other type categories
       if (check_type_name_conflict(name, full_name)) {
         parser_add_error(
@@ -4734,7 +4734,7 @@ class_specifier_tail
       } else {
         // Check for cross-type conflicts before creating forward declaration
         if (check_type_name_conflict(name, full_name)) {
-          parser_add_error(@1.begin.line, @1.begin.column, 
+          parser_add_error(@1.begin.line, @1.begin.column,
             "'" + name + "' is already declared as a different type");
           $$ = nullptr;
         } else {
@@ -4760,7 +4760,7 @@ class_specifier_tail
       } else {
         // Check for cross-type conflicts before creating forward declaration
         if (check_type_name_conflict(name, full_name)) {
-          parser_add_error(@1.begin.line, @1.begin.column, 
+          parser_add_error(@1.begin.line, @1.begin.column,
             "'" + name + "' is already declared as a different type");
           $$ = nullptr;
         } else {
