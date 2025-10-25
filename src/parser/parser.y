@@ -1387,6 +1387,130 @@
     }
   }
 
+  static SymbolPtr lookup_function(
+      const std::string& function_name,
+      const std::vector<QualifiedType>& arg_types,
+      FunctionKind kind,
+      std::optional<ClassType> context_class = std::nullopt)
+  {
+    FunctionMeta meta(kind, {});
+    SymbolPtr func_symbol = nullptr;
+
+    // Step 1: Try exact match with all arguments (non-variadic)
+    FunctionType exact_match(QualifiedType(), arg_types, false);
+    auto exact_mangled = mangle_function_name(function_name, exact_match, meta, context_class);
+    if (exact_mangled.has_value()) {
+      auto exact_symbol = symbol_table.lookup_operator(exact_mangled.value());
+      if (exact_symbol.has_value()) {
+        return exact_symbol.value();
+      }
+    }
+
+    // Step 2: Try exact match with variadic function
+    FunctionType variadic_match(QualifiedType(), arg_types, true);
+    auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, context_class);
+    if (variadic_mangled.has_value()) {
+      auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
+      if (variadic_symbol.has_value()) {
+        return variadic_symbol.value();
+      }
+    }
+
+    // Step 3: Try decreasing parameters from right, looking for variadic functions
+    for (size_t i = arg_types.size(); i > 0; --i) {
+      std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
+      FunctionType reduced_variadic(QualifiedType(), reduced_args, true);
+
+      auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, context_class);
+      if (reduced_mangled.has_value()) {
+        auto reduced_symbol = symbol_table.lookup_operator(reduced_mangled.value());
+        if (reduced_symbol.has_value()) {
+          return reduced_symbol.value();
+        }
+      }
+    }
+
+    // Step 4: Try with no parameters and variadic
+    FunctionType empty_variadic(QualifiedType(), {}, true);
+    auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, context_class);
+    if (empty_mangled.has_value()) {
+      auto empty_symbol = symbol_table.lookup_operator(empty_mangled.value());
+      if (empty_symbol.has_value()) {
+        return empty_symbol.value();
+      }
+    }
+
+    return nullptr;
+  }
+
+  static ASTNodePtr handle_brace_initialization(
+      const std::string& var_name,
+      QualifiedType var_type,
+      const std::vector<ASTNodePtr>& initializer_list,
+      const yy::location& brace_loc,
+      const yy::location& var_loc)
+  {
+    if (!var_type.type) {
+      return nullptr;
+    }
+
+    // For class types, look up and call the constructor
+    if (is_class_type(var_type.type)) {
+      auto class_type = std::static_pointer_cast<ClassType>(var_type.type);
+      
+      // Extract argument types from initializer_list
+      std::vector<QualifiedType> arg_types;
+      for (const auto& init : initializer_list) {
+        TypePtr arg_type = get_expression_type(init, brace_loc, "constructor argument");
+        if (!arg_type) {
+          parser_add_error(brace_loc.begin.line, brace_loc.begin.column,
+                           "Type of constructor argument could not be inferred");
+        }
+        arg_types.push_back(QualifiedType{arg_type, Qualifier::NONE});
+      }
+
+      // Look up the constructor
+      std::string class_name = class_type->debug_name();
+      // Remove "class " prefix to get the bare class name
+      if (class_name.substr(0, 6) == "class ") {
+        class_name = class_name.substr(6);
+      }
+
+      SymbolPtr ctor_symbol = lookup_function(class_name, arg_types, FunctionKind::CONSTRUCTOR, *class_type);
+
+      if (!ctor_symbol) {
+        parser_add_error(brace_loc.begin.line, brace_loc.begin.column,
+                         "no matching constructor for '" + class_name + "' with " +
+                         std::to_string(arg_types.size()) + " argument(s)");
+        return nullptr;
+      }
+
+      // Look up the variable symbol for the object being constructed
+      auto obj_symbol = symbol_table.lookup_symbol(var_name);
+      if (!obj_symbol.has_value()) {
+        parser_add_error(var_loc.begin.line, var_loc.begin.column,
+                         "variable '" + var_name + "' not found in symbol table");
+        return nullptr;
+      }
+
+      // Create identifier expression for the object
+      auto object_id_expr = std::make_shared<IdentifierExpr>(
+          obj_symbol.value(),
+          var_type.type
+      );
+
+      // Constructor call: first argument is 'this' (address of object)
+      std::vector<ASTNodePtr> ctor_args = {make_address_of_expr(object_id_expr, var_loc)};
+      ctor_args.insert(ctor_args.end(), initializer_list.begin(), initializer_list.end());
+
+      auto fn_type = std::static_pointer_cast<FunctionType>(ctor_symbol->get_type().type);
+      return std::make_shared<CallExpr>(ctor_symbol, ctor_args, fn_type->return_type.type);
+    }
+    
+    // For non-class types, use BlockStmt to hold the initializer list
+    return std::make_shared<BlockStmt>(initializer_list);
+  }
+
   static ASTNodePtr handle_assignment_operator(
       ASTNodePtr lhs,
       ASTNodePtr rhs,
@@ -1923,59 +2047,7 @@ postfix_expression
       if($1->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR){
         std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>($1)->function_name;
 
-        FunctionMeta meta{};
-        SymbolPtr func_symbol = nullptr;
-
-        // Step 1: Try exact match with all arguments (non-variadic)
-        FunctionType exact_match(QualifiedType(), arg_types, false);
-        auto exact_mangled = mangle_function_name(function_name, exact_match, meta, std::nullopt);
-        if (exact_mangled.has_value()) {
-          auto exact_symbol = symbol_table.lookup_operator(exact_mangled.value());
-          if (exact_symbol.has_value()) {
-            func_symbol = exact_symbol.value();
-          }
-        }
-
-        // Step 2: Try exact match with variadic function
-        if (!func_symbol) {
-          FunctionType variadic_match(QualifiedType(), arg_types, true);
-          auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, std::nullopt);
-          if (variadic_mangled.has_value()) {
-            auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
-            if (variadic_symbol.has_value()) {
-              func_symbol = variadic_symbol.value();
-            }
-          }
-        }
-
-        // Step 3: Try decreasing parameters from right, looking for variadic functions
-        if (!func_symbol) {
-          for (size_t i = arg_types.size(); i > 0; --i) {
-            std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
-            FunctionType reduced_variadic(QualifiedType(), reduced_args, true);
-
-            auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, std::nullopt);
-            if (reduced_mangled.has_value()) {
-              auto reduced_symbol = symbol_table.lookup_operator(reduced_mangled.value());
-              if (reduced_symbol.has_value()) {
-                func_symbol = reduced_symbol.value();
-                break;
-              }
-            }
-          }
-        }
-
-        // Step 4: Try with no parameters and variadic
-        if (!func_symbol) {
-          FunctionType empty_variadic(QualifiedType(), {}, true);
-          auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, std::nullopt);
-          if (empty_mangled.has_value()) {
-            auto empty_symbol = symbol_table.lookup_operator(empty_mangled.value());
-            if (empty_symbol.has_value()) {
-              func_symbol = empty_symbol.value();
-            }
-          }
-        }
+        SymbolPtr func_symbol = lookup_function(function_name, arg_types, FunctionKind::NORMAL, std::nullopt);
 
         // Step 5: Error if no match found
         if (!func_symbol) {
@@ -2007,65 +2079,16 @@ postfix_expression
           $$ = nullptr;
         }
         else {
-          FunctionMeta meta(FunctionKind::METHOD, {});
           SymbolPtr func_symbol = nullptr;
 
           // Search through class hierarchy for matching function
           auto current_class = std::static_pointer_cast<ClassType>(base_class);
 
           while (current_class && !func_symbol) {
-            // Step 1: Try exact match with all arguments (non-variadic)
-            FunctionType exact_match(QualifiedType(), arg_types, false);
-            auto exact_mangled = mangle_function_name(function_name, exact_match, meta, *current_class);
-            if (exact_mangled.has_value()) {
-              auto exact_symbol = symbol_table.lookup_operator(exact_mangled.value());
-              if (exact_symbol.has_value()) {
-                func_symbol = exact_symbol.value();
-                break;
-              }
-            }
+            func_symbol = lookup_function(function_name, arg_types, FunctionKind::METHOD, *current_class);
 
-            // Step 2: Try exact match with variadic function
-            if (!func_symbol) {
-              FunctionType variadic_match(QualifiedType(), arg_types, true);
-              auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, *current_class);
-              if (variadic_mangled.has_value()) {
-                auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
-                if (variadic_symbol.has_value()) {
-                  func_symbol = variadic_symbol.value();
-                  break;
-                }
-              }
-            }
-
-            // Step 3: Try decreasing parameters from right, looking for variadic functions
-            if (!func_symbol) {
-              for (size_t i = arg_types.size(); i > 0; --i) {
-                std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
-                FunctionType reduced_variadic(QualifiedType(), reduced_args, true);
-
-                auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, *current_class);
-                if (reduced_mangled.has_value()) {
-                  auto reduced_symbol = symbol_table.lookup_operator(reduced_mangled.value());
-                  if (reduced_symbol.has_value()) {
-                    func_symbol = reduced_symbol.value();
-                    break;
-                  }
-                }
-              }
-            }
-
-            // Step 4: Try with no parameters and variadic
-            if (!func_symbol) {
-              FunctionType empty_variadic(QualifiedType(), {}, true);
-              auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, *current_class);
-              if (empty_mangled.has_value()) {
-                auto empty_symbol = symbol_table.lookup_operator(empty_mangled.value());
-                if (empty_symbol.has_value()) {
-                  func_symbol = empty_symbol.value();
-                  break;
-                }
-              }
+            if (func_symbol) {
+              break;
             }
 
             // Move to base class if accessible (public inheritance only)
@@ -2081,7 +2104,7 @@ postfix_expression
             }
           }
 
-          // Step 5: Error if no match found
+          // Error if no match found
           if (!func_symbol) {
             parser_add_error(@1.begin.line,
                             @1.begin.column,
