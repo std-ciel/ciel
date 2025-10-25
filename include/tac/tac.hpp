@@ -218,10 +218,22 @@ struct TACFunction {
 
 using TACFunctionPtr = std::shared_ptr<TACFunction>;
 
+// String literal entry
+struct StringLiteral {
+    std::string label;
+    std::string value;
+
+    StringLiteral(const std::string &lbl, const std::string &val)
+        : label(lbl), value(val)
+    {
+    }
+};
+
 // Complete TAC Program
 struct TACProgram {
     std::vector<TACFunctionPtr> functions;
     std::vector<SymbolPtr> global_variables;
+    std::vector<StringLiteral> string_literals;
 
     void add_function(TACFunctionPtr func)
     {
@@ -231,6 +243,11 @@ struct TACProgram {
     void add_global(SymbolPtr sym)
     {
         global_variables.push_back(sym);
+    }
+
+    void add_string_literal(const std::string &label, const std::string &value)
+    {
+        string_literals.emplace_back(label, value);
     }
 
     void print() const;

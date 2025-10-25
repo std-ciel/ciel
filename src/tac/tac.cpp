@@ -426,6 +426,37 @@ void TACProgram::print() const
         }
     }
 
+    if (!string_literals.empty()) {
+        std::cout << "\nString Literals:\n";
+        for (const auto &str : string_literals) {
+            std::cout << std::setw(4) << std::right << global_line_number++
+                      << ": " << str.label << ": \"";
+            // Escape special characters for display
+            for (char c : str.value) {
+                switch (c) {
+                case '\n':
+                    std::cout << "\\n";
+                    break;
+                case '\t':
+                    std::cout << "\\t";
+                    break;
+                case '\r':
+                    std::cout << "\\r";
+                    break;
+                case '\\':
+                    std::cout << "\\\\";
+                    break;
+                case '\"':
+                    std::cout << "\\\"";
+                    break;
+                default:
+                    std::cout << c;
+                }
+            }
+            std::cout << "\"\n";
+        }
+    }
+
     for (const auto &func : functions) {
         func->print(global_line_number);
     }
