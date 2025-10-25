@@ -32,10 +32,7 @@ typedef union Data Data;
 typedef enum Color Color;
 
 // Complete definitions
-struct Point {
-    int x;
-    int y;
-};typedef struct Point Point;
+typedef struct Point Point;
 typedef union Data Data;
 typedef enum Color Color;
 
@@ -57,6 +54,6 @@ int main() {
     ClassAlias c;
     Point p;
     Color col;
-    
+
     return 0;
 }

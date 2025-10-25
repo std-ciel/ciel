@@ -4,3 +4,7 @@
 struct ForwardDeclaredStruct;
 
 struct ForwardDeclaredStruct* ptr;
+
+struct ForwardDeclaredStruct {
+
+};

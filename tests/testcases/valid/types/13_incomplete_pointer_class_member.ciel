@@ -9,3 +9,6 @@ class Container {
     public:
         struct ForwardDeclaredStruct* getDataPtr();
 };
+
+struct ForwardDeclaredStruct {
+};

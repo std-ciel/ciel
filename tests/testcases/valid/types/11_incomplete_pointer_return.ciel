@@ -4,3 +4,6 @@
 struct ForwardDeclaredStruct;
 
 struct ForwardDeclaredStruct* getObject();
+
+struct ForwardDeclaredStruct {
+};
