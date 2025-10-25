@@ -833,6 +833,8 @@
       return;
     }
 
+    return_type = strip_typedefs(return_type);
+
     check_complete_type(return_type, loc_ret, TypeUsageContext::OPERATOR_OVERLOAD_RETURN);
 
     TypePtr fn = make_function_type_or_error(
@@ -2702,6 +2704,7 @@ unary_expression
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP cast_expression
       {
         TypePtr target_type = $2;
+        target_type = strip_typedefs(target_type);
         $$ = std::make_shared<CastExpr>(target_type, $4);
       }
     ;
@@ -3301,7 +3304,8 @@ init_declarator
             parser_add_error(@2.begin.line, @2.begin.column,
                            "function '" + di.name + "' cannot have an initializer");
           } else {
-            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), Qualifier::NONE};
+            // Strip typedefs from the base type before using it
+            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
             // Apply pointer levels first if present
             if(di.pointer_levels > 0){
@@ -3348,7 +3352,8 @@ init_declarator
 
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
-            QualifiedType final_t = base;
+            // Strip typedefs from the base type before using it
+            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
             // Check completeness
             check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
@@ -3379,7 +3384,8 @@ init_declarator
 
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
-            QualifiedType final_t = base;
+            // Strip typedefs from the base type before using it
+            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
             // Check completeness
             check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
@@ -3411,7 +3417,8 @@ init_declarator
           // Skip adding as a variable if this is a function declarator
           // Function declarations are handled separately in the declaration rule
           if (!di.is_function) {
-            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), Qualifier::NONE};
+            // Strip typedefs from the base type before using it
+            QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
             // Apply pointer levels first if present
             if(di.pointer_levels > 0){
@@ -4156,24 +4163,26 @@ parameter_declaration
         $$ = ParamDeclInfo{};
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
+          // Strip typedefs from the base type before using it
+          QualifiedType stripped_base = QualifiedType{strip_typedefs(base.type), base.qualifier};
           QualifiedType t;
 
           if($2.pointer_levels){
-            t = apply_pointer_levels_or_error(base,
+            t = apply_pointer_levels_or_error(stripped_base,
                                               $2.pointer_levels,
                                               "parameter pointer",
                                               @1.begin.line,
                                               @2.begin.column);
           }
           else if(!$2.array_dims.empty()){
-            t = apply_array_dimensions_or_error(base,
+            t = apply_array_dimensions_or_error(stripped_base,
                                                 $2.array_dims,
                                                 "parameter array",
                                                 @1.begin.line,
                                                 @2.begin.column);
           }
           else {
-            t = base;
+            t = stripped_base;
             check_complete_type(t.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
           }
 
@@ -4187,8 +4196,10 @@ parameter_declaration
         $$ = ParamDeclInfo{};
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
-          check_complete_type(base.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
-          $$.type = base;
+          // Strip typedefs from the base type before using it
+          QualifiedType stripped_base = QualifiedType{strip_typedefs(base.type), base.qualifier};
+          check_complete_type(stripped_base.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
+          $$.type = stripped_base;
         }
         $$.name = std::string{};
         parser_state.reset_decl();
@@ -4198,9 +4209,11 @@ parameter_declaration
         $$ = ParamDeclInfo{};
         QualifiedType base_type = parser_state.current_decl_base_type;
         if (base_type.type) {
-          check_complete_type(base_type.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
+          // Strip typedefs from the base type before using it
+          QualifiedType stripped_base = QualifiedType{strip_typedefs(base_type.type), base_type.qualifier};
+          check_complete_type(stripped_base.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
+          $$.type = stripped_base;
         }
-        $$.type = base_type;
         $$.name = std::string{};
         parser_state.reset_decl();
       }
@@ -4341,23 +4354,24 @@ type_name
       {
         QualifiedType base = $1;
         if (base.type) {
+          QualifiedType stripped_base = QualifiedType{strip_typedefs(base.type), base.qualifier};
           QualifiedType final_t;
           if($2.pointer_levels){
-            final_t = apply_pointer_levels_or_error(base,
+            final_t = apply_pointer_levels_or_error(stripped_base,
                                                    $2.pointer_levels,
                                                    "type name pointer",
                                                    @1.begin.line,
                                                    @1.begin.column);
           }
           else if(!$2.array_dims.empty()){
-            final_t = apply_array_dimensions_or_error(base,
+            final_t = apply_array_dimensions_or_error(stripped_base,
                                                      $2.array_dims,
                                                      "type name array",
                                                      @1.begin.line,
                                                      @1.begin.column);
           }
           else {
-            final_t = base;
+            final_t = stripped_base;
           }
           $$ = final_t.type;
         } else {
@@ -4365,7 +4379,10 @@ type_name
         }
       }
     | specifier_qualifier_list
-      { $$ = $1; }
+      {
+        QualifiedType base = $1;
+        $$ = strip_typedefs(base.type);
+      }
     ;
 
 
@@ -4737,6 +4754,7 @@ external_declaration
 function_definition
     : declaration_specifiers declarator { /* begin function body: set function return context */
 		TypePtr ret_t = $1;
+		ret_t = strip_typedefs(ret_t);
     DeclaratorInfo di = $2;
 		current_function_type = nullptr;
 		if (ret_t && di.is_function) {
@@ -4794,6 +4812,7 @@ function_definition
 		}
 	 } compound_statement {
 		auto base = $1;
+		base = strip_typedefs(base);
 		$$ = nullptr;
 
 		if (!base) {
