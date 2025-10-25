@@ -3225,6 +3225,67 @@ init_declarator
           }
         }
       }
+    | IDENTIFIER OPEN_BRACE_OP CLOSE_BRACE_OP
+      {
+        // Brace initialization with no initializers: class C obj{};
+        DeclaratorInfo di;
+        di.name = $1;
+
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
+            QualifiedType final_t = base;
+
+            // Check completeness
+            check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
+
+            // Add the symbol first so we can reference it
+            add_symbol_if_valid(di.name, final_t, @1);
+
+            // Handle brace initialization (empty list = default constructor for classes)
+            std::vector<ASTNodePtr> empty_init_list;
+            di.initializer = handle_brace_initialization(di.name, final_t, empty_init_list, @2, @1);
+
+            if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
+              if (!di.name.empty()) {
+                // TODO: handle auto default constructors, currently disallowed
+                parser_add_error(@1.begin.line, @1.begin.column,
+                                 "brace initialization in class member declarations is not supported yet");
+              }
+            }
+        }
+        
+        $$ = di;  // Assign AFTER setting initializer
+      }
+    | IDENTIFIER OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
+      {
+        // Direct brace initialization: class C obj{2,3};
+        DeclaratorInfo di;
+        di.name = $1;
+
+        QualifiedType base = parser_state.current_decl_base_type;
+        if (base.type) {
+            QualifiedType final_t = base;
+
+            // Check completeness
+            check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
+
+            // Add the symbol first so we can reference it
+            add_symbol_if_valid(di.name, final_t, @1);
+
+            // Handle brace initialization with arguments
+            di.initializer = handle_brace_initialization(di.name, final_t, $3, @2, @1);
+
+            if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
+              if (!di.name.empty()) {
+                // TODO: handle auto default constructors, currently disallowed
+                parser_add_error(@1.begin.line, @1.begin.column,
+                                 "direct brace initialization in class member declarations is not supported yet");
+              }
+            }
+        }
+        
+        $$ = di;  // Assign AFTER setting initializer
+      }
     | declarator
       {
         $$ = $1;
