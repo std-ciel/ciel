@@ -3029,18 +3029,24 @@ declaration
                 // Look up the symbol that was just added
                 auto sym = symbol_table.lookup_symbol(di.name);
                 if (sym.has_value()) {
-                  // Create an identifier expression for the variable
-                  auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
-                  auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
-                  // Create an assignment expression: var = initializer
-                  auto assign_expr = std::make_shared<AssignmentExpr>(
-                    Operator::ASSIGN,
-                    id_expr,
-                    di.initializer,
-                    sym.value()->get_type().type,
-                    is_static
-                  );
-                  init_stmts.push_back(assign_expr);
+                  // Check if the initializer is a constructor call (CallExpr)
+                  if (di.initializer->type == ASTNodeType::CALL_EXPR) {
+                    // Constructor call - add it directly as a statement
+                    init_stmts.push_back(di.initializer);
+                  } else {
+                    // Regular initializer - create an assignment expression
+                    auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
+                    auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
+                    // Create an assignment expression: var = initializer
+                    auto assign_expr = std::make_shared<AssignmentExpr>(
+                      Operator::ASSIGN,
+                      id_expr,
+                      di.initializer,
+                      sym.value()->get_type().type,
+                      is_static
+                    );
+                    init_stmts.push_back(assign_expr);
+                  }
                 }
               }
             }
@@ -3218,8 +3224,11 @@ init_declarator
 
             if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
               if (!di.name.empty()) {
-                auto mi = MemberInfo{final_t, parser_state.current_access, false};
-                std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+                // auto mi = MemberInfo{final_t, parser_state.current_access, false};
+                // std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+                // TODO: handle auto default constructors, currently disallowed
+                parser_add_error(@1.begin.line, @1.begin.column,
+                                 "initializer in class member declarations is not supported yet");
               }
             }
           }
