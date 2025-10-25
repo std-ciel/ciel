@@ -3,23 +3,23 @@
 int main() {
     // Void (in function context)
     void* vptr = (void*)0;
-    
+
     // Integer types
     int i = 0;
     unsigned u = 0;
-    
+
     // Character type
     char c = 'x';
-    
+
     // Boolean type
     bool b = true;
-    
+
     // Floating point type
     float f = 1.5;
-    
+
     // Type mixing in expressions
     int result1 = i + u;
     float result2 = f + i;
-    
+    char message[20] = "Hello, CIEL!";
     return 0;
 }
