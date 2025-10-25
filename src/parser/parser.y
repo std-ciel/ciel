@@ -41,6 +41,8 @@
     std::vector<std::string> param_names;
     bool is_variadic = false;
     ASTNodePtr initializer = nullptr;  // Added to store initializer expression
+    bool is_function_pointer = false;  // True for function pointer declarations like int (*fp)(int, int)
+    bool is_parenthesized = false;     // True when declarator is wrapped in parentheses
   };
 
   struct ParamDeclInfo {
@@ -2804,7 +2806,8 @@ declaration
 
         if (base) {
           for (auto &di : $2) {
-            if (di.is_function) {
+            // Process function declarations (but not function pointers)
+            if (di.is_function && !di.is_function_pointer) {
               bool in_class = !parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type;
               if (!in_class && !di.name.empty()) {
                 encountered_function_names.insert(di.name);
@@ -2849,7 +2852,7 @@ declaration
 
               }
             } else {
-              // Non-function declarator - check for initializer
+              // Non-function declarator or function pointer - check for initializer
               if (di.initializer && !di.name.empty()) {
                 // Look up the symbol that was just added
                 auto sym = symbol_table.lookup_symbol(di.name);
@@ -3009,15 +3012,44 @@ init_declarator
         const DeclaratorInfo &di = $1;
         QualifiedType base = parser_state.current_decl_base_type;
         if (base.type) {
-          // Functions cannot have initializers in declarations
-          if (di.is_function) {
+          // Functions cannot have initializers in declarations (but function pointers can)
+          if (di.is_function && !di.is_function_pointer) {
             parser_add_error(@2.begin.line, @2.begin.column,
                            "function '" + di.name + "' cannot have an initializer");
           } else {
             QualifiedType final_t = base;
 
+            // Handle function pointers
+            if (di.is_function_pointer) {
+              // Build function type from return type and parameters
+              TypePtr return_type = base.type;
+              
+              // Apply pointer levels to return type (excluding the one used for function pointer)
+              if (di.pointer_levels > 1) {
+                QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(return_type, Qualifier::NONE),
+                                                                 di.pointer_levels - 1,
+                                                                 "function pointer return type",
+                                                                 @1.begin.line,
+                                                                 @1.begin.column);
+                return_type = qt.type;
+              }
+              
+              TypePtr fn_type = make_function_type_or_error(return_type,
+                                                            di.param_types,
+                                                            di.is_variadic,
+                                                            "function pointer type",
+                                                            @1.begin.line,
+                                                            @1.begin.column);
+              
+              // Create pointer to function type
+              TypePtr ptr_to_fn = unwrap_type_or_error(type_factory.get_pointer(QualifiedType(fn_type, Qualifier::NONE)),
+                                                       "function pointer",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
+              final_t = QualifiedType(ptr_to_fn, Qualifier::NONE);
+            }
             // Apply pointer levels first if present
-            if(di.pointer_levels > 0){
+            else if(di.pointer_levels > 0){
               final_t = apply_pointer_levels_or_error(final_t,
                                                      di.pointer_levels,
                                                      "initializer pointer declarator",
@@ -3034,8 +3066,8 @@ init_declarator
                                                        @1.begin.column);
             }
 
-            // Check completeness for non-array types
-            if(di.pointer_levels == 0 && di.array_dims.empty()) {
+            // Check completeness for non-array, non-pointer types
+            if(di.pointer_levels == 0 && di.array_dims.empty() && !di.is_function_pointer) {
               check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
@@ -3057,13 +3089,42 @@ init_declarator
         QualifiedType base = parser_state.current_decl_base_type;
 
         if (base.type) {
-          // Skip adding as a variable if this is a function declarator
+          // Skip adding as a variable if this is a function declarator (but not a function pointer)
           // Function declarations are handled separately in the declaration rule
-          if (!di.is_function) {
+          if (!di.is_function || di.is_function_pointer) {
             QualifiedType final_t = base;
 
+            // Handle function pointers
+            if (di.is_function_pointer) {
+              // Build function type from return type and parameters
+              TypePtr return_type = base.type;
+              
+              // Apply pointer levels to return type (excluding the one used for function pointer)
+              if (di.pointer_levels > 1) {
+                QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(return_type, Qualifier::NONE),
+                                                                 di.pointer_levels - 1,
+                                                                 "function pointer return type",
+                                                                 @1.begin.line,
+                                                                 @1.begin.column);
+                return_type = qt.type;
+              }
+              
+              TypePtr fn_type = make_function_type_or_error(return_type,
+                                                            di.param_types,
+                                                            di.is_variadic,
+                                                            "function pointer type",
+                                                            @1.begin.line,
+                                                            @1.begin.column);
+              
+              // Create pointer to function type
+              TypePtr ptr_to_fn = unwrap_type_or_error(type_factory.get_pointer(QualifiedType(fn_type, Qualifier::NONE)),
+                                                       "function pointer",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
+              final_t = QualifiedType(ptr_to_fn, Qualifier::NONE);
+            }
             // Apply pointer levels first if present
-            if(di.pointer_levels > 0){
+            else if(di.pointer_levels > 0){
               final_t = apply_pointer_levels_or_error(final_t,
                                                      di.pointer_levels,
                                                      "declarator pointer",
@@ -3080,8 +3141,8 @@ init_declarator
                                                        @1.begin.column);
             }
 
-            // Check completeness for non-array types
-            if(di.pointer_levels == 0 && di.array_dims.empty()) {
+            // Check completeness for non-array, non-pointer types
+            if(di.pointer_levels == 0 && di.array_dims.empty() && !di.is_function_pointer) {
               check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
@@ -3377,6 +3438,18 @@ declarator
       {
         $$ = $2;
         $$.pointer_levels += $1;
+        
+        // Function pointer pattern: pointer INSIDE parentheses, not outside
+        // Check if $2 (the direct_declarator) already has pointer_levels before we add $1
+        // For (*foo)(params): $2.pointer_levels = 1 (pointer inside)
+        // For *(foo)(params): $2.pointer_levels = 0 (pointer outside)
+        if ($2.is_parenthesized && $2.pointer_levels > 0 && $2.is_function) {
+          $$.is_function_pointer = true;
+        }
+        // Preserve the is_parenthesized flag for potential outer levels
+        if ($2.is_parenthesized && $1 > 0) {
+          $$.is_parenthesized = true;
+        }
       }
     | direct_declarator
       { $$ = $1; }
@@ -3391,6 +3464,7 @@ direct_declarator
     | OPEN_PAREN_OP declarator CLOSE_PAREN_OP
       {
         $$ = $2;
+        $$.is_parenthesized = true;
       }
   	| direct_declarator OPEN_BRACKET_OP CLOSE_BRACKET_OP
       {
@@ -3436,17 +3510,27 @@ direct_declarator
     | direct_declarator OPEN_PAREN_OP CLOSE_PAREN_OP
       {
         $$ = $1;
+        // Check for function pointer pattern: (*name)()
+        if ($1.is_parenthesized && $1.pointer_levels > 0) {
+          $$.is_function_pointer = true;
+        }
         $$.is_function = true;
         $$.has_params = false;
+        // Preserve is_parenthesized from the base declarator
       }
     | direct_declarator OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP
       {
         $$ = $1;
+        // Check for function pointer pattern: (*name)(params)
+        if ($1.is_parenthesized && $1.pointer_levels > 0) {
+          $$.is_function_pointer = true;
+        }
         $$.is_function = true;
         $$.has_params = true;
 		    $$.param_types = $3.types;
 		    $$.param_names = $3.names;
 		    $$.is_variadic = $3.variadic;
+        // Preserve is_parenthesized from the base declarator
       }
     ;
 
@@ -3522,7 +3606,7 @@ parameter_declaration
           $$.type = t;
         }
         $$.name = $2.name; // may be empty if unnamed
-        parser_state.reset_decl();
+        // Don't reset_decl() here - let the outer declaration rule handle it
       }
     | declaration_specifiers abstract_declarator
       {
@@ -3533,7 +3617,7 @@ parameter_declaration
           $$.type = base;
         }
         $$.name = std::string{};
-        parser_state.reset_decl();
+        // Don't reset_decl() here - let the outer declaration rule handle it
       }
     | declaration_specifiers
       {
@@ -3544,7 +3628,7 @@ parameter_declaration
         }
         $$.type = base_type;
         $$.name = std::string{};
-        parser_state.reset_decl();
+        // Don't reset_decl() here - let the outer declaration rule handle it
       }
     ;
 
