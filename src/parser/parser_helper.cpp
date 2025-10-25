@@ -7,6 +7,9 @@
 // Define the global parsed translation unit
 std::vector<ASTNodePtr> parsed_translation_unit;
 
+// Define the global parsed class methods
+std::vector<std::shared_ptr<FunctionDef>> parsed_class_methods;
+
 // Forward declare the globals from parser.y
 extern SymbolTable symbol_table;
 extern TypeFactory type_factory;
@@ -18,6 +21,11 @@ extern void check_global_forward_declarations_impl();
 std::vector<ASTNodePtr> get_parsed_translation_unit()
 {
     return parsed_translation_unit;
+}
+
+std::vector<std::shared_ptr<FunctionDef>> get_parsed_class_methods()
+{
+    return parsed_class_methods;
 }
 
 SymbolTable &get_symbol_table()

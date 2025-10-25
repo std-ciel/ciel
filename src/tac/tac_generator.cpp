@@ -241,6 +241,14 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
         return TACOperand::symbol(id->symbol, id->expr_type);
     }
 
+    case ASTNodeType::THIS_EXPR: {
+        auto this_expr = std::static_pointer_cast<ThisExpr>(node);
+        // 'this' is an implicit parameter (first parameter) for class methods
+        // It's not stored in the symbol table but is passed as the first
+        // argument We represent it as a special temporary with the name "this"
+        return TACOperand::temporary("this", this_expr->expr_type);
+    }
+
     case ASTNodeType::ENUM_IDENTIFIER_EXPR: {
         auto enum_id = std::static_pointer_cast<EnumIdentifierExpr>(node);
         // Enum identifiers are constant integers
@@ -1153,13 +1161,22 @@ void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
         current_block = nullptr;
     }
 
-    // Second pass: process all functions
+    // Second pass: process all functions in global scope
     for (const auto &node : translation_unit) {
         if (!node)
             continue;
 
         if (node->type == ASTNodeType::FUNCTION_DEF) {
             generate_function(std::static_pointer_cast<FunctionDef>(node));
+        }
+    }
+
+    // Third pass: process all class methods (constructors, destructors,
+    // methods)
+    auto class_methods = get_parsed_class_methods();
+    for (const auto &method_def : class_methods) {
+        if (method_def) {
+            generate_function(method_def);
         }
     }
 }

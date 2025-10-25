@@ -179,6 +179,7 @@
 
   // External reference to the global parsed_translation_unit
   extern std::vector<ASTNodePtr> parsed_translation_unit;
+  extern std::vector<std::shared_ptr<FunctionDef>> parsed_class_methods;
 
   void check_forward_declarations(ScopeID exiting_scope){
      // Check forward declarations made in the scope we're exiting
@@ -927,6 +928,21 @@
                         QualifiedType(fn, Qualifier::NONE),
                         loc,
                         std::optional<FunctionMeta>{meta});
+    
+    // Create FunctionDef node and store it for TAC generation
+    auto sym_opt = symbol_table.lookup_symbol(*mangled);
+    if (sym_opt.has_value() && body) {
+      // Convert param_names to SymbolPtr vector
+      std::vector<SymbolPtr> param_symbols;
+      for (const auto& param_name : param_names) {
+        auto param_sym = symbol_table.lookup_symbol(param_name);
+        if (param_sym.has_value()) {
+          param_symbols.push_back(param_sym.value());
+        }
+      }
+      auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, param_symbols, body);
+      parsed_class_methods.push_back(func_def);
+    }
   }
 
   static void handle_destructor_definition(
@@ -989,6 +1005,13 @@
                         QualifiedType(fn, Qualifier::NONE),
                         loc,
                         std::optional<FunctionMeta>{meta});
+    
+    // Create FunctionDef node and store it for TAC generation
+    auto sym_opt = symbol_table.lookup_symbol(*mangled);
+    if (sym_opt.has_value() && body) {
+      auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, std::vector<SymbolPtr>{}, body);
+      parsed_class_methods.push_back(func_def);
+    }
   }
 
   static void handle_constructor_declaration(
@@ -5131,6 +5154,7 @@ function_declaration_or_definition
                                                      @2.begin.column);
 
             FunctionMeta meta(FunctionKind::METHOD, di.param_names, parser_state.current_class_type);
+            meta.is_defined = true;
 
             auto mangled = mangle_function_name(di.name,
                                                 *std::static_pointer_cast<FunctionType>(fn),
@@ -5141,6 +5165,7 @@ function_declaration_or_definition
                                @2.begin.column,
                                "unable to mangle method '" + di.name + "'");
             } else {
+              meta.mangled_name = *mangled;
               auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
               std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
 
@@ -5148,6 +5173,21 @@ function_declaration_or_definition
                                   QualifiedType(fn, Qualifier::NONE),
                                   @1,
                                   std::optional<FunctionMeta>{meta});
+              
+              // Create FunctionDef node and store it for TAC generation
+              auto sym_opt = symbol_table.lookup_symbol(*mangled);
+              if (sym_opt.has_value() && $4) {
+                // Convert param_names to SymbolPtr vector
+                std::vector<SymbolPtr> param_symbols;
+                for (const auto& param_name : di.param_names) {
+                  auto param_sym = symbol_table.lookup_symbol(param_name);
+                  if (param_sym.has_value()) {
+                    param_symbols.push_back(param_sym.value());
+                  }
+                }
+                auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, param_symbols, $4);
+                parsed_class_methods.push_back(func_def);
+              }
             }
           } else {
             QualifiedType final_t = ret;

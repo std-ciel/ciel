@@ -8,9 +8,11 @@
 
 // External declarations for global parser state
 extern std::vector<ASTNodePtr> parsed_translation_unit;
+extern std::vector<std::shared_ptr<FunctionDef>> parsed_class_methods;
 
 // Getter functions to access globals from parser.y
 std::vector<ASTNodePtr> get_parsed_translation_unit();
+std::vector<std::shared_ptr<FunctionDef>> get_parsed_class_methods();
 SymbolTable &get_symbol_table();
 TypeFactory &get_type_factory();
 
