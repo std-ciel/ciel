@@ -54,6 +54,11 @@
     bool variadic = false;
   };
 
+  struct EnumeratorInfo {
+    std::string name;
+    std::optional<int64_t> value;  // None means auto-increment
+  };
+
   enum class ContextKind { GLOBAL, BLOCK, STRUCT, UNION, CLASS, ENUM, FUNCTION, SWITCH, LOOP };
 
   enum class TypeUsageContext {
@@ -1771,8 +1776,8 @@
 
 %type <TypePtr> enum_specifier
 %type <TypePtr> struct_or_union_specifier
-%type <std::vector<std::string>> enumerator_list
-%type <std::string> enumerator
+%type <std::vector<EnumeratorInfo>> enumerator_list
+%type <EnumeratorInfo> enumerator
 
 %type <std::string> struct_or_union
 %type <Access> access_specifier
@@ -3877,9 +3882,10 @@ enum_specifier
               t = found.value();
 
               int64_t v = 0;
-              for (const auto& nm : $4) {
-                enum_type->add_enumerator(nm, v);
-                v++;
+              for (const auto& enumerator_info : $4) {
+                int64_t enum_value = enumerator_info.value.value_or(v);
+                enum_type->add_enumerator(enumerator_info.name, enum_value);
+                v = enum_value + 1;  // Next auto value is one more than current
               }
               $$ = t;
             }
@@ -3889,9 +3895,10 @@ enum_specifier
             t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
 
             int64_t v = 0;
-            for (const auto& nm : $4) {
-              std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
-              v++;
+            for (const auto& enumerator_info : $4) {
+              int64_t enum_value = enumerator_info.value.value_or(v);
+              std::static_pointer_cast<EnumType>(t)->add_enumerator(enumerator_info.name, enum_value);
+              v = enum_value + 1;  // Next auto value is one more than current
             }
             $$ = t;
           }
@@ -3930,9 +3937,10 @@ enum_specifier
               t = found.value();
 
               int64_t v = 0;
-              for (const auto& nm : $4) {
-                enum_type->add_enumerator(nm, v);
-                v++;
+              for (const auto& enumerator_info : $4) {
+                int64_t enum_value = enumerator_info.value.value_or(v);
+                enum_type->add_enumerator(enumerator_info.name, enum_value);
+                v = enum_value + 1;  // Next auto value is one more than current
               }
               $$ = t;
             }
@@ -3942,9 +3950,10 @@ enum_specifier
             t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
 
             int64_t v = 0;
-            for (const auto& nm : $4) {
-              std::static_pointer_cast<EnumType>(t)->add_enumerator(nm, v);
-              v++;
+            for (const auto& enumerator_info : $4) {
+              int64_t enum_value = enumerator_info.value.value_or(v);
+              std::static_pointer_cast<EnumType>(t)->add_enumerator(enumerator_info.name, enum_value);
+              v = enum_value + 1;  // Next auto value is one more than current
             }
             $$ = t;
           }
@@ -4010,7 +4019,7 @@ enum_specifier
 enumerator_list
     : enumerator
       {
-        $$ = std::vector<std::string>{ $1 };
+        $$ = std::vector<EnumeratorInfo>{ $1 };
       }
     | enumerator_list COMMA_OP enumerator
       {
@@ -4021,13 +4030,41 @@ enumerator_list
 
 enumerator
     : IDENTIFIER
-      { $$ = $1; }
+      { 
+        $$.name = $1;
+        $$.value = std::nullopt;  // Auto-increment
+      }
     | IDENTIFIER ASSIGN_OP constant_expression
-      { $$ = $1; /* explicit value ignored for now */ }
-    //| TYPE_NAME
-      //{ $$ = $1; }
-    //| TYPE_NAME ASSIGN_OP constant_expression
-      //{ $$ = $1; /* explicit value ignored for now */ }
+      {
+        $$.name = $1;
+        // Try to evaluate the constant expression
+        if ($3 && $3->type == ASTNodeType::LITERAL_EXPR) {
+          auto literal = std::static_pointer_cast<LiteralExpr>($3);
+          auto expr_type = get_expression_type($3, @3, "enumerator value");
+          if (expr_type && is_integral_type(expr_type)) {
+            int64_t value = std::visit([](auto&& arg) -> int64_t {
+                            using T = std::decay_t<decltype(arg)>;
+                            if constexpr (std::is_same_v<T, int64_t>)
+                                return arg;
+                            else if constexpr (std::is_same_v<T, uint64_t>)
+                                return static_cast<int64_t>(arg);
+                            else if constexpr (std::is_same_v<T, char>)
+                                return static_cast<int64_t>(arg);
+                            else
+                                throw std::runtime_error("Unexpected type in variant");
+                        }, literal->value);
+            $$.value = value;
+          } else {
+            parser_add_error(@3.begin.line, @3.begin.column, 
+                           "enumerator value must be an integral constant expression");
+            $$.value = 0;
+          }
+        } else {
+          parser_add_error(@3.begin.line, @3.begin.column, 
+                         "enumerator value must be a constant expression");
+          $$.value = 0;
+        }
+      }
     ;
 
 type_qualifier
