@@ -46,6 +46,11 @@ static std::unordered_set<std::string> g_type_names;
 static std::vector<LexError> g_errors;
 static bool had_errors = false;
 static int type_def_depth = 0;
+static int typedef_brace_depth = 0;
+static bool in_typedef = false;
+static bool typedef_seen_aggregate = false;
+static bool typedef_seen_tag = false;
+static bool typedef_seen_brace = false;  // Track if we've seen an opening brace (indicates anonymous aggregate)
 
 static char escape_char(char *buf, size_t length);
 static char escape_hexbyte(char *buf, size_t length);
@@ -203,28 +208,51 @@ exponent            [Ee][+-]?
                                     auto t = reserved_word(yytext);
                                     if (t.has_value()) {
                                         add_token(yytext, t.value());
-                                        if (t.value() == TokenType::TYPEDEF)
-                                            type_def_depth = 2;
-                                        else if (t.value() != TokenType::STRUCT && t.value() != TokenType::UNION && t.value() != TokenType::ENUM && t.value() != TokenType::CLASS)
-                                            --type_def_depth;
+                                        if (t.value() == TokenType::TYPEDEF) {
+                                            in_typedef = true;
+                                            typedef_brace_depth = 0;
+                                            typedef_seen_aggregate = false;
+                                            typedef_seen_tag = false;
+                                            typedef_seen_brace = false;
+                                            type_def_depth = 0;
+                                        } else if (in_typedef && (t.value() == TokenType::STRUCT || t.value() == TokenType::UNION || t.value() == TokenType::ENUM || t.value() == TokenType::CLASS)) {
+                                            typedef_seen_aggregate = true;
+                                        }
                                         if (t.value() == TokenType::BOOL_LITERAL) {
                                             yylval->emplace<bool>(std::string(yytext) == std::string("true"));
                                         }
                                         return to_bison_token(t.value());
                                     } else {
-                                        if(type_def_depth == 1) {
+                                        // Check if this is already a known typedef name
+                                        if(g_type_names.find(yytext) != g_type_names.end()) {
                                             add_token(yytext, TokenType::TYPENAME);
-                                            type_def_depth=0;
-                                            g_type_names.insert(yytext);
                                             yylval->emplace<std::string>(yytext);
                                             return to_bison_token(TokenType::TYPENAME);
-                                        }else{
-                                            --type_def_depth;
-                                            if(g_type_names.find(yytext) != g_type_names.end()) {
+                                        }
+                                        
+                                        // Determine if this is the typedef alias
+                                        if(in_typedef && typedef_brace_depth == 0) {
+                                            if (typedef_seen_aggregate && !typedef_seen_tag && !typedef_seen_brace) {
+                                                // This is the aggregate tag name (e.g., "InlineStruct")
+                                                // We haven't seen braces yet, so this could be a tag
+                                                typedef_seen_tag = true;
+                                                add_token(yytext, TokenType::IDENTIFIER);
+                                                yylval->emplace<std::string>(yytext);
+                                                return to_bison_token(TokenType::IDENTIFIER);
+                                            } else {
+                                                // This is the typedef alias name
+                                                // Either we've seen a tag, or we've seen braces (anonymous), or no aggregate at all
                                                 add_token(yytext, TokenType::TYPENAME);
+                                                in_typedef = false;
+                                                typedef_seen_aggregate = false;
+                                                typedef_seen_tag = false;
+                                                typedef_seen_brace = false;
+                                                type_def_depth = 0;
+                                                g_type_names.insert(yytext);
                                                 yylval->emplace<std::string>(yytext);
                                                 return to_bison_token(TokenType::TYPENAME);
                                             }
+                                        } else {
                                             add_token(yytext, TokenType::IDENTIFIER);
                                             yylval->emplace<std::string>(yytext);
                                             return to_bison_token(TokenType::IDENTIFIER);
@@ -266,6 +294,20 @@ exponent            [Ee][+-]?
                                     column += extra;
                                     if (auto t = operator_token(op); t.has_value()) {
                                         add_token(op, t.value());
+                                        // Track brace depth for typedef handling
+                                        if (in_typedef) {
+                                            if (t.value() == TokenType::OPEN_BRACE_OP) {
+                                                typedef_brace_depth++;
+                                                typedef_seen_brace = true;  // Mark that we've seen a brace
+                                            } else if (t.value() == TokenType::CLOSE_BRACE_OP) {
+                                                typedef_brace_depth--;
+                                            } else if (t.value() == TokenType::SEMICOLON_OP && typedef_brace_depth == 0) {
+                                                // End of typedef statement
+                                                in_typedef = false;
+                                                typedef_seen_brace = false;
+                                                type_def_depth = 0;
+                                            }
+                                        }
                                         return to_bison_token(t.value());
                                     } else {
                                         error_handler(this, std::string("unrecognized operator '") + op + "'");
