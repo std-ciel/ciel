@@ -45,6 +45,11 @@ class Point {
             this->x = nx;
             this->y = 0;
         }
+        ~Point() {
+            // Destructor
+            this->x = 0;
+            this->y = 0;
+        }
         int get_x() {
             return this->x;
         }
@@ -129,6 +134,11 @@ int main() {
     class Point p5{3};
     class Point p3{4, 6};
     class Point p6{2, 8};
+    {
+        class Point temp{1, 1};
+        class Point temp2{temp.get_x(), temp.get_y()};
+        class Point temp3;
+    }
     p2.set_x(p.get_x());
     p2.set_y(p.get_y());
 
