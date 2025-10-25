@@ -376,6 +376,10 @@
                          loc.begin.column,
                          symbol_table_error_to_string(result.error()));
       }
+    } else {
+      parser_add_error(loc.begin.line,
+                       loc.begin.column,
+                       "cannot add symbol with empty name");
     }
   }
 
@@ -873,7 +877,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        in_class() ||
+        !in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -931,7 +935,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        in_class() ||
+        !in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -995,7 +999,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        in_class() ||
+        !in_class() ||
         !parser_state.current_class_type) {
       return;
     }
@@ -1044,7 +1048,7 @@
       const yy::location& loc)
   {
     if (parser_state.ctx_stack.empty() ||
-        in_class() ||
+        !in_class() ||
         !parser_state.current_class_type) {
       return;
     }
