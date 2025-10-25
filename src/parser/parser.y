@@ -66,6 +66,12 @@
     OPERATOR_OVERLOAD_RETURN
   };
 
+  // Struct to track brace-initialized objects that need destructors
+  struct BraceInitObject {
+    SymbolPtr symbol;
+    TypePtr type;
+  };
+
   struct GlobalParserState {
     std::vector<ContextKind> ctx_stack = {ContextKind::GLOBAL};
     Access current_access = Access::PRIVATE;
@@ -76,6 +82,9 @@
     ClassTypePtr current_class_type = nullptr;
 
     std::unordered_map<std::string, std::vector<ASTNodePtr>> unresolved_labels;
+
+    // Stack of brace-initialized class objects per scope (for destructor calls)
+    std::vector<std::vector<BraceInitObject>> brace_init_objects;
 
     // For switch-case tracking
     std::vector<std::vector<ASTNodePtr>> case_stmt_stack;
@@ -928,7 +937,7 @@
                         QualifiedType(fn, Qualifier::NONE),
                         loc,
                         std::optional<FunctionMeta>{meta});
-    
+
     // Create FunctionDef node and store it for TAC generation
     auto sym_opt = symbol_table.lookup_symbol(*mangled);
     if (sym_opt.has_value() && body) {
@@ -1005,7 +1014,7 @@
                         QualifiedType(fn, Qualifier::NONE),
                         loc,
                         std::optional<FunctionMeta>{meta});
-    
+
     // Create FunctionDef node and store it for TAC generation
     auto sym_opt = symbol_table.lookup_symbol(*mangled);
     if (sym_opt.has_value() && body) {
@@ -1466,6 +1475,74 @@
     return nullptr;
   }
 
+  // Helper function to register a brace-initialized class object for destructor tracking
+  static void register_brace_init_object(SymbolPtr obj_symbol, TypePtr obj_type) {
+    if (!obj_type || !is_class_type(obj_type)) {
+      return; // Only track class types
+    }
+
+    if (!obj_symbol) {
+      return; // No symbol to track
+    }
+
+    if (parser_state.brace_init_objects.empty()) {
+      return; // No active scope
+    }
+
+    BraceInitObject obj{obj_symbol, obj_type};
+    parser_state.brace_init_objects.back().push_back(obj);
+  }
+
+  // Helper function to generate destructor calls for brace-initialized objects in current scope
+  static std::vector<ASTNodePtr> generate_scope_destructors(const yy::location& loc) {
+    std::vector<ASTNodePtr> destructor_calls;
+
+    if (parser_state.brace_init_objects.empty()) {
+      return destructor_calls;
+    }
+
+    // Get objects from current scope (in reverse order - LIFO destruction)
+    const auto& objects = parser_state.brace_init_objects.back();
+
+    for (auto it = objects.rbegin(); it != objects.rend(); ++it) {
+      const auto& obj = *it;
+
+      if (!obj.symbol) {
+        continue; // Skip if symbol is null
+      }
+
+      // Get the class type
+      auto class_type = std::static_pointer_cast<ClassType>(obj.type);
+      std::string class_name = class_type->debug_name();
+      if (class_name.substr(0, 6) == "class ") {
+        class_name = class_name.substr(6);
+      }
+
+      // Look up the destructor using lookup_function
+      std::string dtor_name = "~" + class_name;
+      std::vector<QualifiedType> no_args; // Destructors take no arguments (except implicit 'this')
+
+      SymbolPtr dtor_symbol = lookup_function(dtor_name, no_args, FunctionKind::DESTRUCTOR, *class_type);
+      if (!dtor_symbol) {
+        continue; // No destructor defined, skip
+      }
+
+      // Get the destructor's return type (should be void)
+      auto fn_type = std::static_pointer_cast<FunctionType>(dtor_symbol->get_type().type);
+      TypePtr return_type = fn_type->return_type.type;
+
+      // Create identifier expression for the object
+      auto object_id_expr = std::make_shared<IdentifierExpr>(obj.symbol, obj.type);
+
+      // Create destructor call: ~ClassName(&obj)
+      std::vector<ASTNodePtr> dtor_args = {make_address_of_expr(object_id_expr, loc)};
+      auto dtor_call = std::make_shared<CallExpr>(dtor_symbol, dtor_args, return_type);
+
+      destructor_calls.push_back(dtor_call);
+    }
+
+    return destructor_calls;
+  }
   static ASTNodePtr handle_brace_initialization(
       const std::string& var_name,
       QualifiedType var_type,
@@ -1480,7 +1557,18 @@
     // For class types, look up and call the constructor
     if (is_class_type(var_type.type)) {
       auto class_type = std::static_pointer_cast<ClassType>(var_type.type);
-      
+
+      // Look up the variable symbol for the object being constructed
+      auto obj_symbol = symbol_table.lookup_symbol(var_name);
+      if (!obj_symbol.has_value()) {
+        parser_add_error(var_loc.begin.line, var_loc.begin.column,
+                         "variable '" + var_name + "' not found in symbol table");
+        return nullptr;
+      }
+
+      // Register this object for destructor tracking (now with the symbol!)
+      register_brace_init_object(obj_symbol.value(), var_type.type);
+
       // Extract argument types from initializer_list
       std::vector<QualifiedType> arg_types;
       for (const auto& init : initializer_list) {
@@ -1508,14 +1596,6 @@
         return nullptr;
       }
 
-      // Look up the variable symbol for the object being constructed
-      auto obj_symbol = symbol_table.lookup_symbol(var_name);
-      if (!obj_symbol.has_value()) {
-        parser_add_error(var_loc.begin.line, var_loc.begin.column,
-                         "variable '" + var_name + "' not found in symbol table");
-        return nullptr;
-      }
-
       // Create identifier expression for the object
       auto object_id_expr = std::make_shared<IdentifierExpr>(
           obj_symbol.value(),
@@ -1529,7 +1609,7 @@
       auto fn_type = std::static_pointer_cast<FunctionType>(ctor_symbol->get_type().type);
       return std::make_shared<CallExpr>(ctor_symbol, ctor_args, fn_type->return_type.type);
     }
-    
+
     // For non-class types, use BlockStmt to hold the initializer list
     return std::make_shared<BlockStmt>(initializer_list);
   }
@@ -1752,6 +1832,9 @@ open_brace
         symbol_table.enter_scope();
         parser_state.push_ctx(ContextKind::BLOCK);
         add_pending_parameters_to_scope(@1);
+
+        // Push new scope tracking for brace-initialized objects
+        parser_state.brace_init_objects.emplace_back();
 
         if (current_function_mangled.has_value()) {
           ScopeID body_scope = symbol_table.get_current_scope_id();
@@ -3285,7 +3368,7 @@ init_declarator
               }
             }
         }
-        
+
         $$ = di;  // Assign AFTER setting initializer
       }
     | IDENTIFIER OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
@@ -3315,7 +3398,7 @@ init_declarator
               }
             }
         }
-        
+
         $$ = di;  // Assign AFTER setting initializer
       }
     | declarator
@@ -4416,8 +4499,26 @@ labeled_statement
     ;
 
 compound_statement
-    : open_brace close_brace { $$ = std::make_shared<CompoundStmt>(std::vector<ASTNodePtr>{}); }
-    | open_brace block_item_list close_brace { $$ = std::make_shared<CompoundStmt>($2); }
+    : open_brace close_brace {
+        // Generate destructors before popping the scope tracking
+        auto destructors = generate_scope_destructors(@1);
+        // Pop the scope tracking
+        if (!parser_state.brace_init_objects.empty()) {
+          parser_state.brace_init_objects.pop_back();
+        }
+        $$ = std::make_shared<CompoundStmt>(destructors);
+    }
+    | open_brace block_item_list close_brace {
+        // Generate destructors and append to statement list
+        auto destructors = generate_scope_destructors(@1);
+        auto statements = $2;
+        statements.insert(statements.end(), destructors.begin(), destructors.end());
+        // Pop the scope tracking
+        if (!parser_state.brace_init_objects.empty()) {
+          parser_state.brace_init_objects.pop_back();
+        }
+        $$ = std::make_shared<CompoundStmt>(statements);
+    }
     ;
 
 block_item_list
@@ -5173,7 +5274,7 @@ function_declaration_or_definition
                                   QualifiedType(fn, Qualifier::NONE),
                                   @1,
                                   std::optional<FunctionMeta>{meta});
-              
+
               // Create FunctionDef node and store it for TAC generation
               auto sym_opt = symbol_table.lookup_symbol(*mangled);
               if (sym_opt.has_value() && $4) {
