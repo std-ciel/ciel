@@ -208,11 +208,10 @@ std::string opcode_to_string(TACOpcode op)
     }
 }
 
-std::string TACInstruction::to_string() const
+std::string TACInstruction::to_string(size_t line_offset) const
 {
     std::ostringstream oss;
 
-    // Special cases
     if (opcode == TACOpcode::LABEL) {
         oss << operand1.to_string() << ":";
         return oss.str();
@@ -221,7 +220,7 @@ std::string TACInstruction::to_string() const
     if (opcode == TACOpcode::GOTO) {
         oss << "    GOTO " << operand1.to_string();
         if (target_line_number > 0) {
-            oss << " (" << target_line_number << ")";
+            oss << " (" << (line_offset + target_line_number) << ")";
         }
         return oss.str();
     }
@@ -230,7 +229,7 @@ std::string TACInstruction::to_string() const
         oss << "    " << opcode_to_string(opcode) << " " << operand1.to_string()
             << " GOTO " << operand2.to_string();
         if (target_line_number > 0) {
-            oss << " (" << target_line_number << ")";
+            oss << " (" << (line_offset + target_line_number) << ")";
         }
         return oss.str();
     }
@@ -397,7 +396,6 @@ void TACFunction::print(size_t &line_number) const
     }
     std::cout << "\n\n";
 
-    // Calculate the offset to convert relative line numbers to global
     size_t function_start_line = line_number;
 
     for (const auto &block : basic_blocks) {
@@ -406,19 +404,8 @@ void TACFunction::print(size_t &line_number) const
                       << block->label << ":\n";
         }
         for (const auto &instr : block->instructions) {
-            // Temporarily adjust target_line_number for printing
-            size_t original_target = instr->target_line_number;
-            if (original_target > 0) {
-                const_cast<TACInstruction *>(instr.get())->target_line_number =
-                    function_start_line + original_target;
-            }
-
             std::cout << std::setw(4) << std::right << line_number++ << ": "
-                      << instr->to_string() << "\n";
-
-            // Restore original relative line number
-            const_cast<TACInstruction *>(instr.get())->target_line_number =
-                original_target;
+                      << instr->to_string(function_start_line) << "\n";
         }
         std::cout << "\n";
     }

@@ -148,7 +148,7 @@ struct TACInstruction {
     {
     }
 
-    std::string to_string() const;
+    std::string to_string(size_t line_offset = 0) const;
 };
 
 // Basic Block for organizing TAC instructions
@@ -191,7 +191,7 @@ struct TACFunction {
     ScopeID body_scope_id = 0;
     SymbolTable &sym_table;
 
-    // For single-pass backpatching during code generation
+    // For backpatching during code generation
     size_t current_instruction_number = 0;
 
     // Map label names to list of instructions that jump to them (forward jumps)

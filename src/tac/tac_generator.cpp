@@ -302,7 +302,8 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
 
             // Get pointed-to type - use pointee member of PointerType
             if (base_type->kind == TypeKind::POINTER) {
-                auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
+                auto ptr_type =
+                    std::static_pointer_cast<PointerType>(base_type);
                 base_type = ptr_type->pointee.type;
             }
         }
@@ -368,7 +369,8 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
                 for (const std::string &member : desig->member_path) {
                     if (record_type) {
                         member_type = get_member_type(record_type, member);
-                        record_type = std::static_pointer_cast<RecordType>(member_type);
+                        record_type =
+                            std::static_pointer_cast<RecordType>(member_type);
                     }
                 }
 
@@ -598,7 +600,8 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
             // Get pointed-to type - use pointee member of PointerType
             if (base_type->kind == TypeKind::POINTER) {
-                auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
+                auto ptr_type =
+                    std::static_pointer_cast<PointerType>(base_type);
                 base_type = ptr_type->pointee.type;
             }
         }
@@ -777,7 +780,8 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
                                      "' not found in struct/union");
         }
 
-        // For unions, all members are at offset 0 (already handled by layout pass)
+        // For unions, all members are at offset 0 (already handled by layout
+        // pass)
         offset = offset_opt.value();
 
         // Get member type
@@ -803,8 +807,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         if (!member_type) {
             throw std::runtime_error("Could not determine member type");
         }
-    }
-    else {
+    } else {
         throw std::runtime_error("Member access on non-struct/class type");
     }
 
@@ -847,7 +850,8 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
                                      "' not found in struct/union");
         }
 
-        // For unions, all members are at offset 0 (already handled by layout pass)
+        // For unions, all members are at offset 0 (already handled by layout
+        // pass)
         offset = offset_opt.value();
 
         // Get member type
@@ -873,8 +877,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         if (!member_type) {
             throw std::runtime_error("Could not determine member type");
         }
-    }
-    else {
+    } else {
         throw std::runtime_error("Member access on non-struct/class type");
     }
 
@@ -921,8 +924,7 @@ TACOperand TACGenerator::generate_initializer_value(ASTNodePtr value_node,
                     std::static_pointer_cast<RecordType>(target_type);
                 for (const std::string &member : desig->member_path) {
                     if (record_type) {
-                        member_type =
-                            get_member_type(record_type, member);
+                        member_type = get_member_type(record_type, member);
                         record_type =
                             std::static_pointer_cast<RecordType>(member_type);
                     }
@@ -1073,8 +1075,6 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
     if (!node)
         return;
 
-    // Global declarations with initializers come as BlockStmt containing
-    // AssignmentExpr nodes (similar to local variable initializations)
     if (node->type == ASTNodeType::BLOCK_STMT) {
         auto block = std::static_pointer_cast<BlockStmt>(node);
 
@@ -1191,7 +1191,6 @@ void TACGenerator::generate_statement(ASTNodePtr node)
 
     case ASTNodeType::DO_WHILE_STMT: {
         auto stmt = std::static_pointer_cast<DoWhileStmt>(node);
-
         auto body_label = new_label("do_body");
         auto cond_label = new_label("do_cond");
         auto end_label = new_label("do_end");
@@ -1212,7 +1211,6 @@ void TACGenerator::generate_statement(ASTNodePtr node)
 
     case ASTNodeType::UNTIL_STMT: {
         auto stmt = std::static_pointer_cast<UntilStmt>(node);
-
         auto body_label = new_label("until_body");
         auto cond_label = new_label("until_cond");
         auto end_label = new_label("until_end");
@@ -1409,7 +1407,7 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
     auto expr = generate_expression(stmt->expression);
     auto end_label = new_label("switch_end");
 
-    loop_labels.push({end_label, ""}); // Switch allows break but not continue
+    loop_labels.push({end_label, ""});
 
     case_labels_map.clear();
 
@@ -1428,7 +1426,6 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
             continue;
         auto case_stmt = std::static_pointer_cast<CaseStmt>(stmt->cases[i]);
 
-        // Try to extract constant integer value
         int64_t case_val = 0;
         bool is_constant = false;
 
@@ -1480,10 +1477,8 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
         int64_t max_val = cases.back().value;
         int64_t range = max_val - min_val + 1;
 
-        // Check density: ratio of cases to range
         double density = static_cast<double>(cases.size()) / range;
 
-        // Use jump table if density > 0.4 and range is reasonable (< 256)
         if (density > 0.4 && range <= 256) {
             use_jump_table = true;
         }
@@ -1495,24 +1490,19 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
         int64_t max_val = cases.back().value;
         int64_t range = max_val - min_val + 1;
 
-        // Create jump table array
         std::vector<std::string> jump_table(range);
         std::string fallback_label =
             default_label.empty() ? end_label : default_label;
 
-        // Initialize all entries to default/end label
         for (int64_t i = 0; i < range; ++i) {
             jump_table[i] = fallback_label;
         }
 
-        // Fill in the actual case labels
         for (const auto &case_info : cases) {
             int64_t index = case_info.value - min_val;
             jump_table[index] = case_info.label;
         }
 
-        // Generate bounds check
-        // if (expr < min_val || expr > max_val) goto default/end
         auto min_cmp_temp = new_temp(nullptr);
         auto min_cmp = TACOperand::temporary(min_cmp_temp, nullptr);
         emit(std::make_shared<TACInstruction>(
@@ -1539,7 +1529,6 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
             max_cmp,
             TACOperand::label(fallback_label)));
 
-        // Calculate jump table index: index_temp = expr - min_val
         auto index_temp = new_temp(nullptr);
         auto index = TACOperand::temporary(index_temp, nullptr);
         emit(std::make_shared<TACInstruction>(
@@ -1587,7 +1576,6 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
             }
         }
 
-        // Generate default case
         if (stmt->default_case.has_value()) {
             emit_label(default_label);
             auto default_stmt = std::static_pointer_cast<DefaultStmt>(
@@ -1599,7 +1587,6 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
 
     } else {
         // FALLBACK: IF-ELSE CHAIN IMPLEMENTATION
-        // For sparse cases or few cases, use traditional if-else
         std::vector<std::string> case_labels;
 
         for (size_t i = 0; i < stmt->cases.size(); ++i) {
@@ -1608,7 +1595,6 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
             case_labels_map[stmt->cases[i]] = label;
         }
 
-        // Generate comparisons for each case
         for (size_t i = 0; i < stmt->cases.size(); ++i) {
             auto case_stmt = std::static_pointer_cast<CaseStmt>(stmt->cases[i]);
             if (!case_stmt->value)
@@ -1629,7 +1615,6 @@ void TACGenerator::generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt)
                 TACOperand::label(case_labels[i])));
         }
 
-        // Jump to default or end
         if (!default_label.empty()) {
             emit_goto(default_label);
         } else {
