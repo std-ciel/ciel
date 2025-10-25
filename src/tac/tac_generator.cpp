@@ -228,9 +228,13 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
         } else if (std::holds_alternative<std::string>(lit->value)) {
             // String literals need special handling - create a global string
             // constant
-            std::string str_label = new_label("str");
-            // Add string to program's string constants (would need extension to
-            // TACProgram)
+            std::string str_value = std::get<std::string>(lit->value);
+            std::string str_label = ".str" + std::to_string(string_literal_counter++);
+            
+            // Add string literal to the program
+            program.add_string_literal(str_label, str_value);
+            
+            // Return a label operand that references this string
             return TACOperand::label(str_label);
         }
         return TACOperand();

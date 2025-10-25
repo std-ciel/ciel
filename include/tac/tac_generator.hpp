@@ -24,6 +24,9 @@ class TACGenerator {
 
     std::unordered_map<ASTNodePtr, std::string> case_labels_map;
 
+    // Counter for string literals
+    int string_literal_counter = 0;
+
     // Helper methods
     TACOperand generate_expression(ASTNodePtr node);
     TACOperand generate_binary_op(std::shared_ptr<BinaryExpr> expr);
