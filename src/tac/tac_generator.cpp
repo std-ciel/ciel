@@ -114,6 +114,32 @@ std::string TACGenerator::new_label(const std::string &prefix)
     throw std::runtime_error("No current function to generate label");
 }
 
+// Helper function to compute the size of a type, handling arrays recursively
+static size_t compute_type_size(TypePtr type)
+{
+    if (!type)
+        return 0;
+
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return 0;
+
+    // If layout is already computed, use it
+    if (canonical->has_layout()) {
+        return canonical->layout.size;
+    }
+
+    // For array types, compute size recursively
+    if (canonical->kind == TypeKind::ARRAY) {
+        auto array_type = std::static_pointer_cast<ArrayType>(canonical);
+        size_t element_size = compute_type_size(array_type->element_type.type);
+        return element_size * array_type->size;
+    }
+
+    // For other types, try to get from layout (might be 0)
+    return canonical->layout.size;
+}
+
 TACOpcode TACGenerator::operator_to_tac_opcode(Operator op)
 {
     switch (op) {
@@ -229,11 +255,12 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
             // String literals need special handling - create a global string
             // constant
             std::string str_value = std::get<std::string>(lit->value);
-            std::string str_label = ".str" + std::to_string(string_literal_counter++);
-            
+            std::string str_label =
+                ".str" + std::to_string(string_literal_counter++);
+
             // Add string literal to the program
             program.add_string_literal(str_label, str_value);
-            
+
             // Return a label operand that references this string
             return TACOperand::label(str_label);
         }
@@ -480,9 +507,10 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
         auto index = generate_expression(expr->right);
 
         // Calculate address: base + (index * element_size)
-        auto base_type_result = get_expression_type(expr->left);
+        // The expr_type is the element type of the array (e.g., for int[3][4],
+        // subscripting gives int[4], which is the correct element type)
         TypePtr element_type = expr->expr_type;
-        size_t element_size = get_type_size(element_type);
+        size_t element_size = compute_type_size(element_type);
 
         auto size_operand = TACOperand::constant_int(element_size, nullptr);
         auto offset_temp = new_temp(nullptr);
@@ -500,12 +528,23 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
                                               base,
                                               offset));
 
-        // Load from calculated address
-        auto result_temp = new_temp(element_type);
-        auto result = TACOperand::temporary(result_temp, element_type);
-        emit(std::make_shared<TACInstruction>(TACOpcode::LOAD, result, addr));
-
-        return result;
+        // Only load if the result is not an array type
+        // For multidimensional arrays like int[3][4], accessing array[i]
+        // should return the address of the sub-array, not load from it
+        TypePtr result_type = strip_typedefs(element_type);
+        if (result_type && result_type->kind == TypeKind::ARRAY) {
+            // Return address for array types (will be used as base for further
+            // subscripting)
+            return addr;
+        } else {
+            // Load from calculated address for non-array types
+            auto result_temp = new_temp(element_type);
+            auto result = TACOperand::temporary(result_temp, element_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                                  result,
+                                                  addr));
+            return result;
+        }
     }
 
     // Regular binary operations
@@ -642,7 +681,7 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
             auto base = generate_expression(binary->left);
             auto index = generate_expression(binary->right);
 
-            auto base_type_result = get_expression_type(binary->left);
+            // Calculate element size from the result type of the subscript
             size_t element_size = get_type_size(expr->expr_type);
 
             auto size_operand = TACOperand::constant_int(element_size, nullptr);
