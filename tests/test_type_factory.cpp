@@ -158,7 +158,8 @@ TEST_F(TypeFactoryTest, ComplexArrayTypes)
     ASSERT_TRUE(char_array_3_5_opt.is_ok());
     auto char_array_3_5 = *char_array_3_5_opt;
 
-    EXPECT_EQ(char_array_3_5->debug_name(), "char[5][3]");
+    // This creates (char[5])[3], which should display as char[3][5]
+    EXPECT_EQ(char_array_3_5->debug_name(), "char[3][5]");
 }
 
 // Test pointer chains

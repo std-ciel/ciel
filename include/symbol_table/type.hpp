@@ -240,8 +240,30 @@ struct ArrayType : public Type {
 
     std::string debug_name() const override
     {
-        return element_type.debug_name() + "[" +
-               (size ? std::to_string(size) : "") + "]";
+        // For multidimensional arrays, collect all dimensions and build the
+        // string Arrays are stored as: int[3][4] = ArrayType(size=3,
+        // elem=ArrayType(size=4, elem=int)) Traversing outer-to-inner naturally
+        // gives us [3, 4] in the correct order
+
+        std::vector<size_t> dimensions;
+        QualifiedType base = element_type;
+        dimensions.push_back(size);
+
+        // Collect all array dimensions from outer to inner
+        while (base.type && base.type->kind == TypeKind::ARRAY) {
+            auto arr = std::static_pointer_cast<ArrayType>(base.type);
+            dimensions.push_back(arr->size);
+            base = arr->element_type;
+        }
+
+        // Build string: base_type[dim1][dim2]...
+        // dimensions are already in the correct order from outer to inner
+        std::string result = base.debug_name();
+        for (size_t dim : dimensions) {
+            result += "[" + (dim ? std::to_string(dim) : "") + "]";
+        }
+
+        return result;
     }
 
     std::string mangled_name() const override
@@ -450,9 +472,8 @@ std::optional<size_t> get_class_member_offset(ClassTypePtr class_type,
 TypePtr get_class_member_type(ClassTypePtr class_type,
                               const std::string &member_name);
 
-std::optional<size_t>
-get_member_offset(RecordTypePtr record_type,
-                  const std::string &member_name);
+std::optional<size_t> get_member_offset(RecordTypePtr record_type,
+                                        const std::string &member_name);
 
 TypePtr get_member_type(RecordTypePtr record_type,
                         const std::string &member_name);
