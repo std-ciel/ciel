@@ -1,0 +1,14 @@
+// Test: Lambda with no captures but with parameters
+// Expected: Should compile and pass parameters to operator()
+
+int main() {
+    // Lambda with parameters but no captures
+    [] add(int a, int b) -> int {
+        return a + b;
+    };
+
+    // Call the lambda with arguments
+    int result = add(5, 3);
+
+    return 0;
+}

@@ -1,0 +1,19 @@
+// Test: Lambda called multiple times
+// Expected: Constructor called once at initialization, operator() called multiple times
+
+int main() {
+    int base;
+    base = 10;
+
+    // Lambda with capture
+    [base = base] add_to_base(int n) -> int {
+        return base + n;
+    };
+
+    // Call the lambda multiple times
+    int r1 = add_to_base(5);
+    int r2 = add_to_base(10);
+    int r3 = add_to_base(15);
+
+    return 0;
+}

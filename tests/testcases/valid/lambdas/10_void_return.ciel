@@ -1,0 +1,23 @@
+// Test: Lambda with void return type
+// Expected: Both constructors and void operator() work correctly
+
+int main() {
+    int counter;
+    counter = 0;
+
+    // Lambda with void return
+    [] do_nothing() -> void {
+        return;
+    };
+
+    // Lambda with capture and void return
+    [counter = counter] reset() -> void {
+        return;
+    };
+
+    // Call void lambdas
+    do_nothing();
+    reset();
+
+    return 0;
+}

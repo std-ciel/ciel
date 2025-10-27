@@ -1,0 +1,20 @@
+// Test: Lambda with captures and parameters
+// Expected: Constructor with captures, operator() with parameters
+
+int main() {
+    int x;
+    int y;
+
+    x = 5;
+    y = 10;
+
+    // Lambda with both captures and parameters
+    [x = x, y = y] add_all(int a, int b) -> int {
+        return x + y + a + b;
+    };
+
+    // Call the lambda with arguments
+    int result = add_all(3, 7);
+
+    return 0;
+}

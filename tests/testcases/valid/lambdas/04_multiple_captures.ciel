@@ -1,0 +1,22 @@
+// Test: Lambda with multiple captures and no parameters
+// Expected: Constructor should be called with all capture values
+
+int main() {
+    int x;
+    int y;
+    int z;
+
+    x = 10;
+    y = 20;
+    z = 30;
+
+    // Lambda with multiple captures
+    [x = x, y = y, z = z] sum_all() -> int {
+        return x + y + z;
+    };
+
+    // Call the lambda
+    int result = sum_all();
+
+    return 0;
+}

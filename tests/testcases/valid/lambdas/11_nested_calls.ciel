@@ -1,0 +1,22 @@
+// Test: Nested lambda calls
+// Expected: Lambda return value used as argument to another lambda
+
+int main() {
+    int x;
+    x = 5;
+
+    // Lambda 1: Returns a value
+    [x = x] get_double() -> int {
+        return x + x;
+    };
+
+    // Lambda 2: Takes a parameter
+    [] square(int n) -> int {
+        return n * n;
+    };
+
+    // Use result of one lambda as argument to another
+    int result = square(get_double());
+
+    return 0;
+}

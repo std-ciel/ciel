@@ -1,0 +1,17 @@
+// Test: Lambda with single capture and no parameters
+// Expected: Should call constructor with capture value, access capture in body
+
+int main() {
+    int x;
+    x = 42;
+
+    // Lambda with single capture
+    [a = x] get_x(int x) -> int {
+        return a;
+    };
+
+    // Call the lambda
+    int result = get_x(0);
+
+    return 0;
+}

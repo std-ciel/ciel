@@ -1,0 +1,35 @@
+// Test: Multiple lambdas with different signatures
+// Expected: Each lambda should have its own class and correct calls
+
+int main() {
+    int value;
+    value = 100;
+
+    // Lambda 1: No captures, no params
+    [] noop() -> void {
+        return;
+    };
+
+    // Lambda 2: With params, no captures
+    [] multiply(int a, int b) -> int {
+        return a * b;
+    };
+
+    // Lambda 3: With captures, no params
+    [value = value] get_value() -> int {
+        return value;
+    };
+
+    // Lambda 4: With both captures and params
+    [value = value] add_to_value(int n) -> int {
+        return value + n;
+    };
+
+    // Call all lambdas
+    noop();
+    int m = multiply(3, 4);
+    int v = get_value();
+    int sum = add_to_value(50);
+
+    return 0;
+}

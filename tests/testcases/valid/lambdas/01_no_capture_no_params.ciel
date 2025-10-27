@@ -1,0 +1,14 @@
+// Test: Lambda with no captures and no parameters
+// Expected: Should compile and generate constructor + operator() calls
+
+int main() {
+    // Lambda with no captures and no parameters
+    [] simple() -> void {
+        return;
+    };
+
+    // Call the lambda
+    simple();
+
+    return 0;
+}

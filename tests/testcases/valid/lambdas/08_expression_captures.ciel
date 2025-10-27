@@ -1,0 +1,20 @@
+// Test: Lambda with expression captures
+// Expected: Capture expressions evaluated at lambda creation
+
+int main() {
+    int x;
+    int y;
+
+    x = 5;
+    y = 3;
+
+    // Lambda with expression captures
+    [sum = x + y, product = x * y] compute(int n) -> int {
+        return sum + product + n;
+    };
+
+    // Call the lambda
+    int result = compute(2);
+
+    return 0;
+}

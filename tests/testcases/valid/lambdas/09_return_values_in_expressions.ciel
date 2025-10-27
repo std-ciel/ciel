@@ -1,0 +1,29 @@
+// Test: Lambda return values used in expressions
+// Expected: operator() return value correctly used in arithmetic
+
+int main() {
+    int a;
+    int b;
+
+    a = 10;
+    b = 20;
+
+    // Lambdas that return values
+    [a = a] get_a() -> int {
+        return a;
+    };
+
+    [b = b] get_b() -> int {
+        return b;
+    };
+
+    [] calculate(int x, int y) -> int {
+        return x + y;
+    };
+
+    // Use lambda return values in expressions
+    int sum = get_a() + get_b();
+    int result = calculate(5, 10) + get_a();
+
+    return 0;
+}
