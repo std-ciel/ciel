@@ -392,7 +392,99 @@ int main(int argc, char* argv[]) {
 }
 ```
 
+## Language Quirks and Constraints
+
+CIEL has several important constraints and behaviors that differ from C. Understanding these quirks is essential for writing valid CIEL code:
+
+### Type System Quirks
+
+- **No Implicit Type Conversions**: CIEL does not perform any implicit casting. All type conversions must be explicit (e.g., `(int)value`, `(float*)ptr`).
+- **Exact Type Matching**: Operations like comparisons require both operands to be of the exact same type.
+- **Incomplete Types**: Structs, unions, and enums must be fully defined before use (except as pointers). Forward declarations cannot be left undefined.
+- **Enum Access Syntax**: Enum values use dot notation: `Color.RED` instead of just `RED`.
+- **Type Keyword Required**: Must use `struct Point p;` not just `Point p;` (unless using typedef).
+- **Integer-to-pointer casts restricted**: Only the integer constant 0 (null literal) may be cast to pointer types. Casting non-zero integers to pointers is not allowed and will be rejected.
+
+### Function Quirks
+
+- **Function Overloading**: Supported in CIEL (unlike C), based on parameter count, types, and pointer levels.
+- **Named Parameters Required**: All parameters in function definitions must be named (unnamed parameters only allowed in declarations).
+- **Return Statement Mandatory**: Non-void functions must contain at least one return statement with a value.
+
+### Control Flow Quirks
+
+- **Until Loop**: CIEL provides an `until` loop (inverse of `while`) that continues until the condition becomes true.
+- **Boolean Conditions Only**: All loop and conditional statements (`if`, `while`, `for`, etc.) require boolean-typed conditions.
+- **Switch Restrictions**: Switch subjects cannot be `bool` or `float` (only integral/char or enum types ). Case labels must be compile-time constants.
+- **Switch-Case Restrictions**: Each case body must be enclosed within curly braces `{}` to define scope explicitly.
+
+### Storage and Scope Quirks
+
+- **Goto Scope**: `goto` and labels can only be used within function scope, not at global level.
+- **Reserved Identifier Names**: variable names starting with `__` (double underscore) are reserved for compiler-generated identifiers and may cause name conflicts or undefined behavior. Do NOT use these.
+
+### Object-Oriented Quirks
+
+- **No Default Constructors**: Classes do not get automatic default constructors. You must write all constructors explicitly.
+- **No Constructor/Destructor Chaining**: Parent class constructors and destructors are NOT automatically called in inheritance hierarchies.
+- **No Multiple Inheritance**: Only single inheritance with multilevel chains supported (A → B → C is ok, but not A, B → C).
+- **Static Members Not Supported**: No static class members or static methods.
+
+These constraints simplify the compiler implementation while maintaining explicit control over program behavior.
+
 ## Examples
+
+### Demonstrating Key Quirks
+
+```ciel
+// Enum access using dot notation (unlike C)
+enum Color { RED, GREEN, BLUE };
+
+// Must use 'struct' keyword when declaring (unlike C++ or with typedef)
+struct Point { int x; int y; };
+
+// Function overloading (like C++, unlike C)
+int add(int a) { return a; }
+int add(int a, int b) { return a + b; }
+
+// Until loop (CIEL-specific)
+int counter() {
+    static int count = 0;  // static works in functions
+    count = count + 1;
+    return count;
+}
+
+class Example {
+    private:
+        int value;
+
+    public:
+        // Must write constructor explicitly (no default)
+        Example(){
+            this->value = 0;
+        }
+        Example(int v) {
+            this->value = v;  // 'this' is always a pointer
+        }
+
+        // No parent constructor called automatically
+        // Must handle initialization manually
+};
+
+int main() {
+    enum Color c = Color.RED;  // Dot notation for enum
+    struct Point p;            // 'struct' keyword required
+
+    int x = add(5);            // Function overloading works
+    int y = add(5, 10);
+
+    int val = 5;
+    // float f = val;          // ERROR: No implicit casting
+    float f = (float)val;      // Must cast explicitly
+
+    return 0;
+}
+```
 
 ### Complete Program Example
 
