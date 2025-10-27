@@ -364,6 +364,35 @@
     return unwrap_qualified_or_error(result, context, line, column, base);
   }
 
+  // Helper function to apply array-to-pointer decay
+  // Arrays decay to pointers to their element type when used as function arguments
+  static QualifiedType apply_array_decay(QualifiedType type)
+  {
+    if (!type.type) {
+      return type;
+    }
+
+    TypePtr actual_type = strip_typedefs(type.type);
+    if (!actual_type) {
+      return type;
+    }
+
+    if (actual_type->kind == TypeKind::ARRAY) {
+      auto array_type = std::static_pointer_cast<ArrayType>(actual_type);
+
+      // Recursively decay the element type
+      QualifiedType decayed_element = apply_array_decay(array_type->element_type);
+
+      // Create a pointer to the decayed element type
+      auto ptr_result = type_factory.get_pointer(decayed_element);
+      if (ptr_result.is_ok()) {
+        return QualifiedType{ptr_result.value(), type.qualifier};
+      }
+    }
+
+    return type;
+  }
+
   static void add_symbol_if_valid(const std::string& name,
                                   QualifiedType type,
                                   const yy::location& loc,
@@ -1435,49 +1464,72 @@
     FunctionMeta meta(kind, {});
     SymbolPtr func_symbol = nullptr;
 
-    // Step 1: Try exact match with all arguments (non-variadic)
-    FunctionType exact_match(QualifiedType(), arg_types, false);
-    auto exact_mangled = mangle_function_name(function_name, exact_match, meta, context_class);
-    if (exact_mangled.has_value()) {
-      auto exact_symbol = symbol_table.lookup_operator(exact_mangled.value());
-      if (exact_symbol.has_value()) {
-        return exact_symbol.value();
-      }
-    }
-
-    // Step 2: Try exact match with variadic function
-    FunctionType variadic_match(QualifiedType(), arg_types, true);
-    auto variadic_mangled = mangle_function_name(function_name, variadic_match, meta, context_class);
-    if (variadic_mangled.has_value()) {
-      auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
-      if (variadic_symbol.has_value()) {
-        return variadic_symbol.value();
-      }
-    }
-
-    // Step 3: Try decreasing parameters from right, looking for variadic functions
-    for (size_t i = arg_types.size(); i > 0; --i) {
-      std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
-      FunctionType reduced_variadic(QualifiedType(), reduced_args, true);
-
-      auto reduced_mangled = mangle_function_name(function_name, reduced_variadic, meta, context_class);
-      if (reduced_mangled.has_value()) {
-        auto reduced_symbol = symbol_table.lookup_operator(reduced_mangled.value());
-        if (reduced_symbol.has_value()) {
-          return reduced_symbol.value();
+    // Helper to try a specific combination of argument types
+    auto try_match = [&](const std::vector<QualifiedType>& types, bool is_variadic) -> SymbolPtr {
+      FunctionType fn_type(QualifiedType(), types, is_variadic);
+      auto mangled = mangle_function_name(function_name, fn_type, meta, context_class);
+      if (mangled.has_value()) {
+        auto symbol = symbol_table.lookup_operator(mangled.value());
+        if (symbol.has_value()) {
+          return symbol.value();
         }
       }
+      return nullptr;
+    };
+
+    // Try exact match (no decay)
+    func_symbol = try_match(arg_types, false);
+    if (func_symbol) return func_symbol;
+
+    // Try exact match with variadic
+    func_symbol = try_match(arg_types, true);
+    if (func_symbol) return func_symbol;
+
+    // Try with selective array decay
+    // Generate all combinations where each array parameter can be decayed or not
+    std::function<SymbolPtr(size_t, std::vector<QualifiedType>&)> try_decay_combinations;
+    try_decay_combinations = [&](size_t idx, std::vector<QualifiedType>& current_types) -> SymbolPtr {
+      if (idx == arg_types.size()) {
+        // Try non-variadic
+        SymbolPtr result = try_match(current_types, false);
+        if (result) return result;
+        // Try variadic
+        return try_match(current_types, true);
+      }
+
+      // Try without decay for this parameter
+      current_types.push_back(arg_types[idx]);
+      SymbolPtr result = try_decay_combinations(idx + 1, current_types);
+      if (result) return result;
+      current_types.pop_back();
+
+      // Try with decay for this parameter (if it's an array)
+      TypePtr arg_type = strip_typedefs(arg_types[idx].type);
+      if (arg_type && arg_type->kind == TypeKind::ARRAY) {
+        QualifiedType decayed = apply_array_decay(arg_types[idx]);
+        current_types.push_back(decayed);
+        result = try_decay_combinations(idx + 1, current_types);
+        if (result) return result;
+        current_types.pop_back();
+      }
+
+      return nullptr;
+    };
+
+    std::vector<QualifiedType> combination;
+    func_symbol = try_decay_combinations(0, combination);
+    if (func_symbol) return func_symbol;
+
+    // Try decreasing parameters from right, looking for variadic functions
+    for (size_t i = arg_types.size(); i > 0; --i) {
+      std::vector<QualifiedType> reduced_args(arg_types.begin(), arg_types.begin() + i - 1);
+      func_symbol = try_match(reduced_args, true);
+      if (func_symbol) return func_symbol;
     }
 
-    // Step 4: Try with no parameters and variadic
-    FunctionType empty_variadic(QualifiedType(), {}, true);
-    auto empty_mangled = mangle_function_name(function_name, empty_variadic, meta, context_class);
-    if (empty_mangled.has_value()) {
-      auto empty_symbol = symbol_table.lookup_operator(empty_mangled.value());
-      if (empty_symbol.has_value()) {
-        return empty_symbol.value();
-      }
-    }
+    // Try with no parameters and variadic
+    func_symbol = try_match({}, true);
+    if (func_symbol) return func_symbol;
 
     return nullptr;
   }
@@ -2126,7 +2178,6 @@ postfix_expression
     {
       ASTNodePtr args_list = $3;
       std::vector<ASTNodePtr> arg_nodes;
-      std::vector<QualifiedType> arg_types;
 
       std::function<void(ASTNodePtr)> extract_arg_nodes = [&](ASTNodePtr node) {
         if (!node) return;
@@ -2147,6 +2198,7 @@ postfix_expression
 
       extract_arg_nodes(args_list);
 
+      std::vector<QualifiedType> arg_types;
       for (const auto& arg : arg_nodes) {
         TypePtr arg_type = get_expression_type(arg, @3, "function argument");
         if (!arg_type) {
@@ -3220,7 +3272,7 @@ declaration_specifiers
     {
       // Check for multiple type specifiers (e.g., "char int float")
       if ($1 && $2) {
-        parser_add_error(@1.begin.line, @1.begin.column, 
+        parser_add_error(@1.begin.line, @1.begin.column,
           "multiple type specifiers in declaration");
       }
       $$ = $1 ? $1 : $2;
@@ -4035,7 +4087,7 @@ enumerator_list
 
 enumerator
     : IDENTIFIER
-      { 
+      {
         $$.name = $1;
         $$.value = std::nullopt;  // Auto-increment
       }
@@ -4060,12 +4112,12 @@ enumerator
                         }, literal->value);
             $$.value = value;
           } else {
-            parser_add_error(@3.begin.line, @3.begin.column, 
+            parser_add_error(@3.begin.line, @3.begin.column,
                            "enumerator value must be an integral constant expression");
             $$.value = 0;
           }
         } else {
-          parser_add_error(@3.begin.line, @3.begin.column, 
+          parser_add_error(@3.begin.line, @3.begin.column,
                          "enumerator value must be a constant expression");
           $$.value = 0;
         }
