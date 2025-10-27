@@ -1333,7 +1333,19 @@
     // Validate builtin type
     if (type_validator(operand_type)) {
       TypePtr result_type = operand_type;
-      return std::make_shared<UnaryExpr>(op_enum, operand, result_type);
+      auto unary_expr = std::make_shared<UnaryExpr>(op_enum, operand, result_type);
+
+      // Set lvalue status based on operator type
+      // PREFIX increment/decrement and dereference produce lvalues
+      // POST increment/decrement produce rvalues (handled separately in postfix rules)
+      if (op_enum == Operator::INCREMENT || op_enum == Operator::DECREMENT ||
+          op_enum == Operator::POINTER_DEREF) {
+        unary_expr->is_lvalue = true;
+      } else {
+        unary_expr->is_lvalue = false;
+      }
+
+      return unary_expr;
     } else {
       parser_add_error(loc.begin.line,
                        loc.begin.column,
@@ -1402,20 +1414,26 @@
         if (!bool_type) {
           return nullptr;
         }
-        return std::make_shared<BinaryExpr>(op_enum, left, right, bool_type);
+        auto binary_expr = std::make_shared<BinaryExpr>(op_enum, left, right, bool_type);
+        binary_expr->is_lvalue = false;  // Comparison operators produce rvalues
+        return binary_expr;
       }
       else if(op_enum == Operator::SUBSCRIPT_OP)
       {
         if (left_type->kind == TypeKind::ARRAY) {
           auto array_type = std::static_pointer_cast<ArrayType>(left_type);
-          return std::make_shared<BinaryExpr>(op_enum, left, right, array_type->element_type.type);
+          auto binary_expr = std::make_shared<BinaryExpr>(op_enum, left, right, array_type->element_type.type);
+          binary_expr->is_lvalue = true;  // Array subscript produces lvalue
+          return binary_expr;
         }
         else if (left_type->kind == TypeKind::POINTER) {
           TypePtr result_type = dereference_pointer(left_type, op_loc, "array subscript");
           if (!result_type) {
             return nullptr;
           }
-          return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+          auto binary_expr = std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+          binary_expr->is_lvalue = true;  // Array subscript produces lvalue
+          return binary_expr;
         }
         else
         {
@@ -1427,7 +1445,9 @@
       }
       else{
         TypePtr result_type = get_higher_rank_type(left_type, right_type);
-        return std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+        auto binary_expr = std::make_shared<BinaryExpr>(op_enum, left, right, result_type);
+        binary_expr->is_lvalue = false;  // Most binary operators produce rvalues
+        return binary_expr;
       }
 
     } else {
@@ -1435,43 +1455,6 @@
                        op_loc.begin.column,
                        op_name + " requires " + type_requirement_msg);
       return nullptr;
-    }
-  }
-
-  static bool is_valid_lvalue(const ASTNodePtr& node) {
-    if (!node) {
-      return false;
-    }
-
-    // Valid lvalues: identifiers, dereferences, array subscripts, member access
-    switch (node->type) {
-    case ASTNodeType::IDENTIFIER_EXPR:
-      return true;
-    case ASTNodeType::ENUM_IDENTIFIER_EXPR:
-      return false;
-    case ASTNodeType::MEMBER_EXPR:
-      return true;
-    case ASTNodeType::UNARY_EXPR: {
-      auto unary = std::static_pointer_cast<UnaryExpr>(node);
-      // Dereference operator produces an lvalue
-      return unary->op == Operator::POINTER_DEREF;
-    }
-    case ASTNodeType::BINARY_EXPR: {
-      auto binary = std::static_pointer_cast<BinaryExpr>(node);
-
-      if(binary->op == Operator::SUBSCRIPT_OP || binary->op == Operator::MEMBER_ACCESS || binary->op == Operator::MEMBER_ACCESS_PTR)
-      {
-        return true;
-      }
-
-      return false;
-    }
-    case ASTNodeType::LITERAL_EXPR:
-    case ASTNodeType::CALL_EXPR:
-    case ASTNodeType::NEW_EXPR:
-      return false;
-    default:
-      return false;
     }
   }
 
@@ -1906,8 +1889,8 @@
       Operator op_enum,
       const std::string& op_name)
   {
-    // Check if lhs is a valid lvalue
-    if (!is_valid_lvalue(lhs)) {
+    // Check if lhs is a valid lvalue using the new field-based check
+    if (!get_expression_lvalue_status(lhs)) {
       parser_add_error(lhs_loc.begin.line,
                        lhs_loc.begin.column,
                        op_name + ": left operand must be a modifiable lvalue");
@@ -2004,7 +1987,7 @@
       // Otherwise, integer to pointer cast is not allowed
       return false;
     }
-    
+
     if (is_pointer_type(from_type) && is_integral_type(to_type)) {
       return true;
     }
@@ -2978,15 +2961,45 @@ postfix_expression
     }
     | postfix_expression INCREMENT_OP
     {
-      $$ = handle_unary_operator($1, @2, Operator::POST_INCREMENT,
-                                 [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                 "an integer or pointer type");
+      // Postfix increment requires lvalue operand but produces rvalue
+      if (!get_expression_lvalue_status($1)) {
+        parser_add_error(@1.begin.line, @1.begin.column,
+                         "operand of postfix '++' must be an lvalue");
+        $$ = nullptr;
+      } else {
+        auto result = handle_unary_operator($1, @2, Operator::POST_INCREMENT,
+                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                   "an integer or pointer type");
+        if (result) {
+          // Force postfix increment to produce an rvalue
+          if (result->type == ASTNodeType::UNARY_EXPR) {
+            auto unary = std::static_pointer_cast<UnaryExpr>(result);
+            unary->is_lvalue = false;
+          }
+        }
+        $$ = result;
+      }
     }
     | postfix_expression DECREMENT_OP
     {
-      $$ = handle_unary_operator($1, @2, Operator::POST_DECREMENT,
-                                 [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                 "an integer or pointer type");
+      // Postfix decrement requires lvalue operand but produces rvalue
+      if (!get_expression_lvalue_status($1)) {
+        parser_add_error(@1.begin.line, @1.begin.column,
+                         "operand of postfix '--' must be an lvalue");
+        $$ = nullptr;
+      } else {
+        auto result = handle_unary_operator($1, @2, Operator::POST_DECREMENT,
+                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                   "an integer or pointer type");
+        if (result) {
+          // Force postfix decrement to produce an rvalue
+          if (result->type == ASTNodeType::UNARY_EXPR) {
+            auto unary = std::static_pointer_cast<UnaryExpr>(result);
+            unary->is_lvalue = false;
+          }
+        }
+        $$ = result;
+      }
     }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
     {
@@ -3065,15 +3078,29 @@ unary_expression
       }
     | INCREMENT_OP unary_expression
       {
-        $$ = handle_unary_operator($2, @1, Operator::INCREMENT,
-                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                   "an integer or pointer type");
+        // Prefix increment requires lvalue operand and produces lvalue
+        if (!get_expression_lvalue_status($2)) {
+          parser_add_error(@2.begin.line, @2.begin.column,
+                           "operand of prefix '++' must be an lvalue");
+          $$ = nullptr;
+        } else {
+          $$ = handle_unary_operator($2, @1, Operator::INCREMENT,
+                                     [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                     "an integer or pointer type");
+        }
       }
     | DECREMENT_OP unary_expression
       {
-        $$ = handle_unary_operator($2, @1, Operator::DECREMENT,
-                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                   "an integer or pointer type");
+        // Prefix decrement requires lvalue operand and produces lvalue
+        if (!get_expression_lvalue_status($2)) {
+          parser_add_error(@2.begin.line, @2.begin.column,
+                           "operand of prefix '--' must be an lvalue");
+          $$ = nullptr;
+        } else {
+          $$ = handle_unary_operator($2, @1, Operator::DECREMENT,
+                                     [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                     "an integer or pointer type");
+        }
       }
     | LOGICAL_NOT_OP cast_expression
       {
@@ -3144,16 +3171,16 @@ unary_expression
       {
         TypePtr target_type = $2;
         target_type = strip_typedefs(target_type);
-        
+
         // Get the type of the expression being cast
         TypePtr expr_type = get_expression_type($4, @4, "cast expression");
-        
+
         if (!expr_type) {
           $$ = nullptr;
         } else if (!is_valid_cast(expr_type, target_type, $4, @2)) {
           parser_add_error(@2.begin.line,
                            @2.begin.column,
-                           "invalid cast from '" + expr_type->debug_name() + 
+                           "invalid cast from '" + expr_type->debug_name() +
                            "' to '" + target_type->debug_name() + "'");
           $$ = nullptr;
         } else {
