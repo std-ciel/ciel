@@ -9,11 +9,24 @@ LocalStaticPass::LocalStaticPass(SymbolTable &symbol_table,
 {
 }
 
-void LocalStaticPass::process(std::vector<ASTNodePtr> &translation_unit)
+void LocalStaticPass::process(
+    std::vector<ASTNodePtr> &translation_unit,
+    std::vector<std::shared_ptr<FunctionDef>> &class_methods)
 {
     for (const auto &node : translation_unit) {
         if (node && node->type == ASTNodeType::FUNCTION_DEF) {
             process_function(node);
+        }
+    }
+    process_class_methods(class_methods);
+}
+
+void LocalStaticPass::process_class_methods(
+    std::vector<std::shared_ptr<FunctionDef>> &class_methods)
+{
+    for (const auto &method : class_methods) {
+        if (method) {
+            process_function(method);
         }
     }
 }

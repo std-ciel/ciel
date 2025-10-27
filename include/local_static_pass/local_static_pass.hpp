@@ -13,7 +13,12 @@ class LocalStaticPass {
     LocalStaticPass(SymbolTable &symbol_table, TypeFactory &type_factory);
 
     // Main entry point: process the entire AST
-    void process(std::vector<ASTNodePtr> &translation_unit);
+    void process(std::vector<ASTNodePtr> &translation_unit,
+                 std::vector<std::shared_ptr<FunctionDef>> &class_methods);
+
+    // Process class methods (constructors, destructors, member functions)
+    void process_class_methods(
+        std::vector<std::shared_ptr<FunctionDef>> &class_methods);
 
   private:
     SymbolTable &symbol_table;

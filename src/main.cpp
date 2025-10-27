@@ -229,11 +229,12 @@ int main(int argc, char *argv[])
         std::cout << "└─────────────────────────────┘\n";
 
         auto translation_unit = get_parsed_translation_unit();
+        auto class_methods = get_parsed_class_methods();
         auto &symbol_table = get_symbol_table();
         auto &type_factory = get_type_factory();
 
         LocalStaticPass local_static_pass(symbol_table, type_factory);
-        local_static_pass.process(translation_unit);
+        local_static_pass.process(translation_unit, class_methods);
 
         std::cout << "Local static pass completed successfully" << std::endl;
 
