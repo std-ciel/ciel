@@ -1080,9 +1080,8 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
                                                      body_scope,
                                                      get_symbol_table());
 
-    current_block = std::make_shared<TACBasicBlock>(
-        tac_get_entry_label(current_function->mangled_name,
-                            current_function->body_scope_id));
+
+    current_block = std::make_shared<TACBasicBlock>("");
     current_function->entry_block = current_block;
     current_function->add_block(current_block);
 
@@ -1100,18 +1099,18 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
         generate_statement(func_def->body);
     }
 
-    // Create exit block if not already created
-    if (!current_function->exit_block) {
-        current_function->exit_block = std::make_shared<TACBasicBlock>(
-            tac_get_exit_label(current_function->mangled_name,
-                               current_function->body_scope_id));
-        current_function->add_block(current_function->exit_block);
+    // For void functions, automatically add a return statement if not already present
+    bool has_return = false;
+    if (current_block && !current_block->instructions.empty()) {
+        auto last_instr = current_block->instructions.back();
+        if (last_instr && last_instr->opcode == TACOpcode::RETURN) {
+            has_return = true;
+        }
     }
 
-    // Emit LEAVE and RETURN in exit block
-    current_block = current_function->exit_block;
-    emit(std::make_shared<TACInstruction>(TACOpcode::LEAVE));
-    emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+    if (!has_return && func_def->return_type && is_void_type(func_def->return_type)) {
+        emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+    }
 
     // Add function to program
     program.add_function(current_function);
@@ -1150,14 +1149,9 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                                               0,
                                               get_symbol_table());
 
-            current_function->entry_block = std::make_shared<TACBasicBlock>(
-                tac_get_entry_label(current_function->mangled_name,
-                                    current_function->body_scope_id));
-            current_function->exit_block = std::make_shared<TACBasicBlock>(
-                tac_get_exit_label(current_function->mangled_name,
-                                   current_function->body_scope_id));
-            current_function->add_block(current_function->entry_block);
+            current_function->entry_block = std::make_shared<TACBasicBlock>("");
             current_block = current_function->entry_block;
+            current_function->add_block(current_function->entry_block);
 
             // Emit ENTER instruction
             emit(std::make_shared<TACInstruction>(TACOpcode::ENTER));
@@ -1192,12 +1186,21 @@ void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
 
     // Finalize global initialization function if it was created
     if (current_function && current_function->name == "__ciel_global_init") {
-        // Add exit block and LEAVE/RETURN
-        current_block = current_function->exit_block;
-        emit(std::make_shared<TACInstruction>(TACOpcode::LEAVE));
-        emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+    
+        bool has_return = false;
+        if (current_block && !current_block->instructions.empty()) {
+            auto last_instr = current_block->instructions.back();
+            if (last_instr && last_instr->opcode == TACOpcode::RETURN) {
+                has_return = true;
+            }
+        }
 
-        current_function->add_block(current_function->exit_block);
+        // If no return, add implicit return (global init is always void)
+        if (!has_return) {
+            emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+        }
+
+        // Add the function to the program
         program.add_function(current_function);
 
         current_function = nullptr;
