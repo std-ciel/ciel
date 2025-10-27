@@ -5262,6 +5262,9 @@ function_definition
 		      meta.is_defined = true;
 		      meta.mangled_name = *mangled;
 
+		      // Add function name to encountered_function_names to allow recursive calls
+		      encountered_function_names.insert(di.name);
+
 		      // Add symbol if not present, or update existing
 		      auto sym_opt = symbol_table.lookup_symbol(*mangled);
 		      if (!sym_opt.has_value()) {
@@ -5300,7 +5303,6 @@ function_definition
 			  check_unnamed_parameters(di.param_names, @2);
 			  check_duplicate_parameter_names(di.param_names, @2);
 
-        encountered_function_names.insert(di.name);
 			  // Apply pointer levels to base type for return type
 			  TypePtr return_type = base;
 			  if (di.pointer_levels > 0) {
