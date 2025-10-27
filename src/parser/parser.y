@@ -3218,6 +3218,11 @@ declaration_specifiers
   | storage_class_specifier { $$ = nullptr; }
   | type_specifier declaration_specifiers
     {
+      // Check for multiple type specifiers (e.g., "char int float")
+      if ($1 && $2) {
+        parser_add_error(@1.begin.line, @1.begin.column, 
+          "multiple type specifiers in declaration");
+      }
       $$ = $1 ? $1 : $2;
       if ($$) {
         // Apply qualifiers from the stack one by one
