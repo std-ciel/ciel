@@ -43,21 +43,31 @@ std::optional<std::string> mangle_function_name(const std::string &name,
         result += "D1"; // D1 for destructor
         break;
     case FunctionKind::OPERATOR: {
-        bool is_unary = ftype.param_types.size() == 0;
-
-        if (is_unary) {
-            auto it = unary_operator_mangling.find(name);
-            if (it != unary_operator_mangling.end()) {
-                result += it->second;
-            } else {
-                return std::nullopt;
-            }
-        } else {
+        // Special case for operator() and operator[] - always treated as binary
+        if (name == "()" || name == "[]") {
             auto it = binary_operator_mangling.find(name);
             if (it != binary_operator_mangling.end()) {
                 result += it->second;
             } else {
                 return std::nullopt;
+            }
+        } else {
+            bool is_unary = ftype.param_types.size() == 0;
+
+            if (is_unary) {
+                auto it = unary_operator_mangling.find(name);
+                if (it != unary_operator_mangling.end()) {
+                    result += it->second;
+                } else {
+                    return std::nullopt;
+                }
+            } else {
+                auto it = binary_operator_mangling.find(name);
+                if (it != binary_operator_mangling.end()) {
+                    result += it->second;
+                } else {
+                    return std::nullopt;
+                }
             }
         }
         break;
