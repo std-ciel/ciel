@@ -1,0 +1,27 @@
+// Test: Duplicate member detection in struct, union, enum, and class
+// Expected: Errors for all duplicate members
+
+struct S {
+    int x;
+    int x;  // duplicate
+};
+
+union U {
+    int a;
+    float a;  // duplicate
+};
+
+enum E {
+    RED,
+    GREEN,
+    RED  // duplicate
+};
+
+class C {
+    int member;
+    int member;  // duplicate
+};
+
+int main() {
+    return 0;
+}
