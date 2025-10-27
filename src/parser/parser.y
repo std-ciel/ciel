@@ -1966,6 +1966,59 @@
 
     return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type);
   }
+
+  // Helper function to check if a cast is valid
+  static bool is_valid_cast(TypePtr from_type, TypePtr to_type, const yy::location& loc) {
+    if (!from_type || !to_type) {
+      return false;
+    }
+
+    // Stripping typedefs to get canonical types
+    from_type = strip_typedefs(from_type);
+    to_type = strip_typedefs(to_type);
+
+    if (are_types_equal(from_type, to_type)) {
+      return true;
+    }
+
+    if (is_arithmetic_type(from_type) && is_arithmetic_type(to_type)) {
+      return true;
+    }
+
+    if (is_pointer_type(from_type) && is_pointer_type(to_type)) {
+      return true;
+    }
+
+    // Integer to pointer is NOT allowed - this makes the type system stricter
+    // if (is_integral_type(from_type) && is_pointer_type(to_type)) {
+    //   return true;
+    // }
+    
+    if (is_pointer_type(from_type) && is_integral_type(to_type)) {
+      return true;
+    }
+
+    if (is_bool_type(from_type) && is_arithmetic_type(to_type)) {
+      return true;
+    }
+    if (is_arithmetic_type(from_type) && is_bool_type(to_type)) {
+      return true;
+    }
+
+    if (from_type->kind == TypeKind::ENUM && is_integral_type(to_type)) {
+      return true;
+    }
+    if (is_integral_type(from_type) && to_type->kind == TypeKind::ENUM) {
+      return true;
+    }
+
+    // For now, we'll be conservative and only allow class to same class
+    if (is_class_type(from_type) && is_class_type(to_type)) {
+      return are_types_equal(from_type, to_type);
+    }
+
+    return false;
+  }
 }
 
 %token <std::string> IDENTIFIER
@@ -3080,7 +3133,21 @@ unary_expression
       {
         TypePtr target_type = $2;
         target_type = strip_typedefs(target_type);
-        $$ = std::make_shared<CastExpr>(target_type, $4);
+        
+        // Get the type of the expression being cast
+        TypePtr expr_type = get_expression_type($4, @4, "cast expression");
+        
+        if (!expr_type) {
+          $$ = nullptr;
+        } else if (!is_valid_cast(expr_type, target_type, @2)) {
+          parser_add_error(@2.begin.line,
+                           @2.begin.column,
+                           "invalid cast from '" + expr_type->debug_name() + 
+                           "' to '" + target_type->debug_name() + "'");
+          $$ = nullptr;
+        } else {
+          $$ = std::make_shared<CastExpr>(target_type, $4);
+        }
       }
     ;
 
