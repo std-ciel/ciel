@@ -1,0 +1,10 @@
+class A {
+    A() {
+        static int counter = 0;
+        counter = counter + 1;
+    }
+    int get_counter() {
+        static int cnt = 0;
+        return cnt;
+    }
+};
