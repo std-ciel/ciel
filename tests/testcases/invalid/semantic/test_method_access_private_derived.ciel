@@ -1,0 +1,26 @@
+// Error: Private method not accessible in derived class
+class Base {
+private:
+    void privateMethod() {
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        return;
+    }
+};
+
+class Derived : public Base {
+public:
+    void testAccess() {
+        this->privateMethod();  // ERROR: private in base
+        return;
+    }
+};
+
+int main() {
+    class Derived d;
+    d.testAccess();
+    return 0;
+}

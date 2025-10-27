@@ -1,0 +1,19 @@
+// ERROR TEST: Try to call private method from outside
+class MyClass {
+private:
+    void secretMethod() {
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        this->secretMethod();  // OK: can call private from inside
+        return;
+    }
+};
+
+int main() {
+    class MyClass obj;
+    obj.secretMethod();  // ERROR: private method not accessible
+    return 0;
+}

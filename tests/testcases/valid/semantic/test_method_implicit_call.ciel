@@ -1,0 +1,26 @@
+// Test: Method calls with explicit this-> work correctly with access control
+class MyClass {
+private:
+    int value;
+    
+    void privateHelper() {
+        value = 10;
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        this->privateHelper();  // OK: explicit this->privateHelper() - same class
+        return;
+    }
+    
+    int getValue() {
+        return value;
+    }
+};
+
+int main() {
+    class MyClass obj;
+    obj.publicMethod();
+    return obj.getValue();
+}

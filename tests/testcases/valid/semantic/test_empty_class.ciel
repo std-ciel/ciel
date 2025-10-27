@@ -1,0 +1,12 @@
+// Test empty class
+class Empty {
+public:
+    void doNothing() {
+        return;
+    }
+};
+
+int main() {
+    class Empty e;
+    return 0;
+}

@@ -1,0 +1,35 @@
+// OK: Multi-level inheritance with protected access
+class Grandparent {
+protected:
+    int x;
+    
+public:
+    Grandparent() {
+        x = 10;
+    }
+};
+
+class Parent : public Grandparent {
+protected:
+    int y;
+    
+public:
+    Parent() {
+        x = 20;  // OK: inherited protected member
+        y = 30;
+    }
+};
+
+class Child : public Parent {
+public:
+    void setValues(int a, int b) {
+        x = a;  // OK: inherited protected member from Grandparent
+        y = b;  // OK: inherited protected member from Parent
+    }
+};
+
+int main() {
+    class Child c;
+    c.setValues(100, 200);
+    return 0;
+}

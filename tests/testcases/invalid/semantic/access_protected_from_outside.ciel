@@ -1,0 +1,23 @@
+// Error: Accessing protected member from outside class hierarchy
+class Base {
+protected:
+    int x;
+    
+public:
+    Base() {
+        x = 10;
+    }
+};
+
+class Derived : public Base {
+public:
+    void setX(int val) {
+        x = val;  // OK: inside derived class
+    }
+};
+
+int main() {
+    class Derived d;
+    d.x = 30;  // ERROR: x is protected, not accessible from outside
+    return 0;
+}

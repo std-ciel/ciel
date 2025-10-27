@@ -1,0 +1,18 @@
+// ERROR: Private method with arguments not accessible outside
+class Calculator {
+private:
+    int add(int a, int b) {
+        return a + b;
+    }
+    
+public:
+    int compute(int x, int y) {
+        return this->add(x, y);  // OK: private method from inside
+    }
+};
+
+int main() {
+    class Calculator calc;
+    int result = calc.add(5, 3);  // ERROR: private method
+    return result;
+}

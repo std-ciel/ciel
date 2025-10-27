@@ -1,0 +1,19 @@
+// OK: Accessing public member from anywhere
+class A {
+private:
+    int x;
+    
+public:
+    int y;
+    
+    A() {
+        x = 10;  // OK: inside class
+        y = 20;  // OK: inside class
+    }
+};
+
+int main() {
+    class A a;
+    a.y = 30;  // OK: y is public
+    return 0;
+}

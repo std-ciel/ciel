@@ -1,0 +1,19 @@
+// Test empty union
+union EmptyUnion {
+};
+
+union AnotherEmptyUnion {
+};
+
+struct StructWithEmptyUnion {
+    union EmptyUnion u;
+    int value;
+};
+
+int main() {
+    union EmptyUnion u1;
+    union AnotherEmptyUnion u2;
+    struct StructWithEmptyUnion s;
+    s.value = 100;
+    return 0;
+}

@@ -1,0 +1,16 @@
+// Error: Accessing protected member from outside class hierarchy
+class A {
+protected:
+    int x;
+    
+public:
+    A() {
+        x = 10;  // OK: inside class
+    }
+};
+
+int main() {
+    class A a;
+    a.x = 20;  // ERROR: x is protected
+    return 0;
+}

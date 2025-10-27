@@ -1,0 +1,65 @@
+// Comprehensive test: method access with inheritance
+class Grandparent {
+private:
+    void privateGP() {
+        return;
+    }
+    
+protected:
+    void protectedGP() {
+        return;
+    }
+    
+public:
+    void publicGP() {
+        this->privateGP();   // OK: same class
+        this->protectedGP(); // OK: same class
+        return;
+    }
+};
+
+class Parent : public Grandparent {
+private:
+    void privateP() {
+        return;
+    }
+    
+protected:
+    void protectedP() {
+        return;
+    }
+    
+public:
+    int v;
+    void publicP() {
+        // this->privateGP();   // Would be ERROR: private in grandparent
+        this->protectedGP();    // OK: protected accessible in derived
+        this->publicGP();       // OK: public
+        this->privateP();       // OK: same class
+        this->protectedP();     // OK: same class
+        return;
+    }
+};
+
+class Child : public Parent {
+public:
+    void publicC() {
+        // this->privateGP();   // Would be ERROR: private in grandparent
+        // this->privateP();    // Would be ERROR: private in parent
+        this->protectedGP();    // OK: protected from grandparent
+        this->protectedP();     // OK: protected from parent
+        this->publicGP();       // OK: public from grandparent
+        this->publicP();        // OK: public from parent
+        return;
+    }
+};
+
+int main() {
+    class Child c;
+    c.publicC();      // OK: public
+    c.publicP();      // OK: public
+    c.publicGP();     // OK: public
+    // c.protectedGP(); // Would be ERROR: protected
+    // c.privateGP();   // Would be ERROR: doesn't exist/private
+    return 0;
+}

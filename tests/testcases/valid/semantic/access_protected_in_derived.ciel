@@ -1,0 +1,23 @@
+// OK: Accessing protected member from derived class
+class Base {
+protected:
+    int x;
+    
+public:
+    Base() {
+        x = 10;
+    }
+};
+
+class Derived : public Base {
+public:
+    void setX(int val) {
+        x = val;  // OK: Derived can access protected member from Base
+    }
+};
+
+int main() {
+    class Derived d;
+    d.setX(20);  // OK: calling public method
+    return 0;
+}

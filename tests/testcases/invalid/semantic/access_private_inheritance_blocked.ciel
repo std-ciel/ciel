@@ -1,0 +1,30 @@
+// Test that grandchild cannot access grandparent through private inheritance
+class Grandparent {
+protected:
+    int x;
+    
+public:
+    Grandparent() {
+        x = 10;
+    }
+};
+
+class Parent : private Grandparent {  // Private inheritance
+public:
+    void setX(int val) {
+        x = val;  // OK: Parent can access protected members from Grandparent
+    }
+};
+
+class Child : public Parent {  // Public inheritance from Parent
+public:
+    void trySetX(int val) {
+        x = val;  // ERROR: x is not accessible because Parent inherited it privately
+    }
+};
+
+int main() {
+    class Child c;
+    c.trySetX(20);
+    return 0;
+}

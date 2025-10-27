@@ -1,0 +1,41 @@
+// Test various empty class scenarios
+class EmptyBase {
+public:
+    void doNothing() {
+        return;
+    }
+};
+
+class DerivedFromEmpty : public EmptyBase {
+public:
+    int value;
+    
+    void setValue(int v) {
+        value = v;
+        return;
+    }
+};
+
+class EmptyDerived : public EmptyBase {
+public:
+    void anotherMethod() {
+        return;
+    }
+};
+
+class MultiLevel : public EmptyDerived {
+public:
+    int data;
+};
+
+int main() {
+    class EmptyBase e1;
+    class DerivedFromEmpty e2;
+    class EmptyDerived e3;
+    class MultiLevel e4;
+    
+    e2.setValue(42);
+    e4.data = 100;
+    
+    return 0;
+}

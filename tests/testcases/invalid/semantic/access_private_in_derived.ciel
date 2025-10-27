@@ -1,0 +1,23 @@
+// Error: Accessing private member from derived class
+class Base {
+private:
+    int x;
+    
+public:
+    Base() {
+        x = 10;
+    }
+};
+
+class Derived : public Base {
+public:
+    void setX(int val) {
+        x = val;  // ERROR: Derived cannot access private member from Base
+    }
+};
+
+int main() {
+    class Derived d;
+    d.setX(20);
+    return 0;
+}

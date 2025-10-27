@@ -1,0 +1,19 @@
+// Error: Accessing private method from outside class
+class MyClass {
+private:
+    void privateMethod() {
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        return;
+    }
+};
+
+int main() {
+    class MyClass obj;
+    obj.publicMethod();  // OK: public
+    obj.privateMethod(); // ERROR: private
+    return 0;
+}

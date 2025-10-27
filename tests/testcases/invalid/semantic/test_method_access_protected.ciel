@@ -1,0 +1,19 @@
+// Error: Accessing protected method from outside class
+class MyClass {
+protected:
+    void protectedMethod() {
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        return;
+    }
+};
+
+int main() {
+    class MyClass obj;
+    obj.publicMethod();     // OK: public
+    obj.protectedMethod();  // ERROR: protected
+    return 0;
+}

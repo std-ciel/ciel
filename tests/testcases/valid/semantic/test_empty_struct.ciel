@@ -1,0 +1,19 @@
+// Test empty struct
+struct EmptyStruct {
+};
+
+struct AnotherEmpty {
+};
+
+struct StructWithEmpty {
+    struct EmptyStruct e;
+    int value;
+};
+
+int main() {
+    struct EmptyStruct s1;
+    struct AnotherEmpty s2;
+    struct StructWithEmpty s3;
+    s3.value = 42;
+    return 0;
+}

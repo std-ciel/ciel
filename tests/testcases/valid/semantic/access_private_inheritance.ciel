@@ -1,0 +1,27 @@
+// Test private inheritance - derived class cannot expose base's protected members
+class Base {
+protected:
+    int x;
+    
+public:
+    Base() {
+        x = 10;
+    }
+};
+
+class Derived : private Base {  // Private inheritance
+public:
+    void setX(int val) {
+        x = val;  // OK: Derived can access protected members from Base
+    }
+    
+    int getX() {
+        return x;  // OK: Derived can access protected members from Base
+    }
+};
+
+int main() {
+    class Derived d;
+    d.setX(20);  // OK: calling public method
+    return 0;
+}

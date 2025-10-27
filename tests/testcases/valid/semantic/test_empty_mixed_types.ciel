@@ -1,0 +1,37 @@
+// Test mixed empty types
+struct EmptyStruct {
+};
+
+union EmptyUnion {
+};
+
+class EmptyClass {
+public:
+    void doNothing() {
+        return;
+    }
+};
+
+struct MixedContainer {
+    struct EmptyStruct es;
+    union EmptyUnion eu;
+    int data;
+};
+
+class DerivedFromEmpty : public EmptyClass {
+public:
+    int value;
+};
+
+int main() {
+    struct EmptyStruct s;
+    union EmptyUnion u;
+    class EmptyClass c;
+    struct MixedContainer m;
+    class DerivedFromEmpty d;
+    
+    m.data = 50;
+    d.value = 75;
+    
+    return 0;
+}

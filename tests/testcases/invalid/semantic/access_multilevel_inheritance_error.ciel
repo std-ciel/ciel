@@ -1,0 +1,35 @@
+// Error: Trying to access protected members from outside the hierarchy
+class Grandparent {
+protected:
+    int x;
+    
+public:
+    Grandparent() {
+        x = 10;
+    }
+};
+
+class Parent : public Grandparent {
+protected:
+    int y;
+    
+public:
+    Parent() {
+        x = 20;
+        y = 30;
+    }
+};
+
+class Child : public Parent {
+public:
+    void setValues(int a, int b) {
+        x = a;
+        y = b;
+    }
+};
+
+int main() {
+    class Child c;
+    c.x = 100;  // ERROR: x is protected
+    return 0;
+}

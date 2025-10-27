@@ -1,0 +1,40 @@
+// Comprehensive access specifier test
+class Base {
+private:
+    int priv;
+    
+protected:
+    int prot;
+    
+public:
+    int pub;
+    
+    Base() {
+        priv = 1;  // OK: in Base
+        prot = 2;  // OK: in Base
+        pub = 3;   // OK: in Base
+    }
+};
+
+class Derived : public Base {
+public:
+    void test() {
+        // priv = 10;  // Would be ERROR: private in Base
+        prot = 20;     // OK: protected accessible in derived
+        pub = 30;      // OK: public accessible everywhere
+    }
+};
+
+int main() {
+    class Base b;
+    // b.priv = 100;  // Would be ERROR: private
+    // b.prot = 200;  // Would be ERROR: protected
+    b.pub = 300;      // OK: public
+    
+    class Derived d;
+    // d.prot = 400;  // Would be ERROR: protected not accessible outside
+    d.pub = 500;      // OK: public
+    d.test();         // OK: public method
+    
+    return 0;
+}

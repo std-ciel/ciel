@@ -1,0 +1,27 @@
+// Test class with only static members
+class StaticOnly {
+private:
+    static int counter;
+    
+public:
+    static int getCounter() {
+        return counter;
+    }
+    
+    static void increment() {
+        counter = counter + 1;
+        return;
+    }
+};
+
+class DerivedFromStaticOnly : public StaticOnly {
+public:
+    int instanceVar;
+};
+
+int main() {
+    class StaticOnly s;
+    class DerivedFromStaticOnly d;
+    d.instanceVar = 42;
+    return 0;
+}

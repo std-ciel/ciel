@@ -1,0 +1,83 @@
+// Comprehensive test: all empty types with nesting
+struct EmptyStruct {
+};
+
+union EmptyUnion {
+};
+
+class EmptyClass {
+public:
+    void method() {
+        return;
+    }
+};
+
+// Struct containing all empty types
+struct ContainerStruct {
+    struct EmptyStruct es1;
+    struct EmptyStruct es2;
+    union EmptyUnion eu;
+    int value;
+};
+
+// Union with empty types
+union ContainerUnion {
+    struct EmptyStruct es;
+    union EmptyUnion eu;
+    int value;
+};
+
+// Class inheriting from empty class with empty members
+class DerivedClass : public EmptyClass {
+public:
+    struct EmptyStruct es;
+    union EmptyUnion eu;
+    int data;
+    
+    void setData(int d) {
+        data = d;
+        return;
+    }
+};
+
+// Multi-level empty inheritance
+class EmptyBase1 {
+public:
+    void m1() { return; }
+};
+
+class EmptyBase2 : public EmptyBase1 {
+public:
+    void m2() { return; }
+};
+
+class EmptyBase3 : public EmptyBase2 {
+public:
+    void m3() { return; }
+};
+
+class FinalDerived : public EmptyBase3 {
+public:
+    struct EmptyStruct es;
+    int value;
+};
+
+int main() {
+    struct EmptyStruct s1;
+    union EmptyUnion u1;
+    class EmptyClass c1;
+    
+    struct ContainerStruct cs;
+    cs.value = 10;
+    
+    union ContainerUnion cu;
+    cu.value = 20;
+    
+    class DerivedClass dc;
+    dc.data = 30;
+    
+    class FinalDerived fd;
+    fd.value = 40;
+    
+    return 0;
+}

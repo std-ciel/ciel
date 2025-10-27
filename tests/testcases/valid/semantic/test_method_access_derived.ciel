@@ -1,0 +1,34 @@
+// OK: Protected method accessible in derived class
+class Base {
+private:
+    void privateMethod() {
+        return;
+    }
+    
+protected:
+    void protectedMethod() {
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        return;
+    }
+};
+
+class Derived : public Base {
+public:
+    void testAccess() {
+        // this->privateMethod();     // Would be ERROR: private
+        this->protectedMethod();      // OK: protected accessible in derived
+        this->publicMethod();         // OK: public
+        return;
+    }
+};
+
+int main() {
+    class Derived d;
+    d.testAccess();      // OK: public method
+    d.publicMethod();    // OK: public method from base
+    return 0;
+}

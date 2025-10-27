@@ -1,0 +1,26 @@
+// OK: Public method can be called from anywhere
+class MyClass {
+private:
+    int value;
+    
+    void privateMethod() {
+        value = 10;
+        return;
+    }
+    
+public:
+    void publicMethod() {
+        this->privateMethod();  // OK: calling private method from inside class
+        return;
+    }
+    
+    int getValue() {
+        return value;
+    }
+};
+
+int main() {
+    class MyClass obj;
+    obj.publicMethod();  // OK: public method
+    return obj.getValue();
+}

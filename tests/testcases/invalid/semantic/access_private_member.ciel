@@ -1,0 +1,16 @@
+// Error: Accessing private member from outside class
+class A {
+private:
+    int x;
+    
+public:
+    A() {
+        x = 10;  // OK: inside class
+    }
+};
+
+int main() {
+    class A a;
+    a.x = 20;  // ERROR: x is private
+    return 0;
+}
