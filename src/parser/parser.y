@@ -3927,8 +3927,15 @@ init_declarator
 
             if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
               if (!di.name.empty()) {
-                auto mi = MemberInfo{final_t, parser_state.current_access, false};
-                std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+                auto class_type = std::static_pointer_cast<ClassType>(parser_state.current_class_type);
+                // Check for duplicate member names
+                if (class_type->members.find(di.name) != class_type->members.end()) {
+                  parser_add_error(@1.begin.line, @1.begin.column,
+                                 "duplicate member '" + di.name + "' in class");
+                } else {
+                  auto mi = MemberInfo{final_t, parser_state.current_access, false};
+                  class_type->add_member(di.name, mi);
+                }
               }
             }
           }
@@ -4250,7 +4257,13 @@ struct_declaration_list
     | struct_declaration_list struct_declaration {
         $$ = $1;
         for (auto &kv : $2) {
-          $$.insert(kv);
+          // Check for duplicate field names across multiple declarations
+          if ($$.find(kv.first) != $$.end()) {
+            parser_add_error(@2.begin.line, @2.begin.column,
+                           "duplicate member '" + kv.first + "' in struct/union");
+          } else {
+            $$.insert(kv);
+          }
         }
 	  }
     ;
@@ -4292,8 +4305,13 @@ struct_declaration
                 check_complete_type(final_t.type, @1, TypeUsageContext::STRUCT_UNION_MEMBER);
               }
 
-              // TODO handle errors
-              $$[di.name] = final_t;
+              // Check for duplicate field names
+              if ($$.find(di.name) != $$.end()) {
+                parser_add_error(@1.begin.line, @1.begin.column,
+                               "duplicate member '" + di.name + "' in struct/union");
+              } else {
+                $$[di.name] = final_t;
+              }
             }
           }
         }
@@ -4357,10 +4375,18 @@ enum_specifier
               t = found.value();
 
               int64_t v = 0;
+              std::unordered_set<std::string> seen_enumerators;
               for (const auto& enumerator_info : $4) {
-                int64_t enum_value = enumerator_info.value.value_or(v);
-                enum_type->add_enumerator(enumerator_info.name, enum_value);
-                v = enum_value + 1;  // Next auto value is one more than current
+                // Check for duplicate enumerator names
+                if (seen_enumerators.find(enumerator_info.name) != seen_enumerators.end()) {
+                  parser_add_error(@4.begin.line, @4.begin.column,
+                                 "duplicate enumerator '" + enumerator_info.name + "' in enum");
+                } else {
+                  seen_enumerators.insert(enumerator_info.name);
+                  int64_t enum_value = enumerator_info.value.value_or(v);
+                  enum_type->add_enumerator(enumerator_info.name, enum_value);
+                  v = enum_value + 1;  // Next auto value is one more than current
+                }
               }
               $$ = t;
             }
@@ -4370,10 +4396,18 @@ enum_specifier
             t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
 
             int64_t v = 0;
+            std::unordered_set<std::string> seen_enumerators;
             for (const auto& enumerator_info : $4) {
-              int64_t enum_value = enumerator_info.value.value_or(v);
-              std::static_pointer_cast<EnumType>(t)->add_enumerator(enumerator_info.name, enum_value);
-              v = enum_value + 1;  // Next auto value is one more than current
+              // Check for duplicate enumerator names
+              if (seen_enumerators.find(enumerator_info.name) != seen_enumerators.end()) {
+                parser_add_error(@4.begin.line, @4.begin.column,
+                               "duplicate enumerator '" + enumerator_info.name + "' in enum");
+              } else {
+                seen_enumerators.insert(enumerator_info.name);
+                int64_t enum_value = enumerator_info.value.value_or(v);
+                std::static_pointer_cast<EnumType>(t)->add_enumerator(enumerator_info.name, enum_value);
+                v = enum_value + 1;  // Next auto value is one more than current
+              }
             }
             $$ = t;
           }
@@ -4412,10 +4446,18 @@ enum_specifier
               t = found.value();
 
               int64_t v = 0;
+              std::unordered_set<std::string> seen_enumerators;
               for (const auto& enumerator_info : $4) {
-                int64_t enum_value = enumerator_info.value.value_or(v);
-                enum_type->add_enumerator(enumerator_info.name, enum_value);
-                v = enum_value + 1;  // Next auto value is one more than current
+                // Check for duplicate enumerator names
+                if (seen_enumerators.find(enumerator_info.name) != seen_enumerators.end()) {
+                  parser_add_error(@4.begin.line, @4.begin.column,
+                                 "duplicate enumerator '" + enumerator_info.name + "' in enum");
+                } else {
+                  seen_enumerators.insert(enumerator_info.name);
+                  int64_t enum_value = enumerator_info.value.value_or(v);
+                  enum_type->add_enumerator(enumerator_info.name, enum_value);
+                  v = enum_value + 1;  // Next auto value is one more than current
+                }
               }
               $$ = t;
             }
@@ -4425,10 +4467,18 @@ enum_specifier
             t = unwrap_type_or_error(type_factory.make<EnumType>(tag, true), "enum definition", @1.begin.line, @2.begin.column);
 
             int64_t v = 0;
+            std::unordered_set<std::string> seen_enumerators;
             for (const auto& enumerator_info : $4) {
-              int64_t enum_value = enumerator_info.value.value_or(v);
-              std::static_pointer_cast<EnumType>(t)->add_enumerator(enumerator_info.name, enum_value);
-              v = enum_value + 1;  // Next auto value is one more than current
+              // Check for duplicate enumerator names
+              if (seen_enumerators.find(enumerator_info.name) != seen_enumerators.end()) {
+                parser_add_error(@4.begin.line, @4.begin.column,
+                               "duplicate enumerator '" + enumerator_info.name + "' in enum");
+              } else {
+                seen_enumerators.insert(enumerator_info.name);
+                int64_t enum_value = enumerator_info.value.value_or(v);
+                std::static_pointer_cast<EnumType>(t)->add_enumerator(enumerator_info.name, enum_value);
+                v = enum_value + 1;  // Next auto value is one more than current
+              }
             }
             $$ = t;
           }
@@ -5709,13 +5759,20 @@ function_declaration_or_definition
                                @2.begin.column,
                                "unable to mangle method '" + di.name + "'");
             } else {
-              auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
-              std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(*mangled, mi);
+              auto class_type = std::static_pointer_cast<ClassType>(parser_state.current_class_type);
+              // Check for duplicate member names (using mangled name for methods)
+              if (class_type->members.find(*mangled) != class_type->members.end()) {
+                parser_add_error(@2.begin.line, @2.begin.column,
+                               "duplicate member function '" + di.name + "' in class");
+              } else {
+                auto mi = MemberInfo{QualifiedType(fn, Qualifier::NONE), parser_state.current_access, false};
+                class_type->add_member(*mangled, mi);
 
-              add_symbol_if_valid(*mangled,
-                                  QualifiedType(fn, Qualifier::NONE),
-                                  @1,
-                                  std::optional<FunctionMeta>{meta});
+                add_symbol_if_valid(*mangled,
+                                    QualifiedType(fn, Qualifier::NONE),
+                                    @1,
+                                    std::optional<FunctionMeta>{meta});
+              }
             }
           } else {
             QualifiedType final_t = ret;
@@ -5745,8 +5802,15 @@ function_declaration_or_definition
 
             // TODO error handling
             add_symbol_if_valid(di.name, final_t, @1);
-            auto mi = MemberInfo{final_t, parser_state.current_access, false};
-            std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
+            auto class_type = std::static_pointer_cast<ClassType>(parser_state.current_class_type);
+            // Check for duplicate member names
+            if (class_type->members.find(di.name) != class_type->members.end()) {
+              parser_add_error(@1.begin.line, @1.begin.column,
+                             "duplicate member '" + di.name + "' in class");
+            } else {
+              auto mi = MemberInfo{final_t, parser_state.current_access, false};
+              class_type->add_member(di.name, mi);
+            }
 
           }
         }
