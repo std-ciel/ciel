@@ -404,6 +404,7 @@ CIEL has several important constraints and behaviors that differ from C. Underst
 - **Enum Access Syntax**: Enum values use dot notation: `Color.RED` instead of just `RED`.
 - **Type Keyword Required**: Must use `struct Point p;` not just `Point p;` (unless using typedef).
 - **Integer-to-pointer casts restricted**: Only the integer constant 0 (null literal) may be cast to pointer types. Casting non-zero integers to pointers is not allowed and will be rejected.
+- **Strict-Naming**: If a struct has been defined with a name, that name cannot be reused for a typedef or another struct/union/enum.
 
 ### Function Quirks
 
@@ -431,6 +432,24 @@ CIEL has several important constraints and behaviors that differ from C. Underst
 - **Static Members Not Supported**: No static class members or static methods.
 
 These constraints simplify the compiler implementation while maintaining explicit control over program behavior.
+
+# Lambda Functions
+
+The syntax of lambda functions in CIEL is as follows:
+
+```ciel
+[capture_list] identifier (parameter_list)  -> return_type {
+    // function body
+};
+```
+
+The identifier is mandatory and serves as the name of the lambda function. The capture list can be empty or contain variable names to capture from the enclosing scope.
+
+The capture list must be written as follows:
+
+[x = x, a = y]
+
+with the explicitly specified variable names.
 
 ## Examples
 
