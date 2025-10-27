@@ -1968,7 +1968,7 @@
   }
 
   // Helper function to check if a cast is valid
-  static bool is_valid_cast(TypePtr from_type, TypePtr to_type, const yy::location& loc) {
+  static bool is_valid_cast(TypePtr from_type, TypePtr to_type, ASTNodePtr expr, const yy::location& loc) {
     if (!from_type || !to_type) {
       return false;
     }
@@ -1989,10 +1989,21 @@
       return true;
     }
 
-    // Integer to pointer is NOT allowed - this makes the type system stricter
-    // if (is_integral_type(from_type) && is_pointer_type(to_type)) {
-    //   return true;
-    // }
+    // Special case: allow casting literal 0 to pointer type (NULL pointer idiom)
+    if (is_integral_type(from_type) && is_pointer_type(to_type)) {
+      // Check if the expression is a literal 0
+      if (expr && expr->type == ASTNodeType::LITERAL_EXPR) {
+        auto lit = std::static_pointer_cast<LiteralExpr>(expr);
+        if (std::holds_alternative<int64_t>(lit->value) && std::get<int64_t>(lit->value) == 0) {
+          return true;
+        }
+        if (std::holds_alternative<uint64_t>(lit->value) && std::get<uint64_t>(lit->value) == 0) {
+          return true;
+        }
+      }
+      // Otherwise, integer to pointer cast is not allowed
+      return false;
+    }
     
     if (is_pointer_type(from_type) && is_integral_type(to_type)) {
       return true;
@@ -3139,7 +3150,7 @@ unary_expression
         
         if (!expr_type) {
           $$ = nullptr;
-        } else if (!is_valid_cast(expr_type, target_type, @2)) {
+        } else if (!is_valid_cast(expr_type, target_type, $4, @2)) {
           parser_add_error(@2.begin.line,
                            @2.begin.column,
                            "invalid cast from '" + expr_type->debug_name() + 
