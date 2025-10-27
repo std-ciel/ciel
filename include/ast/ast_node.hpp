@@ -207,6 +207,7 @@ class LiteralExpr : public ASTNode {
   public:
     LiteralValue value;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     LiteralExpr(LiteralValue value, TypePtr expr_type)
         : ASTNode(ASTNodeType::LITERAL_EXPR), value(std::move(value)),
@@ -219,6 +220,7 @@ class LiteralExpr : public ASTNode {
 class ThisExpr : public ASTNode {
   public:
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     ThisExpr(TypePtr expr_type)
         : ASTNode(ASTNodeType::THIS_EXPR), expr_type(std::move(expr_type))
@@ -231,6 +233,7 @@ class IdentifierExpr : public ASTNode {
   public:
     SymbolPtr symbol;
     TypePtr expr_type;
+    bool is_lvalue = true;
 
     IdentifierExpr(SymbolPtr symbol, TypePtr expr_type)
         : ASTNode(ASTNodeType::IDENTIFIER_EXPR), symbol(std::move(symbol)),
@@ -243,6 +246,7 @@ class IdentifierExpr : public ASTNode {
 class EnumIdentifierExpr : public ASTNode {
   public:
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     EnumIdentifierExpr(TypePtr expr_type)
         : ASTNode(ASTNodeType::ENUM_IDENTIFIER_EXPR),
@@ -255,6 +259,7 @@ class EnumIdentifierExpr : public ASTNode {
 class FunctionIdentifierExpr : public ASTNode {
   public:
     std::string function_name;
+    bool is_lvalue = false;
 
     explicit FunctionIdentifierExpr(std::string function_name)
         : ASTNode(ASTNodeType::FUNCTION_IDENTIFIER_EXPR),
@@ -269,6 +274,7 @@ class CallExpr : public ASTNode {
     SymbolPtr callee;
     std::vector<ASTNodePtr> arguments;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     CallExpr(SymbolPtr callee,
              std::vector<ASTNodePtr> arguments,
@@ -284,6 +290,7 @@ class RetExpr : public ASTNode {
   public:
     std::optional<ASTNodePtr> value;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     RetExpr(std::optional<ASTNodePtr> value, TypePtr expr_type)
         : ASTNode(ASTNodeType::RET_EXPR), value(std::move(value)),
@@ -298,6 +305,7 @@ class CastExpr : public ASTNode {
     TypePtr target_type;
     ASTNodePtr expression;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     CastExpr(TypePtr target_type, ASTNodePtr expression)
         : ASTNode(ASTNodeType::CAST_EXPR), target_type(std::move(target_type)),
@@ -313,6 +321,7 @@ class UnaryExpr : public ASTNode {
     Operator op;
     ASTNodePtr operand;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     UnaryExpr(Operator op, ASTNodePtr operand, TypePtr expr_type)
         : ASTNode(ASTNodeType::UNARY_EXPR), op(op), operand(std::move(operand)),
@@ -328,6 +337,7 @@ class MemberExpr : public ASTNode {
     ASTNodePtr object;
     std::string member_name;
     TypePtr expr_type;
+    bool is_lvalue = true;
 
     MemberExpr(Operator op,
                ASTNodePtr object,
@@ -346,6 +356,7 @@ class BinaryExpr : public ASTNode {
     ASTNodePtr left;
     ASTNodePtr right;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     BinaryExpr(Operator op,
                ASTNodePtr left,
@@ -364,6 +375,7 @@ class TernaryExpr : public ASTNode {
     ASTNodePtr true_branch;
     ASTNodePtr false_branch;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     TernaryExpr(ASTNodePtr condition,
                 ASTNodePtr true_branch,
@@ -384,6 +396,7 @@ class AssignmentExpr : public ASTNode {
     ASTNodePtr value;
     TypePtr expr_type;
     bool is_static_assignment = false;
+    bool is_lvalue = true;
 
     AssignmentExpr(Operator op,
                    ASTNodePtr target,
@@ -403,6 +416,7 @@ class NewExpr : public ASTNode {
   public:
     TypePtr allocated_type;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     NewExpr(TypePtr allocated_type, TypePtr expr_type)
         : ASTNode(ASTNodeType::NEW_EXPR),
@@ -417,6 +431,7 @@ class DeleteExpr : public ASTNode {
   public:
     ASTNodePtr operand;
     TypePtr expr_type;
+    bool is_lvalue = false;
 
     DeleteExpr(ASTNodePtr operand, TypePtr expr_type)
         : ASTNode(ASTNodeType::DELETE_EXPR), operand(std::move(operand)),
@@ -454,6 +469,7 @@ class CompoundLiteralExpr : public ASTNode {
     TypePtr type;
     std::vector<ASTNodePtr> initializers; // vector of DesignatedInitializerExpr
                                           // or regular expressions
+    bool is_lvalue = false;
 
     CompoundLiteralExpr(TypePtr t,
                         std::vector<ASTNodePtr> inits,
@@ -751,6 +767,50 @@ extract_case_literal_value(const ASTNodePtr &expr)
     }
 
     return std::nullopt;
+}
+
+inline bool get_expression_lvalue_status(const ASTNodePtr &node)
+{
+    if (!node) {
+        return false;
+    }
+
+    switch (node->type) {
+    case ASTNodeType::LITERAL_EXPR:
+        return static_cast<LiteralExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::IDENTIFIER_EXPR:
+        return static_cast<IdentifierExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::THIS_EXPR:
+        return static_cast<ThisExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::CALL_EXPR:
+        return static_cast<CallExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::RET_EXPR:
+        return static_cast<RetExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::CAST_EXPR:
+        return static_cast<CastExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::UNARY_EXPR:
+        return static_cast<UnaryExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::BINARY_EXPR:
+        return static_cast<BinaryExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::TERNARY_EXPR:
+        return static_cast<TernaryExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::ASSIGNMENT_EXPR:
+        return static_cast<AssignmentExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::NEW_EXPR:
+        return static_cast<NewExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::DELETE_EXPR:
+        return static_cast<DeleteExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::MEMBER_EXPR:
+        return static_cast<MemberExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::ENUM_IDENTIFIER_EXPR:
+        return static_cast<EnumIdentifierExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::FUNCTION_IDENTIFIER_EXPR:
+        return static_cast<FunctionIdentifierExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::COMPOUND_LITERAL_EXPR:
+        return static_cast<CompoundLiteralExpr *>(node.get())->is_lvalue;
+    default:
+        return false;
+    }
 }
 
 #endif // AST_NODE_HPP
