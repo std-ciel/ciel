@@ -54,6 +54,11 @@
     bool variadic = false;
   };
 
+  struct CaptureInfo {
+    std::string capture_name;    // Name to use inside lambda (e.g., "a")
+    ASTNodePtr init_expr;        // Expression to initialize from (e.g., x)
+  };
+
   struct EnumeratorInfo {
     std::string name;
     std::optional<int64_t> value;  // None means auto-increment
@@ -825,6 +830,27 @@
     parser_state.has_pending_params = true;
   }
 
+  static void prepare_captures_for_scope(const std::vector<CaptureInfo>& captures, const yy::location& loc) {
+    // Evaluate capture types and prepare them as "parameters" for the lambda body
+    std::vector<QualifiedType> capture_types;
+    std::vector<std::string> capture_names;
+
+    for (const auto& capture : captures) {
+      TypePtr capture_type = get_expression_type(capture.init_expr, loc, "lambda capture");
+      if (capture_type) {
+        capture_types.push_back(QualifiedType(capture_type, Qualifier::NONE));
+        capture_names.push_back(capture.capture_name);
+      }
+    }
+
+    // Store these temporarily - they'll be added when compound_statement begins
+    for (size_t i = 0; i < capture_names.size(); ++i) {
+      parser_state.pending_param_types.push_back(capture_types[i]);
+      parser_state.pending_param_names.push_back(capture_names[i]);
+    }
+    parser_state.has_pending_params = true;
+  }
+
   static void add_pending_parameters_to_scope(const yy::location& loc) {
     if (parser_state.has_pending_params) {
       for (size_t i = 0; i < parser_state.pending_param_names.size(); ++i) {
@@ -1166,20 +1192,9 @@
 
   std::optional<std::string> mangle_operator_function_name(TypePtr left_type,
                                             const std::string& op_symbol,
-                                            TypePtr right_type = nullptr) {
+                                            const std::vector<QualifiedType>& param_types) {
     FunctionMeta meta(FunctionKind::OPERATOR, {});
-    FunctionType function_type{};
-
-    if(right_type){
-      function_type = FunctionType(QualifiedType{},
-                                {QualifiedType(right_type, Qualifier::NONE)},
-                                false);
-    }
-    else{
-      function_type = FunctionType(QualifiedType{},
-                                {},
-                                false);
-    }
+    FunctionType function_type(QualifiedType{}, param_types, false);
 
     auto mangled = mangle_function_name(op_symbol, function_type, meta, *std::static_pointer_cast<ClassType>(left_type));
     if (!mangled.has_value()) {
@@ -1189,13 +1204,13 @@
     return mangled;
   }
 
-  static SymbolPtr get_operator_overload(TypePtr left_type, const std::string& op_symbol, TypePtr right_type = nullptr) {
+  static SymbolPtr get_operator_overload(TypePtr left_type, const std::string& op_symbol, const std::vector<QualifiedType>& param_types = {}) {
 
     if (!left_type) {
       return nullptr;
     }
 
-    auto mangled_name = mangle_operator_function_name(left_type, op_symbol, right_type);
+    auto mangled_name = mangle_operator_function_name(left_type, op_symbol, param_types);
 
     if(!mangled_name.has_value()){
       return nullptr;
@@ -1249,7 +1264,12 @@
       return std::nullopt;
     }
 
-    SymbolPtr overload = get_operator_overload(operand_type, op_symbol, right_type);
+    std::vector<QualifiedType> param_types;
+    if (right_type) {
+      param_types.push_back(QualifiedType(right_type, Qualifier::NONE));
+    }
+
+    SymbolPtr overload = get_operator_overload(operand_type, op_symbol, param_types);
     if (overload) {
       TypePtr function_type = overload->get_type().type;
 
@@ -1532,6 +1552,210 @@
     if (func_symbol) return func_symbol;
 
     return nullptr;
+  }
+
+  static ASTNodePtr handle_lambda_expression(
+      const std::vector<CaptureInfo>& captures,
+      const std::string& lambda_var_name,
+      const std::vector<QualifiedType>& param_types,
+      const std::vector<std::string>& param_names,
+      bool is_variadic,
+      TypePtr return_type,
+      const ASTNodePtr& body,
+      const yy::location& loc)
+  {
+    // Generate unique anonymous class name
+    static size_t lambda_counter = 0;
+    std::ostringstream lambda_class_name;
+    lambda_class_name << "<lambda@" << symbol_table.get_current_scope_id() << ":" << (lambda_counter++) << ">";
+
+    // Create the anonymous class type
+    auto lambda_class = std::static_pointer_cast<ClassType>(
+        unwrap_type_or_error(
+            type_factory.make<ClassType>(lambda_class_name.str(), nullptr, Access::PRIVATE, true),
+            "lambda class creation",
+            loc.begin.line,
+            loc.begin.column
+        )
+    );
+
+    if (!lambda_class) {
+      parser_add_error(loc.begin.line, loc.begin.column, "failed to create lambda class type");
+      return nullptr;
+    }
+
+    // Enter class scope for adding members
+    symbol_table.enter_scope();
+    parser_state.push_ctx(ContextKind::CLASS);
+    auto saved_class = parser_state.current_class_type;
+    parser_state.current_class_type = lambda_class;
+    parser_state.current_access = Access::PRIVATE;
+
+    // Step 1: Add capture variables as private members
+    std::vector<std::string> capture_member_names;
+    std::vector<QualifiedType> capture_member_types;
+    std::vector<ASTNodePtr> capture_init_exprs;
+
+    for (const auto& capture : captures) {
+      // Get type from the initializer value
+      TypePtr capture_type = get_expression_type(capture.init_expr, loc, "lambda capture");
+      if (!capture_type) {
+        continue;
+      }
+
+      QualifiedType capture_qtype(capture_type, Qualifier::NONE);
+
+      // Add as member to class
+      std::string member_name = "cap_" + capture.capture_name;
+      MemberInfo mem_info{capture_qtype, Access::PRIVATE, false};
+      lambda_class->add_member(member_name, mem_info);
+
+      capture_member_names.push_back(member_name);
+      capture_member_types.push_back(capture_qtype);
+      capture_init_exprs.push_back(capture.init_expr);
+    }
+
+    // Step 2: Create constructor with parameters for captures
+    TypePtr void_type = require_builtin("void", loc, "lambda constructor");
+    TypePtr ctor_fn = make_function_type_or_error(
+        void_type,
+        capture_member_types,
+        false,
+        "lambda constructor",
+        loc.begin.line,
+        loc.begin.column
+    );
+
+    std::optional<std::string> ctor_mangled_name;
+    if (ctor_fn) {
+      FunctionMeta ctor_meta(FunctionKind::CONSTRUCTOR, capture_member_names, lambda_class);
+      auto ctor_mangled = mangle_function_name(
+          lambda_class_name.str(),
+          *std::static_pointer_cast<FunctionType>(ctor_fn),
+          ctor_meta,
+          *lambda_class
+      );
+
+      if (ctor_mangled.has_value()) {
+        ctor_mangled_name = ctor_mangled;
+        ctor_meta.is_defined = true;
+        ctor_meta.mangled_name = *ctor_mangled;
+
+        MemberInfo ctor_info{QualifiedType(ctor_fn, Qualifier::NONE), Access::PUBLIC, false};
+        lambda_class->add_member(*ctor_mangled, ctor_info);
+
+        add_symbol_if_valid(*ctor_mangled,
+            QualifiedType(ctor_fn, Qualifier::NONE),
+            loc,
+            std::optional<FunctionMeta>{ctor_meta});
+      }
+    }
+
+    // Step 3: Create operator() overload
+    TypePtr op_call_fn = make_function_type_or_error(
+        return_type,
+        param_types,
+        is_variadic,
+        "lambda operator()",
+        loc.begin.line,
+        loc.begin.column
+    );
+
+    if (op_call_fn) {
+      FunctionMeta op_meta(FunctionKind::OPERATOR, param_names, lambda_class);
+      auto op_mangled = mangle_function_name(
+          "()",
+          *std::static_pointer_cast<FunctionType>(op_call_fn),
+          op_meta,
+          *lambda_class
+      );
+
+      if (!op_mangled.has_value()) {
+        parser_add_error(loc.begin.line, loc.begin.column,
+                       "unable to mangle operator '()' for lambda");
+      } else {
+        op_meta.is_defined = true;
+        op_meta.mangled_name = *op_mangled;
+
+        MemberInfo op_info{QualifiedType(op_call_fn, Qualifier::NONE), Access::PUBLIC, false};
+        lambda_class->add_member(*op_mangled, op_info);
+
+        add_symbol_if_valid(*op_mangled,
+            QualifiedType(op_call_fn, Qualifier::NONE),
+            loc,
+            std::optional<FunctionMeta>{op_meta});
+
+        // Create function definition for operator()
+        auto op_sym = symbol_table.lookup_symbol(*op_mangled);
+        if (op_sym.has_value()) {
+          std::vector<SymbolPtr> param_symbols;
+          for (const auto& param_name : param_names) {
+            auto param_sym = symbol_table.lookup_symbol(param_name);
+            if (param_sym.has_value()) {
+              param_symbols.push_back(param_sym.value());
+            }
+          }
+
+          auto func_def = std::make_shared<FunctionDef>(op_sym.value(), return_type, param_symbols, body);
+          parsed_class_methods.push_back(func_def);
+        }
+      }
+    }
+
+    // Look up constructor symbol before exiting class scope
+    SymbolPtr ctor_sym_ptr = nullptr;
+    if (ctor_mangled_name.has_value()) {
+      auto ctor_sym_opt = symbol_table.lookup_symbol(*ctor_mangled_name);
+      if (ctor_sym_opt.has_value()) {
+        ctor_sym_ptr = ctor_sym_opt.value();
+      }
+    }
+
+    // Exit class scope
+    parser_state.current_class_type = saved_class;
+    parser_state.pop_ctx();
+    symbol_table.exit_scope();
+
+    // Step 4: Create variable with lambda class type
+    QualifiedType lambda_type(lambda_class, Qualifier::NONE);
+    add_symbol_if_valid(lambda_var_name, lambda_type, loc);
+
+    // Step 5: Construct the lambda instance by calling the constructor
+    auto lambda_var_sym = symbol_table.lookup_symbol(lambda_var_name);
+    if (!lambda_var_sym.has_value()) {
+      return nullptr;
+    }
+
+    // Create constructor call expression if there are captures
+    if (ctor_sym_ptr && !capture_init_exprs.empty()) {
+      // Create argument list: address of lambda variable + capture init expressions
+      std::vector<ASTNodePtr> ctor_args;
+      ctor_args.push_back(std::make_shared<UnaryExpr>(
+          Operator::ADDRESS_OF,
+          std::make_shared<IdentifierExpr>(lambda_var_sym.value(), lambda_class),
+          apply_pointer_levels_or_error(lambda_type, 1, "lambda constructor call", loc.begin.line, loc.begin.column).type
+      ));
+
+      // Add capture initialization values
+      for (const auto& init_expr : capture_init_exprs) {
+        ctor_args.push_back(init_expr);
+      }
+
+      // Create constructor call
+      auto ctor_call = std::make_shared<CallExpr>(ctor_sym_ptr, ctor_args, void_type);
+
+      // Return the constructor call wrapped in a comma expression
+      // The comma operator evaluates ctor_call first, then returns the lambda variable
+      return std::make_shared<BinaryExpr>(
+          Operator::COMMA_OP,
+          ctor_call,
+          std::make_shared<IdentifierExpr>(lambda_var_sym.value(), lambda_class),
+          lambda_class
+      );
+    }
+
+    // If no constructor (no captures), just return the identifier
+    return std::make_shared<IdentifierExpr>(lambda_var_sym.value(), lambda_class);
   }
 
   // Helper function to register a brace-initialized class object for destructor tracking
@@ -1854,6 +2078,9 @@
 %type <std::string> designator
 %type <std::vector<ASTNodePtr>> initializer_list
 %type <std::vector<std::string>> designation designator_list
+
+%type <std::vector<CaptureInfo>> capture_list
+%type <std::pair<std::vector<CaptureInfo>, std::string>> lambda_with_init lambda_no_init
 
 %left COMMA_OP
 
@@ -2297,11 +2524,12 @@ postfix_expression
         TypePtr func_type = get_expression_type($1, @1, "function call");
 
         if (is_class_type(func_type)) {
-          SymbolPtr overload = get_operator_overload(func_type, "()");
+          SymbolPtr overload = get_operator_overload(func_type, "()", arg_types);
           if (overload) {
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
             std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1)};
+            args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
             $$ = std::make_shared<CallExpr>(overload, args, result_type);
           } else {
             parser_add_error(@2.begin.line,
@@ -2814,7 +3042,8 @@ additive_expression
       else
       {
         if(is_class_type(left_type)){
-          SymbolPtr overload = get_operator_overload(left_type, "+", right_type);
+          std::vector<QualifiedType> param_types = {QualifiedType(right_type, Qualifier::NONE)};
+          SymbolPtr overload = get_operator_overload(left_type, "+", param_types);
           if (overload) {
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
@@ -2858,7 +3087,8 @@ additive_expression
       else
       {
         if(is_class_type(left_type)){
-          SymbolPtr overload = get_operator_overload(left_type, "-", right_type);
+          std::vector<QualifiedType> param_types = {QualifiedType(right_type, Qualifier::NONE)};
+          SymbolPtr overload = get_operator_overload(left_type, "-", param_types);
           if (overload) {
             TypePtr function_type = overload->get_type().type;
             TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
@@ -5619,6 +5849,39 @@ operator_token
     | LOGICAL_NOT_OP { $$ = "!"; }
     | NEW             { $$ = " new"; }
     | DELETE          { $$ = " delete"; }
+    ;
+
+capture_list
+    : IDENTIFIER ASSIGN_OP assignment_expression
+    {
+        CaptureInfo capture;
+        capture.capture_name = $1;
+        capture.init_expr = $3;
+        $$ = std::vector<CaptureInfo>{capture};
+    }
+    | capture_list COMMA_OP IDENTIFIER ASSIGN_OP assignment_expression
+    {
+        $$ = $1;
+        CaptureInfo capture;
+        capture.capture_name = $3;
+        capture.init_expr = $5;
+        $$.push_back(capture);
+    }
+    ;
+
+lambda_with_init
+    : OPEN_BRACKET_OP capture_list CLOSE_BRACKET_OP IDENTIFIER
+    {
+        $$ = std::make_pair($2, $4);
+    }
+    ;
+
+lambda_no_init
+    : OPEN_BRACKET_OP CLOSE_BRACKET_OP IDENTIFIER
+    {
+        std::vector<CaptureInfo> empty_captures;
+        $$ = std::make_pair(empty_captures, $3);
+    }
     ;
 
 
