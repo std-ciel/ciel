@@ -2222,6 +2222,96 @@ primary_expression
       {
         $$ = $2;
       }
+    | lambda_with_init OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP ARROW_OP type_name
+      {
+        // Set up function context before parsing body
+        auto& captures_and_name = $1;
+        std::vector<CaptureInfo> captures = captures_and_name.first;
+        TypePtr return_type = $6;
+        prepare_parameters_for_scope($3.types, $3.names);
+        prepare_captures_for_scope(captures, @1);
+        parser_state.push_function(return_type);
+      }
+      compound_statement
+      {
+        // Lambda expression: [captures] name(params) -> return_type { body }
+        auto& captures_and_name = $1;
+        std::vector<CaptureInfo> captures = captures_and_name.first;
+        std::string lambda_name = captures_and_name.second;
+        ParamListInfo params = $3;
+        TypePtr return_type = $6;
+        ASTNodePtr body = $8;
+
+        $$ = handle_lambda_expression(captures, lambda_name, params.types, params.names, params.variadic, return_type, body, @1);
+
+        parser_state.pop_function();
+      }
+    | lambda_with_init OPEN_PAREN_OP CLOSE_PAREN_OP ARROW_OP type_name
+      {
+        // Set up function context with no parameters
+        auto& captures_and_name = $1;
+        std::vector<CaptureInfo> captures = captures_and_name.first;
+        TypePtr return_type = $5;
+        prepare_captures_for_scope(captures, @1);
+        parser_state.push_function(return_type);
+      }
+      compound_statement
+      {
+        // Lambda expression with no parameters: [captures] name() -> return_type { body }
+        auto& captures_and_name = $1;
+        std::vector<CaptureInfo> captures = captures_and_name.first;
+        std::string lambda_name = captures_and_name.second;
+        TypePtr return_type = $5;
+        ASTNodePtr body = $7;
+
+        std::vector<QualifiedType> empty_types;
+        std::vector<std::string> empty_names;
+        $$ = handle_lambda_expression(captures, lambda_name, empty_types, empty_names, false, return_type, body, @1);
+
+        parser_state.pop_function();
+      }
+    | lambda_no_init OPEN_PAREN_OP parameter_type_list CLOSE_PAREN_OP ARROW_OP type_name
+      {
+        // Set up function context before parsing body
+        TypePtr return_type = $6;
+        prepare_parameters_for_scope($3.types, $3.names);
+        parser_state.push_function(return_type);
+      }
+      compound_statement
+      {
+        // Lambda expression with no captures: [] name(params) -> return_type { body }
+        auto& captures_and_name = $1;
+        std::vector<CaptureInfo> captures = captures_and_name.first;
+        std::string lambda_name = captures_and_name.second;
+        ParamListInfo params = $3;
+        TypePtr return_type = $6;
+        ASTNodePtr body = $8;
+
+        $$ = handle_lambda_expression(captures, lambda_name, params.types, params.names, params.variadic, return_type, body, @1);
+
+        parser_state.pop_function();
+      }
+    | lambda_no_init OPEN_PAREN_OP CLOSE_PAREN_OP ARROW_OP type_name
+      {
+        // Set up function context with no parameters
+        TypePtr return_type = $5;
+        parser_state.push_function(return_type);
+      }
+      compound_statement
+      {
+        // Lambda expression with no captures and no parameters: [] name() -> return_type { body }
+        auto& captures_and_name = $1;
+        std::vector<CaptureInfo> captures = captures_and_name.first;
+        std::string lambda_name = captures_and_name.second;
+        TypePtr return_type = $5;
+        ASTNodePtr body = $7;
+
+        std::vector<QualifiedType> empty_types;
+        std::vector<std::string> empty_names;
+        $$ = handle_lambda_expression(captures, lambda_name, empty_types, empty_names, false, return_type, body, @1);
+
+        parser_state.pop_function();
+      }
     ;
 
 postfix_expression
@@ -3425,24 +3515,17 @@ declaration
                 // Look up the symbol that was just added
                 auto sym = symbol_table.lookup_symbol(di.name);
                 if (sym.has_value()) {
-                  // Check if the initializer is a constructor call (CallExpr)
-                  if (di.initializer->type == ASTNodeType::CALL_EXPR) {
-                    // Constructor call - add it directly as a statement
-                    init_stmts.push_back(di.initializer);
-                  } else {
-                    // Regular initializer - create an assignment expression
-                    auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
-                    auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
-                    // Create an assignment expression: var = initializer
-                    auto assign_expr = std::make_shared<AssignmentExpr>(
-                      Operator::ASSIGN,
-                      id_expr,
-                      di.initializer,
-                      sym.value()->get_type().type,
-                      is_static
-                    );
-                    init_stmts.push_back(assign_expr);
-                  }
+                  // Create an assignment expression: var = initializer
+                  auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
+                  auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
+                  auto assign_expr = std::make_shared<AssignmentExpr>(
+                    Operator::ASSIGN,
+                    id_expr,
+                    di.initializer,
+                    sym.value()->get_type().type,
+                    is_static
+                  );
+                  init_stmts.push_back(assign_expr);
                 }
               }
             }
