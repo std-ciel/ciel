@@ -1,0 +1,9 @@
+// Error: postfix decrement requires lvalue operand
+int main() {
+    int a = 10;
+
+    // Error: (a--) returns rvalue, cannot decrement again
+    (a--)--;
+
+    return 0;
+}

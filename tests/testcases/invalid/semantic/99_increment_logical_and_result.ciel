@@ -1,0 +1,10 @@
+// Error: logical AND result is rvalue
+int main() {
+    bool a = 1;
+    bool b = 1;
+
+    // Error: (a && b) returns bool rvalue
+    (a && b)++;
+
+    return 0;
+}

@@ -1,0 +1,7 @@
+// Error: cannot increment string literal
+int main() {
+    // Error: string literal is rvalue
+    "hello"++;
+
+    return 0;
+}

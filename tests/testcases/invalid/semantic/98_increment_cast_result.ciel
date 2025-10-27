@@ -1,0 +1,9 @@
+// Error: cannot increment cast result (rvalue)
+int main() {
+    float f = 3.14;
+
+    // Error: cast expression is rvalue
+    (int)f++;
+
+    return 0;
+}

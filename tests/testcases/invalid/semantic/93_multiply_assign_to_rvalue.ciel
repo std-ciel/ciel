@@ -1,0 +1,10 @@
+// Error: compound assignment *= to rvalue
+int main() {
+    int a = 5;
+    int b = 3;
+
+    // Error: (a * b) is rvalue
+    (a * b) *= 2;
+
+    return 0;
+}

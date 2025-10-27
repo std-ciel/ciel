@@ -1,0 +1,10 @@
+// Error: bitwise OR result is rvalue
+int main() {
+    int a = 5;
+    int b = 3;
+
+    // Error: (a | b) returns rvalue
+    (a | b) = 10;
+
+    return 0;
+}

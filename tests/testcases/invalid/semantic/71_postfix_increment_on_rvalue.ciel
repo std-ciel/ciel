@@ -1,0 +1,9 @@
+// Error: postfix increment requires lvalue operand
+int main() {
+    int a = 5;
+
+    // Error: (a++) returns rvalue, cannot increment again
+    (a++)++;
+
+    return 0;
+}

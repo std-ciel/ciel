@@ -1,0 +1,9 @@
+// Error: prefix increment on postfix increment result (rvalue)
+int main() {
+    int a = 5;
+
+    // Error: (a++) returns rvalue, prefix ++ requires lvalue
+    ++(a++);
+
+    return 0;
+}

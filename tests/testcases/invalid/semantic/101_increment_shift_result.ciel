@@ -1,0 +1,9 @@
+// Error: shift operation result is rvalue
+int main() {
+    int a = 8;
+
+    // Error: (a >> 2) returns rvalue
+    (a >> 2)++;
+
+    return 0;
+}

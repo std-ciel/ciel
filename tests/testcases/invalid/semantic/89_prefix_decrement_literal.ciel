@@ -1,0 +1,7 @@
+// Error: prefix decrement on literal
+int main() {
+    // Error: literal is rvalue, prefix -- requires lvalue
+    --99;
+
+    return 0;
+}

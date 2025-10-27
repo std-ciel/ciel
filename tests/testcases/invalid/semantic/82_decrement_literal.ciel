@@ -1,0 +1,7 @@
+// Error: decrement on literal
+int main() {
+    // Error: literal is rvalue, cannot decrement
+    100--;
+
+    return 0;
+}

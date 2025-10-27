@@ -1,0 +1,7 @@
+// Error: literal is not an lvalue
+int main() {
+    // Error: cannot increment a literal (rvalue)
+    5++;
+
+    return 0;
+}

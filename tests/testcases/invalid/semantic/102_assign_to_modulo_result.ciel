@@ -1,0 +1,10 @@
+// Error: modulo operation result is rvalue
+int main() {
+    int a = 10;
+    int b = 3;
+
+    // Error: (a % b) returns rvalue
+    (a % b) = 5;
+
+    return 0;
+}

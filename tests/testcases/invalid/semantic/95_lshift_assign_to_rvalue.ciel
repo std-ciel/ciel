@@ -1,0 +1,10 @@
+// Error: left shift assignment to rvalue
+int main() {
+    int a = 4;
+    int b = 2;
+
+    // Error: (a + b) is rvalue
+    (a + b) <<= 2;
+
+    return 0;
+}

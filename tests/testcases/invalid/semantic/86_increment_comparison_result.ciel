@@ -1,0 +1,10 @@
+// Error: increment comparison result
+int main() {
+    int a = 5;
+    int b = 10;
+
+    // Error: (a < b) returns bool rvalue, cannot increment
+    (a < b)++;
+
+    return 0;
+}

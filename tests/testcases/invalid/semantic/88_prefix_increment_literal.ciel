@@ -1,0 +1,7 @@
+// Error: prefix increment on literal
+int main() {
+    // Error: literal is rvalue, prefix ++ requires lvalue
+    ++42;
+
+    return 0;
+}

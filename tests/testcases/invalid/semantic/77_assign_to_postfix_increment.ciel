@@ -1,0 +1,9 @@
+// Error: cannot assign to postfix increment result (rvalue)
+int main() {
+    int a = 5;
+
+    // Error: (a++) returns rvalue, cannot assign to it
+    (a++) = 10;
+
+    return 0;
+}

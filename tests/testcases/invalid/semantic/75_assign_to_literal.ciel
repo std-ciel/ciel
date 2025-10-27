@@ -1,0 +1,9 @@
+// Error: cannot assign to literal (rvalue)
+int main() {
+    int a = 5;
+
+    // Error: literal 10 is not an lvalue
+    10 = a;
+
+    return 0;
+}

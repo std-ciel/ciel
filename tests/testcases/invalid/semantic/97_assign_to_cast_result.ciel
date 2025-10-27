@@ -1,0 +1,10 @@
+// Error: cannot assign to cast result (rvalue)
+int main() {
+    int a = 5;
+    float b = 3.14;
+
+    // Error: cast expression is rvalue
+    (int)b = a;
+
+    return 0;
+}

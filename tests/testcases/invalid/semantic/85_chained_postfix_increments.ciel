@@ -1,0 +1,10 @@
+// Error: multiple chained postfix increments
+int main() {
+    int x = 1;
+
+    // Error: first (x++) is rvalue, second ++ fails
+    // Then third ++ also fails
+    (x++)++++;
+
+    return 0;
+}

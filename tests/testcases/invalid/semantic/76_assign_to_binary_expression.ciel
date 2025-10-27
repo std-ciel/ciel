@@ -1,0 +1,10 @@
+// Error: cannot assign to binary expression result (rvalue)
+int main() {
+    int a = 5;
+    int b = 10;
+
+    // Error: (a + b) is an rvalue
+    (a + b) = 20;
+
+    return 0;
+}

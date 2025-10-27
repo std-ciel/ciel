@@ -1,0 +1,9 @@
+// Error: prefix decrement on rvalue
+int main() {
+    int a = 5;
+
+    // Error: (a++) is rvalue, prefix -- requires lvalue
+    --(a++);
+
+    return 0;
+}

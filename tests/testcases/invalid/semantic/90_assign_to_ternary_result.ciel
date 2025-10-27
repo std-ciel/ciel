@@ -1,0 +1,11 @@
+// Error: assign to ternary expression result (rvalue)
+int main() {
+    int a = 5;
+    int b = 10;
+    int c = 1;
+
+    // Error: ternary expression returns rvalue
+    (c ? a : b) = 20;
+
+    return 0;
+}

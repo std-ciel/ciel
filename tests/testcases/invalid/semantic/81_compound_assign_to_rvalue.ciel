@@ -1,0 +1,10 @@
+// Error: compound assignment to rvalue
+int main() {
+    int a = 5;
+    int b = 10;
+
+    // Error: (a + b) is rvalue, cannot use += on it
+    (a + b) += 5;
+
+    return 0;
+}

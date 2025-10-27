@@ -1,0 +1,9 @@
+// Error: bitwise AND assignment to rvalue
+int main() {
+    int a = 15;
+
+    // Error: (a--) is rvalue
+    (a--) &= 7;
+
+    return 0;
+}

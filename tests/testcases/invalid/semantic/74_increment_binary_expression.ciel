@@ -1,0 +1,10 @@
+// Error: binary expression result is not an lvalue
+int main() {
+    int a = 5;
+    int b = 10;
+
+    // Error: (a + b) returns rvalue, cannot increment
+    (a + b)++;
+
+    return 0;
+}
