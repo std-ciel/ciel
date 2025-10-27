@@ -169,8 +169,16 @@ bool LayoutPass::compute_record_layout(RecordTypePtr record)
             record->set_field_offset(name, 0);
         }
 
-        uint32_t aligned_size = TargetLayout::align_to(max_size, max_alignment);
-        record->layout = TypeLayout(aligned_size, max_alignment);
+        // Handle empty unions: a union with no fields should have minimum size
+        // of 1 byte
+        if (max_size == 0) {
+            // Empty union - give it size 1, alignment 1
+            record->layout = TypeLayout(1, 1);
+        } else {
+            uint32_t aligned_size =
+                TargetLayout::align_to(max_size, max_alignment);
+            record->layout = TypeLayout(aligned_size, max_alignment);
+        }
 
     } else {
         // For structs: layout fields sequentially with proper alignment
@@ -208,10 +216,17 @@ bool LayoutPass::compute_record_layout(RecordTypePtr record)
             max_alignment = std::max(max_alignment, field_alignment);
         }
 
-        // Align the total size to the struct's alignment
-        uint32_t aligned_size =
-            TargetLayout::align_to(current_offset, max_alignment);
-        record->layout = TypeLayout(aligned_size, max_alignment);
+        // Handle empty structs: a struct with no fields should have minimum
+        // size of 1 byte
+        if (current_offset == 0) {
+            // Empty struct - give it size 1, alignment 1
+            record->layout = TypeLayout(1, 1);
+        } else {
+            // Align the total size to the struct's alignment
+            uint32_t aligned_size =
+                TargetLayout::align_to(current_offset, max_alignment);
+            record->layout = TypeLayout(aligned_size, max_alignment);
+        }
     }
 
     return true;
@@ -305,9 +320,19 @@ bool LayoutPass::compute_class_layout(ClassTypePtr class_type)
         max_alignment = std::max(max_alignment, member_alignment);
     }
 
-    uint32_t aligned_size =
-        TargetLayout::align_to(current_offset, max_alignment);
-    class_type->layout = TypeLayout(aligned_size, max_alignment);
+    // Handle empty classes: a class with no non-static data members
+    // should have a minimum size of 1 byte (like in C++)
+    // However, if this class is used as a base, the derived class can
+    // start at offset 0 (Empty Base Optimization)
+    if (current_offset == 0) {
+        // Empty class - give it size 1, alignment 1
+        class_type->layout = TypeLayout(1, 1);
+    } else {
+        // Normal case: align the total size to the class's alignment
+        uint32_t aligned_size =
+            TargetLayout::align_to(current_offset, max_alignment);
+        class_type->layout = TypeLayout(aligned_size, max_alignment);
+    }
 
     return true;
 }

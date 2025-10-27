@@ -751,6 +751,66 @@
     return has_class && has_function;
   }
 
+  // Helper to check if a member with given access is accessible from the current context
+  static bool is_member_accessible(ClassTypePtr member_owner_class, Access member_access, ClassTypePtr accessing_class) {
+    // Public members are accessible from anywhere
+    if (member_access == Access::PUBLIC) {
+      return true;
+    }
+
+    // If we're not in a class context (accessing from outside any class), only public members are accessible
+    if (!accessing_class) {
+      return false;
+    }
+
+    // Private members are only accessible from the same class
+    if (member_access == Access::PRIVATE) {
+      return member_owner_class == accessing_class;
+    }
+
+    // Protected members are accessible from the same class or derived classes
+    if (member_access == Access::PROTECTED) {
+      // Check if accessing_class is the same as member_owner_class
+      if (accessing_class == member_owner_class) {
+        return true;
+      }
+
+      // Check if accessing_class derives from member_owner_class
+      ClassTypePtr current = accessing_class;
+      while (current && current->base.base_type) {
+        if (is_class_type(current->base.base_type)) {
+          ClassTypePtr base_class = std::static_pointer_cast<ClassType>(current->base.base_type);
+          if (base_class == member_owner_class) {
+            return true;
+          }
+          current = base_class;
+        } else {
+          break;
+        }
+      }
+
+      return false;
+    }
+
+    return false;
+  }
+
+  // Helper to get the access specifier of a method from a class
+  // Returns the access level if the method is found, std::nullopt otherwise
+  static std::optional<Access> get_method_access(ClassTypePtr class_type, const std::string& mangled_name) {
+    if (!class_type) {
+      return std::nullopt;
+    }
+
+    // Check if the mangled name exists in the class's members map
+    auto it = class_type->members.find(mangled_name);
+    if (it != class_type->members.end()) {
+      return it->second.access;
+    }
+
+    return std::nullopt;
+  }
+
   static std::string type_usage_context_to_string(TypeUsageContext ctx) {
     switch (ctx) {
       case TypeUsageContext::VARIABLE_DECLARATION: return "variable declaration";
@@ -2203,20 +2263,91 @@ primary_expression
         if(sym_opt.has_value()){
           $$ = std::make_shared<IdentifierExpr>(sym_opt.value(), sym_opt.value()->get_type().type);
         } else {
-          auto enum_opt = type_factory.lookup_by_scope("enum " + $1, symbol_table.get_scope_chain());
-
-          if (enum_opt.has_value()) {
-            $$ = std::make_shared<EnumIdentifierExpr>(enum_opt.value());
+          // Check if we're in a member function and this could be a class member
+          bool found_as_member = false;
+          if (is_in_member_function_of_class() && parser_state.current_class_type) {
+            ClassTypePtr searching_class = parser_state.current_class_type;
+            ClassTypePtr current_class = parser_state.current_class_type;
+            
+            // Search in current class and base classes
+            while (current_class && !found_as_member) {
+              if (current_class->members.find($1) != current_class->members.end()) {
+                MemberInfo member = current_class->members.at($1);
+                
+                // Check if the member is accessible from the current class context
+                // If the member is in a base class, we also need to verify the inheritance path is accessible
+                bool is_accessible = false;
+                
+                if (current_class == searching_class) {
+                  // Member is in the same class - check direct access
+                  is_accessible = is_member_accessible(current_class, member.access, searching_class);
+                } else {
+                  // Member is in a base class - need to verify inheritance path
+                  // Walk from searching_class to current_class and ensure each step is accessible
+                  ClassTypePtr walk = searching_class;
+                  bool path_accessible = true;
+                  
+                  while (walk && walk != current_class) {
+                    if (walk->base.base_type && is_class_type(walk->base.base_type)) {
+                      ClassTypePtr base = std::static_pointer_cast<ClassType>(walk->base.base_type);
+                      
+                      // For private inheritance, members from base are not accessible in derived
+                      if (walk->base.access == Access::PRIVATE && walk != searching_class) {
+                        path_accessible = false;
+                        break;
+                      }
+                      
+                      walk = base;
+                    } else {
+                      break;
+                    }
+                  }
+                  
+                  // If we reached current_class and path is accessible, check member access
+                  if (path_accessible && walk == current_class) {
+                    is_accessible = is_member_accessible(current_class, member.access, searching_class);
+                  }
+                }
+                
+                if (is_accessible) {
+                  // Create implicit 'this->member' access
+                  QualifiedType class_type(parser_state.current_class_type, Qualifier::NONE);
+                  auto pointer_result = apply_pointer_levels_or_error(class_type, 1, "implicit this", @1.begin.line, @1.begin.column);
+                  TypePtr this_type = pointer_result.type;
+                  ASTNodePtr this_expr = std::make_shared<ThisExpr>(this_type);
+                  
+                  TypePtr member_type = member.type.type;
+                  $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, this_expr, $1, member_type);
+                  found_as_member = true;
+                }
+                break;
+              }
+              
+              // Move to base class
+              if (current_class->base.base_type && is_class_type(current_class->base.base_type)) {
+                current_class = std::static_pointer_cast<ClassType>(current_class->base.base_type);
+              } else {
+                current_class = nullptr;
+              }
+            }
           }
-          else{
-            if(encountered_function_names.find($1) != encountered_function_names.end()){
-              $$=std::make_shared<FunctionIdentifierExpr>($1);
+          
+          if (!found_as_member) {
+            auto enum_opt = type_factory.lookup_by_scope("enum " + $1, symbol_table.get_scope_chain());
+
+            if (enum_opt.has_value()) {
+              $$ = std::make_shared<EnumIdentifierExpr>(enum_opt.value());
             }
             else{
-              $$=nullptr;
-              parser_add_error(@1.begin.line,
-                                @1.begin.column,
-                                "use of undeclared identifier '" + $1 + "'");
+              if(encountered_function_names.find($1) != encountered_function_names.end()){
+                $$=std::make_shared<FunctionIdentifierExpr>($1);
+              }
+              else{
+                $$=nullptr;
+                parser_add_error(@1.begin.line,
+                                  @1.begin.column,
+                                  "use of undeclared identifier '" + $1 + "'");
+              }
             }
           }
         }
@@ -2438,6 +2569,7 @@ postfix_expression
         else {
           FunctionMeta meta(FunctionKind::METHOD, {});
           SymbolPtr func_symbol = nullptr;
+          ClassTypePtr method_owner_class = nullptr;
 
           // Search through class hierarchy for matching function
           auto current_class = std::static_pointer_cast<ClassType>(base_class);
@@ -2452,6 +2584,7 @@ postfix_expression
               auto non_variadic_symbol = symbol_table.lookup_operator(non_variadic_mangled.value());
               if (non_variadic_symbol.has_value()) {
                 func_symbol = non_variadic_symbol.value();
+                method_owner_class = current_class;
                 break;
               }
             }
@@ -2463,6 +2596,7 @@ postfix_expression
                 auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
                 if (variadic_symbol.has_value()) {
                   func_symbol = variadic_symbol.value();
+                  method_owner_class = current_class;
                   break;
                 }
               }
@@ -2498,16 +2632,28 @@ postfix_expression
               $$ = nullptr;
             }
             else {
-              std::vector<ASTNodePtr> args;
-
-              if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
-                args.push_back(mem_node->object);
+              // Check if the method is accessible
+              auto method_access = get_method_access(method_owner_class, func_symbol->get_name());
+              if (method_access.has_value() && !is_member_accessible(method_owner_class, method_access.value(), parser_state.current_class_type)) {
+                std::string access_str = (method_access.value() == Access::PRIVATE) ? "private" :
+                                        (method_access.value() == Access::PROTECTED) ? "protected" : "public";
+                parser_add_error(@1.begin.line,
+                                @1.begin.column,
+                                "member function '" + function_name + "' is " + access_str + " and not accessible in this context");
+                $$ = nullptr;
               }
-              else{
-                args.push_back(make_address_of_expr(mem_node->object, @1));
-              }
+              else {
+                std::vector<ASTNodePtr> args;
 
-              $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+                if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
+                  args.push_back(mem_node->object);
+                }
+                else{
+                  args.push_back(make_address_of_expr(mem_node->object, @1));
+                }
+
+                $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+              }
             }
           }
         }
@@ -2609,6 +2755,7 @@ postfix_expression
         }
         else {
           SymbolPtr func_symbol = nullptr;
+          ClassTypePtr method_owner_class = nullptr;
 
           // Search through class hierarchy for matching function
           auto current_class = std::static_pointer_cast<ClassType>(base_class);
@@ -2617,6 +2764,7 @@ postfix_expression
             func_symbol = lookup_function(function_name, arg_types, FunctionKind::METHOD, *current_class);
 
             if (func_symbol) {
+              method_owner_class = current_class;
               break;
             }
 
@@ -2642,18 +2790,30 @@ postfix_expression
             $$ = nullptr;
           }
           else {
-            auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
-            std::vector<ASTNodePtr> args;
-
-            if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
-              args.push_back(mem_node->object);
+            // Check if the method is accessible
+            auto method_access = get_method_access(method_owner_class, func_symbol->get_name());
+            if (method_access.has_value() && !is_member_accessible(method_owner_class, method_access.value(), parser_state.current_class_type)) {
+              std::string access_str = (method_access.value() == Access::PRIVATE) ? "private" :
+                                      (method_access.value() == Access::PROTECTED) ? "protected" : "public";
+              parser_add_error(@1.begin.line,
+                              @1.begin.column,
+                              "member function '" + function_name + "' is " + access_str + " and not accessible in this context");
+              $$ = nullptr;
             }
-            else{
-              args.push_back(make_address_of_expr(mem_node->object, @1));
-            }
+            else {
+              auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+              std::vector<ASTNodePtr> args;
 
-            args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
-            $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+              if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
+                args.push_back(mem_node->object);
+              }
+              else{
+                args.push_back(make_address_of_expr(mem_node->object, @1));
+              }
+
+              args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
+              $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
+            }
           }
         }
       }
@@ -2719,28 +2879,19 @@ postfix_expression
       else{
           if (is_class_type(base_type)) {
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
-            // Track the effective access level - starts as PUBLIC for direct members
-            Access effective_access = Access::PUBLIC;
-            bool is_direct_access = true; // DOT_OP is always direct access (not through 'this')
+            ClassTypePtr original_class_type = class_type;
 
             while(class_type){
               if (class_type->members.find($3)!= class_type->members.end()) {
                 MemberInfo member = class_type->members.at($3);
 
-                // Determine the most restrictive access between member's own access and effective access
-                Access final_access = member.access;
-
-                // If we traversed through inheritance, apply the effective access restriction
-                if (effective_access == Access::PRIVATE) {
-                  final_access = Access::PRIVATE;
-                } else if (effective_access == Access::PROTECTED && final_access == Access::PUBLIC) {
-                  final_access = Access::PROTECTED;
-                }
-
-                // Check accessibility
-                if (!is_direct_access && final_access != Access::PUBLIC) {
+                // Check if the member is accessible from the current context
+                // We're accessing from parser_state.current_class_type (could be null if not in a class)
+                if (!is_member_accessible(class_type, member.access, parser_state.current_class_type)) {
+                  std::string access_str = (member.access == Access::PRIVATE) ? "private" :
+                                          (member.access == Access::PROTECTED) ? "protected" : "public";
                   parser_add_error(@2.begin.line, @2.begin.column,
-                              "member '" + $3 + "' is not accessible (not public)");
+                              "member '" + $3 + "' is " + access_str + " and not accessible in this context");
                   $$ = nullptr;
                 }
                 else{
@@ -2751,40 +2902,12 @@ postfix_expression
                 break;
               }
 
-              // Move to base class
-              if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+              // Move to base class - check all base classes regardless of inheritance access
+              // (The accessibility is checked by is_member_accessible, inheritance access affects
+              // member visibility in derived class, not direct access to base members)
+              if(class_type->base.base_type){
                 base_type = class_type->base.base_type;
 
-                // Update effective access based on how we inherit
-                // Public inheritance maintains the access level
-                // (No change needed since we already check for PUBLIC inheritance)
-
-                if(is_class_type(base_type)){
-                  class_type = std::static_pointer_cast<ClassType>(base_type);
-                }
-                else{
-                  class_type = nullptr;
-                }
-              }
-              else if(class_type->base.base_type && class_type->base.access == Access::PROTECTED){
-                // Protected inheritance: public members become protected
-                if (effective_access == Access::PUBLIC) {
-                  effective_access = Access::PROTECTED;
-                }
-
-                base_type = class_type->base.base_type;
-                if(is_class_type(base_type)){
-                  class_type = std::static_pointer_cast<ClassType>(base_type);
-                }
-                else{
-                  class_type = nullptr;
-                }
-              }
-              else if(class_type->base.base_type && class_type->base.access == Access::PRIVATE){
-                // Private inheritance: all members become inaccessible from outside
-                effective_access = Access::PRIVATE;
-
-                base_type = class_type->base.base_type;
                 if(is_class_type(base_type)){
                   class_type = std::static_pointer_cast<ClassType>(base_type);
                 }
@@ -2845,28 +2968,19 @@ postfix_expression
         if (base_type) {
           if(is_class_type(base_type)){
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
-            // Track the effective access level - starts as PUBLIC for direct members
-            Access effective_access = Access::PUBLIC;
-            bool is_direct_access = ($1->type == ASTNodeType::THIS_EXPR);
+            ClassTypePtr original_class_type = class_type;
 
             while(class_type){
               if (class_type->members.find($3)!= class_type->members.end()) {
                 MemberInfo member = class_type->members.at($3);
 
-                // Determine the most restrictive access between member's own access and effective access
-                Access final_access = member.access;
-
-                // If we traversed through inheritance, apply the effective access restriction
-                if (effective_access == Access::PRIVATE) {
-                  final_access = Access::PRIVATE;
-                } else if (effective_access == Access::PROTECTED && final_access == Access::PUBLIC) {
-                  final_access = Access::PROTECTED;
-                }
-
-                // Check accessibility
-                if (!is_direct_access && final_access != Access::PUBLIC) {
+                // Check if the member is accessible from the current context
+                // We're accessing from parser_state.current_class_type (could be null if not in a class)
+                if (!is_member_accessible(class_type, member.access, parser_state.current_class_type)) {
+                  std::string access_str = (member.access == Access::PRIVATE) ? "private" :
+                                          (member.access == Access::PROTECTED) ? "protected" : "public";
                   parser_add_error(@2.begin.line, @2.begin.column,
-                              "member '" + $3 + "' is not accessible (not public)");
+                              "member '" + $3 + "' is " + access_str + " and not accessible in this context");
                   $$ = nullptr;
                 }
                 else{
@@ -2877,40 +2991,12 @@ postfix_expression
                 break;
               }
 
-              // Move to base class
-              if(class_type->base.base_type && class_type->base.access == Access::PUBLIC){
+              // Move to base class - check all base classes regardless of inheritance access
+              // (The accessibility is checked by is_member_accessible, inheritance access affects
+              // member visibility in derived class, not direct access to base members)
+              if(class_type->base.base_type){
                 base_type = class_type->base.base_type;
 
-                // Update effective access based on how we inherit
-                // Public inheritance maintains the access level
-                // (No change needed since we already check for PUBLIC inheritance)
-
-                if(is_class_type(base_type)){
-                  class_type = std::static_pointer_cast<ClassType>(base_type);
-                }
-                else{
-                  class_type = nullptr;
-                }
-              }
-              else if(class_type->base.base_type && class_type->base.access == Access::PROTECTED){
-                // Protected inheritance: public members become protected
-                if (effective_access == Access::PUBLIC) {
-                  effective_access = Access::PROTECTED;
-                }
-
-                base_type = class_type->base.base_type;
-                if(is_class_type(base_type)){
-                  class_type = std::static_pointer_cast<ClassType>(base_type);
-                }
-                else{
-                  class_type = nullptr;
-                }
-              }
-              else if(class_type->base.base_type && class_type->base.access == Access::PRIVATE){
-                // Private inheritance: all members become inaccessible from outside
-                effective_access = Access::PRIVATE;
-
-                base_type = class_type->base.base_type;
                 if(is_class_type(base_type)){
                   class_type = std::static_pointer_cast<ClassType>(base_type);
                 }
