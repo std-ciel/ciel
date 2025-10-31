@@ -60,8 +60,7 @@ target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/lexer
     ${CMAKE_SOURCE_DIR}/include/parser
     ${CMAKE_SOURCE_DIR}/include/symbol_table
-    ${CMAKE_SOURCE_DIR}/include/local_static_pass
-    ${CMAKE_SOURCE_DIR}/include/layout_pass
+    ${CMAKE_SOURCE_DIR}/include/passes
     ${CMAKE_SOURCE_DIR}/include/tac
     ${CMAKE_SOURCE_DIR}/include/ast
     ${CMAKE_CURRENT_BINARY_DIR})
