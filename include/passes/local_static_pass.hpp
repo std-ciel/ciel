@@ -2,6 +2,8 @@
 #define LOCAL_STATIC_PASS_HPP
 
 #include "ast/ast_node.hpp"
+#include "common/result.hpp"
+#include "passes/local_static_pass_errors.hpp"
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type_factory.hpp"
 #include <string>
@@ -13,16 +15,23 @@ class LocalStaticPass {
     LocalStaticPass(SymbolTable &symbol_table, TypeFactory &type_factory);
 
     // Main entry point: process the entire AST
-    void process(std::vector<ASTNodePtr> &translation_unit,
-                 std::vector<std::shared_ptr<FunctionDef>> &class_methods);
+    Result<bool, std::vector<LocalStaticPassErrorInfo>>
+    process(std::vector<ASTNodePtr> &translation_unit,
+            std::vector<std::shared_ptr<FunctionDef>> &class_methods);
 
     // Process class methods (constructors, destructors, member functions)
-    void process_class_methods(
+    Result<bool, std::vector<LocalStaticPassErrorInfo>> process_class_methods(
         std::vector<std::shared_ptr<FunctionDef>> &class_methods);
+
+    const std::vector<LocalStaticPassErrorInfo> &get_errors() const
+    {
+        return errors;
+    }
 
   private:
     SymbolTable &symbol_table;
     TypeFactory &type_factory;
+    std::vector<LocalStaticPassErrorInfo> errors;
 
     // Track symbols we've already moved to avoid duplicates
     std::unordered_set<SymbolPtr> moved_symbols;

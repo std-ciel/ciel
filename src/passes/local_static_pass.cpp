@@ -1,6 +1,5 @@
 #include "passes/local_static_pass.hpp"
 #include "symbol_table/mangling.hpp"
-#include <iostream>
 
 LocalStaticPass::LocalStaticPass(SymbolTable &symbol_table,
                                  TypeFactory &type_factory)
@@ -9,19 +8,32 @@ LocalStaticPass::LocalStaticPass(SymbolTable &symbol_table,
 {
 }
 
-void LocalStaticPass::process(
+Result<bool, std::vector<LocalStaticPassErrorInfo>> LocalStaticPass::process(
     std::vector<ASTNodePtr> &translation_unit,
     std::vector<std::shared_ptr<FunctionDef>> &class_methods)
 {
+    errors.clear();
+
     for (const auto &node : translation_unit) {
         if (node && node->type == ASTNodeType::FUNCTION_DEF) {
             process_function(node);
         }
     }
-    process_class_methods(class_methods);
+
+    auto result = process_class_methods(class_methods);
+    if (result.is_err()) {
+        return result;
+    }
+
+    if (!errors.empty()) {
+        return std::vector<LocalStaticPassErrorInfo>(errors);
+    }
+
+    return true;
 }
 
-void LocalStaticPass::process_class_methods(
+Result<bool, std::vector<LocalStaticPassErrorInfo>>
+LocalStaticPass::process_class_methods(
     std::vector<std::shared_ptr<FunctionDef>> &class_methods)
 {
     for (const auto &method : class_methods) {
@@ -29,6 +41,12 @@ void LocalStaticPass::process_class_methods(
             process_function(method);
         }
     }
+
+    if (!errors.empty()) {
+        return std::vector<LocalStaticPassErrorInfo>(errors);
+    }
+
+    return true;
 }
 
 void LocalStaticPass::process_function(ASTNodePtr func_def)
@@ -230,9 +248,10 @@ LocalStaticPass::transform_local_static(SymbolPtr symbol,
     ScopeID original_scope = symbol->get_scope_id();
     auto remove_result = symbol_table.remove_symbol(symbol);
     if (remove_result.is_err()) {
-        std::cerr << "Warning: Failed to remove local static symbol '"
-                  << symbol->get_name() << "' from scope " << original_scope
-                  << std::endl;
+        errors.push_back(LocalStaticPassErrorInfo(
+            LocalStaticPassError::SYMBOL_REMOVAL_FAILED,
+            symbol->get_name(),
+            "from scope " + std::to_string(original_scope)));
         return initializer;
     }
 
@@ -244,8 +263,9 @@ LocalStaticPass::transform_local_static(SymbolPtr symbol,
         symbol_table.add_symbol_in_scope(mangled_name, symbol, GLOBAL_SCOPE_ID);
 
     if (add_result.is_err()) {
-        std::cerr << "Warning: Failed to add global symbol '" << mangled_name
-                  << "' to global scope" << std::endl;
+        errors.push_back(LocalStaticPassErrorInfo(
+            LocalStaticPassError::SYMBOL_ADDITION_FAILED,
+            mangled_name));
         return initializer; // Return original on error
     }
 
@@ -262,8 +282,9 @@ LocalStaticPass::transform_local_static(SymbolPtr symbol,
                                                          GLOBAL_SCOPE_ID);
 
     if (guard_result.is_err()) {
-        std::cerr << "Warning: Failed to add guard symbol '" << guard_name
-                  << "' to global scope" << std::endl;
+        errors.push_back(LocalStaticPassErrorInfo(
+            LocalStaticPassError::GUARD_SYMBOL_ADDITION_FAILED,
+            guard_name));
     }
 
     return create_guarded_init(symbol, guard_symbol, initializer);
