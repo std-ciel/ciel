@@ -49,8 +49,8 @@ add_library(ciel_parser STATIC
     src/symbol_table/type_factory.cpp
     src/symbol_table/target_layout.cpp
     src/symbol_table/mangling.cpp
-    src/local_static_pass/local_static_pass.cpp
-    src/layout_pass/layout_pass.cpp
+    src/passes/local_static_pass.cpp
+    src/passes/layout_pass.cpp
     src/tac/tac.cpp
     src/tac/tac_generator.cpp
 )

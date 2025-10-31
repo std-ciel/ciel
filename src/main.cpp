@@ -4,14 +4,14 @@
 #include <fstream>
 #include <iostream>
 
-#include "layout_pass/layout_pass.hpp"
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
-#include "local_static_pass/local_static_pass.hpp"
 #include "parser.hpp"
 #include "parser/parser.hpp"
 #include "parser/parser_errors.hpp"
 #include "parser/parser_helper.hpp"
+#include "passes/layout_pass.hpp"
+#include "passes/local_static_pass.hpp"
 #include "print_tokens.hpp"
 #include "tac/tac_generator.hpp"
 #include "tokens.hpp"

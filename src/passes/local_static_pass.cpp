@@ -1,4 +1,4 @@
-#include "local_static_pass/local_static_pass.hpp"
+#include "passes/local_static_pass.hpp"
 #include "symbol_table/mangling.hpp"
 #include <iostream>
 

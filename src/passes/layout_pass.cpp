@@ -1,4 +1,4 @@
-#include "layout_pass/layout_pass.hpp"
+#include "passes/layout_pass.hpp"
 #include "symbol_table/target_layout.hpp"
 #include <algorithm>
 #include <iostream>
