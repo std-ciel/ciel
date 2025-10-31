@@ -1,7 +1,7 @@
 #ifndef AST_NODE_HPP
 #define AST_NODE_HPP
 
-#include "symbol_table/result.hpp"
+#include "common/result.hpp"
 #include "symbol_table/symbol.hpp"
 #include "symbol_table/type.hpp"
 #include <cstdint>

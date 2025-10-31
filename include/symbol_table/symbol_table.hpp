@@ -1,7 +1,7 @@
 #ifndef SYMBOL_TABLE_HPP
 #define SYMBOL_TABLE_HPP
 
-#include "symbol_table/result.hpp"
+#include "common/result.hpp"
 #include "symbol_table/scope.hpp"
 #include "symbol_table/symbol.hpp"
 #include <optional>

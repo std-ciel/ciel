@@ -1,7 +1,7 @@
 #ifndef TYPE_FACTORY_HPP
 #define TYPE_FACTORY_HPP
 
-#include "symbol_table/result.hpp"
+#include "common/result.hpp"
 #include "symbol_table/symbol.hpp"
 #include "symbol_table/target_layout.hpp"
 #include "symbol_table/type.hpp"
