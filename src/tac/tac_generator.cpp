@@ -1,12 +1,16 @@
 #include "tac/tac_generator.hpp"
 #include "parser/parser_helper.hpp"
-#include "symbol_table/mangling.hpp"
 #include <algorithm>
-#include <stdexcept>
 
 TACGenerator::TACGenerator()
     : symbol_table(get_symbol_table()), type_factory(get_type_factory())
 {
+}
+
+void TACGenerator::record_error(const std::string &message)
+{
+    errors.push_back(
+        TACErrorInfo(TACError::UNHANDLED_EXPRESSION_TYPE, message));
 }
 
 void TACGenerator::emit(TACInstructionPtr instr)
@@ -103,7 +107,8 @@ std::string TACGenerator::new_temp(TypePtr type)
     if (current_function) {
         return current_function->new_temp(type);
     }
-    throw std::runtime_error("No current function to generate temp");
+    errors.push_back(TACErrorInfo(TACError::NO_CURRENT_FUNCTION, "new_temp"));
+    return ""; // Return empty string on error
 }
 
 std::string TACGenerator::new_label(const std::string &prefix)
@@ -111,7 +116,8 @@ std::string TACGenerator::new_label(const std::string &prefix)
     if (current_function) {
         return current_function->new_label(prefix);
     }
-    throw std::runtime_error("No current function to generate label");
+    errors.push_back(TACErrorInfo(TACError::NO_CURRENT_FUNCTION, "new_label"));
+    return ""; // Return empty string on error
 }
 
 // Helper function to compute the size of a type, handling arrays recursively
@@ -324,8 +330,8 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
         // Get base type from expression
         auto base_type_result = get_expression_type(member->object);
         if (!base_type_result.is_ok()) {
-            throw std::runtime_error(
-                "Cannot determine base type for member access");
+            record_error("Cannot determine base type for member access");
+            return TACOperand(); // Return empty operand on error
         }
         TypePtr base_type = base_type_result.value();
 
@@ -439,7 +445,8 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 
     default:
-        throw std::runtime_error("Unhandled expression type in TAC generation");
+        record_error("Unhandled expression type in TAC generation");
+        return TACOperand(); // Return empty operand on error
     }
 }
 
@@ -635,8 +642,8 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
         auto base_type_result = get_expression_type(member->object);
         if (!base_type_result.is_ok()) {
-            throw std::runtime_error(
-                "Cannot determine base type for member assignment");
+            record_error("Cannot determine base type for member assignment");
+            return TACOperand(); // Return empty operand on error
         }
         TypePtr base_type = base_type_result.value();
 
@@ -827,8 +834,9 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         // Get member offset from precomputed field_offsets
         auto offset_opt = get_member_offset(record_type, member_name);
         if (!offset_opt.has_value()) {
-            throw std::runtime_error("Member '" + member_name +
-                                     "' not found in struct/union");
+            record_error("Member '" + member_name +
+                         "' not found in struct/union");
+            return TACOperand(); // Return empty operand on error
         }
 
         // For unions, all members are at offset 0 (already handled by layout
@@ -838,7 +846,8 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         // Get member type
         member_type = get_member_type(record_type, member_name);
         if (!member_type) {
-            throw std::runtime_error("Could not determine member type");
+            record_error("Could not determine member type");
+            return TACOperand(); // Return empty operand on error
         }
     }
     // Handle class types
@@ -847,8 +856,8 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         // Get member offset (includes inherited members)
         auto offset_opt = get_class_member_offset(class_type, member_name);
         if (!offset_opt.has_value()) {
-            throw std::runtime_error("Member '" + member_name +
-                                     "' not found in class");
+            record_error("Member '" + member_name + "' not found in class");
+            return TACOperand(); // Return empty operand on error
         }
 
         offset = offset_opt.value();
@@ -856,10 +865,12 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         // Get member type (includes inherited members)
         member_type = get_class_member_type(class_type, member_name);
         if (!member_type) {
-            throw std::runtime_error("Could not determine member type");
+            record_error("Could not determine member type");
+            return TACOperand(); // Return empty operand on error
         }
     } else {
-        throw std::runtime_error("Member access on non-struct/class type");
+        record_error("Member access on non-struct/class type");
+        return TACOperand(); // Return empty operand on error
     }
 
     // Create temporary for result
@@ -897,8 +908,9 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         // Get member offset from precomputed field_offsets
         auto offset_opt = get_member_offset(record_type, member_name);
         if (!offset_opt.has_value()) {
-            throw std::runtime_error("Member '" + member_name +
-                                     "' not found in struct/union");
+            record_error("Member '" + member_name +
+                         "' not found in struct/union");
+            return; // Return early on error
         }
 
         // For unions, all members are at offset 0 (already handled by layout
@@ -908,7 +920,8 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         // Get member type
         member_type = get_member_type(record_type, member_name);
         if (!member_type) {
-            throw std::runtime_error("Could not determine member type");
+            record_error("Could not determine member type");
+            return; // Return early on error
         }
     }
     // Handle class types
@@ -917,8 +930,8 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         // Get member offset (includes inherited members)
         auto offset_opt = get_class_member_offset(class_type, member_name);
         if (!offset_opt.has_value()) {
-            throw std::runtime_error("Member '" + member_name +
-                                     "' not found in class");
+            record_error("Member '" + member_name + "' not found in class");
+            return; // Return early on error
         }
 
         offset = offset_opt.value();
@@ -926,10 +939,12 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
         // Get member type (includes inherited members)
         member_type = get_class_member_type(class_type, member_name);
         if (!member_type) {
-            throw std::runtime_error("Could not determine member type");
+            record_error("Could not determine member type");
+            return; // Return early on error
         }
     } else {
-        throw std::runtime_error("Member access on non-struct/class type");
+        record_error("Member access on non-struct/class type");
+        return; // Return early on error
     }
 
     // Create member operand with offset info
@@ -1028,12 +1043,14 @@ void TACGenerator::generate_designated_member_store(
         // Get member type
         auto record_type = std::static_pointer_cast<RecordType>(current_type);
         if (!record_type) {
-            throw std::runtime_error("Cannot access member on non-struct type");
+            record_error("Cannot access member on non-struct type");
+            return; // Return early on error
         }
 
         TypePtr member_type = get_member_type(record_type, member);
         if (!member_type) {
-            throw std::runtime_error("Member '" + member + "' not found");
+            record_error("Member '" + member + "' not found");
+            return; // Return early on error
         }
 
         // Load the intermediate member
@@ -1080,7 +1097,6 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
                                                      body_scope,
                                                      get_symbol_table());
 
-
     current_block = std::make_shared<TACBasicBlock>("");
     current_function->entry_block = current_block;
     current_function->add_block(current_block);
@@ -1099,7 +1115,8 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
         generate_statement(func_def->body);
     }
 
-    // For void functions, automatically add a return statement if not already present
+    // For void functions, automatically add a return statement if not already
+    // present
     bool has_return = false;
     if (current_block && !current_block->instructions.empty()) {
         auto last_instr = current_block->instructions.back();
@@ -1108,7 +1125,8 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
         }
     }
 
-    if (!has_return && func_def->return_type && is_void_type(func_def->return_type)) {
+    if (!has_return && func_def->return_type &&
+        is_void_type(func_def->return_type)) {
         emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
     }
 
@@ -1171,8 +1189,11 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
 }
 
 // NEW: Generate TAC for entire translation unit
-void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
+Result<bool, std::vector<TACErrorInfo>>
+TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
 {
+    errors.clear();
+
     // First pass: process all global declarations
     for (const auto &node : translation_unit) {
         if (!node)
@@ -1186,7 +1207,7 @@ void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
 
     // Finalize global initialization function if it was created
     if (current_function && current_function->name == "__ciel_global_init") {
-    
+
         bool has_return = false;
         if (current_block && !current_block->instructions.empty()) {
             auto last_instr = current_block->instructions.back();
@@ -1225,6 +1246,12 @@ void TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
             generate_function(method_def);
         }
     }
+
+    if (!errors.empty()) {
+        return std::vector<TACErrorInfo>(errors);
+    }
+
+    return true;
 }
 
 void TACGenerator::generate_statement(ASTNodePtr node)

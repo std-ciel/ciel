@@ -2,9 +2,11 @@
 #define TAC_GENERATOR_HPP
 
 #include "ast/ast_node.hpp"
+#include "common/result.hpp"
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type_factory.hpp"
 #include "tac/tac.hpp"
+#include "tac/tac_errors.hpp"
 #include <stack>
 #include <unordered_map>
 
@@ -17,6 +19,8 @@ class TACGenerator {
     // References to global instances
     SymbolTable &symbol_table;
     TypeFactory &type_factory;
+
+    std::vector<TACErrorInfo> errors;
 
     // Stack for loop labels (for break/continue)
     std::stack<std::pair<std::string, std::string>>
@@ -43,6 +47,8 @@ class TACGenerator {
     void generate_block_stmt(std::shared_ptr<BlockStmt> stmt);
     void generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt);
 
+    void record_error(const std::string &message);
+
     TACOpcode operator_to_tac_opcode(Operator op);
 
     void emit(TACInstructionPtr instr);
@@ -62,7 +68,8 @@ class TACGenerator {
     void generate_global_declaration(ASTNodePtr node);
 
     // NEW: Generate TAC for entire translation unit
-    void generate(const std::vector<ASTNodePtr> &translation_unit);
+    Result<bool, std::vector<TACErrorInfo>>
+    generate(const std::vector<ASTNodePtr> &translation_unit);
 
     const TACProgram &get_program() const
     {
@@ -71,6 +78,11 @@ class TACGenerator {
     TACProgram &get_program()
     {
         return program;
+    }
+
+    const std::vector<TACErrorInfo> &get_errors() const
+    {
+        return errors;
     }
 
     TACOperand generate_member_access(const TACOperand &base_object,
