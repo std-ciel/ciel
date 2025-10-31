@@ -1,27 +1,29 @@
 #include "passes/layout_pass.hpp"
 #include "symbol_table/target_layout.hpp"
 #include <algorithm>
-#include <iostream>
 
-bool LayoutPass::run()
+Result<bool, std::vector<LayoutPassErrorInfo>> LayoutPass::run()
 {
     auto custom_types = type_factory.get_custom_types();
 
     for (const auto &[id, type] : custom_types) {
-        if (!compute_type_layout(type)) {
-            std::cerr << "Failed to compute layout for type: "
-                      << type->debug_name() << std::endl;
-            return false;
+        auto result = compute_type_layout(type);
+        if (result.is_err()) {
+            errors.push_back(result.error());
         }
+    }
+
+    if (!errors.empty()) {
+        return std::vector<LayoutPassErrorInfo>(errors);
     }
 
     return true;
 }
 
-bool LayoutPass::compute_type_layout(TypePtr type)
+Result<bool, LayoutPassErrorInfo> LayoutPass::compute_type_layout(TypePtr type)
 {
     if (!type) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::NULL_TYPE_POINTER);
     }
 
     if (type->has_layout()) {
@@ -36,27 +38,32 @@ bool LayoutPass::compute_type_layout(TypePtr type)
     // the pointee type. If this error occurs, there is a bug in the parser's
     // semantic checks that allowed an invalid type definition.
     if (visited.count(type)) {
-        std::cerr << "INTERNAL ERROR: Cyclic dependency detected in type: "
-                  << type->debug_name() << std::endl;
-        std::cerr << "This indicates a bug in the parser - invalid recursive "
-                  << "struct/class definition was not rejected." << std::endl;
-        return false;
+        return LayoutPassErrorInfo(
+            LayoutPassError::CYCLIC_DEPENDENCY,
+            type->debug_name(),
+            "This indicates a bug in the parser - invalid recursive "
+            "struct/class definition was not rejected");
     }
 
     visited.insert(type);
-    bool result = compute_layout(type);
+    auto result = compute_layout(type);
     visited.erase(type);
 
     return result;
 }
 
-bool LayoutPass::compute_layout(TypePtr type)
+Result<bool, LayoutPassErrorInfo> LayoutPass::compute_layout(TypePtr type)
 {
     switch (type->kind) {
     case TypeKind::BUILTIN:
     case TypeKind::POINTER:
         // These should already have layout from TypeFactory
-        return type->has_layout();
+        if (!type->has_layout()) {
+            return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                       type->debug_name(),
+                                       "Builtin or pointer type");
+        }
+        return true;
 
     case TypeKind::ARRAY:
         return compute_array_layout(std::static_pointer_cast<ArrayType>(type));
@@ -76,10 +83,12 @@ bool LayoutPass::compute_layout(TypePtr type)
         auto typedef_type = std::static_pointer_cast<TypedefType>(type);
         TypePtr underlying = strip_typedefs(type);
         if (!underlying) {
-            return false;
+            return LayoutPassErrorInfo(LayoutPassError::TYPEDEF_STRIP_FAILED,
+                                       type->debug_name());
         }
-        if (!compute_type_layout(underlying)) {
-            return false;
+        auto result = compute_type_layout(underlying);
+        if (result.is_err()) {
+            return result.error();
         }
         type->layout = underlying->layout;
         return true;
@@ -90,28 +99,34 @@ bool LayoutPass::compute_layout(TypePtr type)
         return true;
 
     default:
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::UNKNOWN_TYPE_KIND,
+                                   type->debug_name());
     }
 }
 
-bool LayoutPass::compute_array_layout(ArrayTypePtr array)
+Result<bool, LayoutPassErrorInfo>
+LayoutPass::compute_array_layout(ArrayTypePtr array)
 {
     if (!array) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::NULL_TYPE_POINTER, "array");
     }
 
     // Compute layout of element type first
     TypePtr element = strip_typedefs(array->element_type.type);
     if (!element) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::TYPEDEF_STRIP_FAILED,
+                                   "array element type");
     }
 
-    if (!compute_type_layout(element)) {
-        return false;
+    auto result = compute_type_layout(element);
+    if (result.is_err()) {
+        return result.error();
     }
 
     if (!element->has_layout()) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                   element->debug_name(),
+                                   "array element type");
     }
 
     // Array layout: size = element_size * array_size, alignment =
@@ -130,10 +145,12 @@ bool LayoutPass::compute_array_layout(ArrayTypePtr array)
     return true;
 }
 
-bool LayoutPass::compute_record_layout(RecordTypePtr record)
+Result<bool, LayoutPassErrorInfo>
+LayoutPass::compute_record_layout(RecordTypePtr record)
 {
     if (!record) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::NULL_TYPE_POINTER,
+                                   "record");
     }
 
     // If not defined, we can't compute layout
@@ -150,15 +167,20 @@ bool LayoutPass::compute_record_layout(RecordTypePtr record)
         for (const auto &[name, qualified_type] : record->fields) {
             TypePtr field_type = strip_typedefs(qualified_type.type);
             if (!field_type) {
-                return false;
+                return LayoutPassErrorInfo(
+                    LayoutPassError::TYPEDEF_STRIP_FAILED,
+                    "union field: " + name);
             }
 
-            if (!compute_type_layout(field_type)) {
-                return false;
+            auto result = compute_type_layout(field_type);
+            if (result.is_err()) {
+                return result.error();
             }
 
             if (!field_type->has_layout()) {
-                return false;
+                return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                           field_type->debug_name(),
+                                           "union field");
             }
 
             max_size = std::max(max_size, field_type->layout.size);
@@ -188,15 +210,20 @@ bool LayoutPass::compute_record_layout(RecordTypePtr record)
         for (const auto &[name, qualified_type] : record->fields) {
             TypePtr field_type = strip_typedefs(qualified_type.type);
             if (!field_type) {
-                return false;
+                return LayoutPassErrorInfo(
+                    LayoutPassError::TYPEDEF_STRIP_FAILED,
+                    "struct field: " + name);
             }
 
-            if (!compute_type_layout(field_type)) {
-                return false;
+            auto result = compute_type_layout(field_type);
+            if (result.is_err()) {
+                return result.error();
             }
 
             if (!field_type->has_layout()) {
-                return false;
+                return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                           field_type->debug_name(),
+                                           "struct field");
             }
 
             uint32_t field_alignment = field_type->layout.alignment;
@@ -232,10 +259,11 @@ bool LayoutPass::compute_record_layout(RecordTypePtr record)
     return true;
 }
 
-bool LayoutPass::compute_class_layout(ClassTypePtr class_type)
+Result<bool, LayoutPassErrorInfo>
+LayoutPass::compute_class_layout(ClassTypePtr class_type)
 {
     if (!class_type) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::NULL_TYPE_POINTER, "class");
     }
 
     // If not defined, we can't compute layout
@@ -250,21 +278,26 @@ bool LayoutPass::compute_class_layout(ClassTypePtr class_type)
     if (class_type->base.base_type) {
         TypePtr base = strip_typedefs(class_type->base.base_type);
         if (!base) {
-            return false;
+            return LayoutPassErrorInfo(LayoutPassError::TYPEDEF_STRIP_FAILED,
+                                       "base class");
         }
 
         // Check if base is actually a class
         if (base->kind != TypeKind::CLASS) {
-            return false;
+            return LayoutPassErrorInfo(LayoutPassError::BASE_TYPE_NOT_CLASS,
+                                       base->debug_name());
         }
 
         // Compute base class layout if not already done
-        if (!compute_type_layout(base)) {
-            return false;
+        auto result = compute_type_layout(base);
+        if (result.is_err()) {
+            return result.error();
         }
 
         if (!base->has_layout()) {
-            return false;
+            return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                       base->debug_name(),
+                                       "base class");
         }
 
         // Base class occupies the initial portion of the object
@@ -284,7 +317,8 @@ bool LayoutPass::compute_class_layout(ClassTypePtr class_type)
 
         TypePtr member_type = strip_typedefs(member_info.type.type);
         if (!member_type) {
-            return false;
+            return LayoutPassErrorInfo(LayoutPassError::TYPEDEF_STRIP_FAILED,
+                                       "class member: " + name);
         }
 
         // Skip function types (methods) - they don't contribute to object
@@ -293,12 +327,15 @@ bool LayoutPass::compute_class_layout(ClassTypePtr class_type)
             continue;
         }
 
-        if (!compute_type_layout(member_type)) {
-            return false;
+        auto result = compute_type_layout(member_type);
+        if (result.is_err()) {
+            return result.error();
         }
 
         if (!member_type->has_layout()) {
-            return false;
+            return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                       member_type->debug_name(),
+                                       "class member");
         }
 
         uint32_t member_alignment = member_type->layout.alignment;
@@ -337,10 +374,11 @@ bool LayoutPass::compute_class_layout(ClassTypePtr class_type)
     return true;
 }
 
-bool LayoutPass::compute_enum_layout(EnumTypePtr enum_type)
+Result<bool, LayoutPassErrorInfo>
+LayoutPass::compute_enum_layout(EnumTypePtr enum_type)
 {
     if (!enum_type) {
-        return false;
+        return LayoutPassErrorInfo(LayoutPassError::NULL_TYPE_POINTER, "enum");
     }
 
     // Enums are represented as integers
