@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "common/error_printer.hpp"
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
 #include "parser.hpp"
@@ -17,40 +18,6 @@
 #include "tokens.hpp"
 
 void print_parse_results();
-
-void print_lexer_errors()
-{
-    if (lexer_had_errors()) {
-        auto errors = lexer_get_errors();
-        std::cerr << "\n┌─────────────────────────┐\n";
-        std::cerr << "│   LEXICAL ERRORS        │\n";
-        std::cerr << "└─────────────────────────┘\n";
-        for (const auto &e : errors) {
-            std::cerr << "Lexer Error: " << e.message << " at line " << e.line;
-            if (e.column > 0) {
-                std::cerr << ":" << e.column;
-            }
-            std::cerr << "\n";
-        }
-    }
-}
-
-void print_parser_errors()
-{
-    if (parser_had_errors()) {
-        auto errors = parser_get_errors();
-        std::cerr << "\n┌─────────────────────────┐\n";
-        std::cerr << "│   PARSING ERRORS        │\n";
-        std::cerr << "└─────────────────────────┘\n";
-        for (const auto &e : errors) {
-            std::cerr << "Parser Error: " << e.message << " at line " << e.line;
-            if (e.column > 0) {
-                std::cerr << ":" << e.column;
-            }
-            std::cerr << "\n";
-        }
-    }
-}
 
 void sigsegv_handler(int signum)
 {
@@ -223,75 +190,69 @@ int main(int argc, char *argv[])
     }
 
     // Apply local static pass
-    try {
-        std::cout << "\n┌─────────────────────────────┐\n";
-        std::cout << "│ LOCAL STATIC TRANSFORMATION │\n";
-        std::cout << "└─────────────────────────────┘\n";
+    std::cout << "\n┌─────────────────────────────┐\n";
+    std::cout << "│ LOCAL STATIC TRANSFORMATION │\n";
+    std::cout << "└─────────────────────────────┘\n";
 
-        auto translation_unit = get_parsed_translation_unit();
-        auto class_methods = get_parsed_class_methods();
-        auto &symbol_table = get_symbol_table();
-        auto &type_factory = get_type_factory();
+    auto translation_unit = get_parsed_translation_unit();
+    auto class_methods = get_parsed_class_methods();
+    auto &symbol_table = get_symbol_table();
+    auto &type_factory = get_type_factory();
 
-        LocalStaticPass local_static_pass(symbol_table, type_factory);
+    LocalStaticPass local_static_pass(symbol_table, type_factory);
+    auto local_static_result =
         local_static_pass.process(translation_unit, class_methods);
 
-        std::cout << "Local static pass completed successfully" << std::endl;
-
-        if (debug_mode) {
-            get_symbol_table().print_symbols();
-        }
-    } catch (const std::exception &e) {
-        std::cerr << "\nLocal static pass error: " << e.what() << std::endl;
+    if (local_static_result.is_err()) {
+        print_local_static_pass_errors(local_static_result.error());
         lexer_clear_tokens();
         return 1;
     }
 
-    try {
-        std::cout << "\n┌─────────────────────┐\n";
-        std::cout << "│   LAYOUT PASS       │\n";
-        std::cout << "└─────────────────────┘\n";
+    std::cout << "Local static pass completed successfully" << std::endl;
 
-        auto &type_factory = get_type_factory();
-        LayoutPass layout_pass(type_factory);
+    if (debug_mode) {
+        get_symbol_table().print_symbols();
+    }
 
-        if (!layout_pass.run()) {
-            std::cerr << "Layout pass failed" << std::endl;
-            return 1;
-        }
+    std::cout << "\n┌─────────────────────┐\n";
+    std::cout << "│   LAYOUT PASS       │\n";
+    std::cout << "└─────────────────────┘\n";
 
-        std::cout << "Layout pass completed successfully" << std::endl;
+    LayoutPass layout_pass(type_factory);
+    auto layout_result = layout_pass.run();
 
-        if (debug_mode) {
-            std::cout << "\n┌─────────────────────┐\n";
-            std::cout << "│   TYPE LAYOUTS      │\n";
-            std::cout << "└─────────────────────┘\n";
-            type_factory.print_type_layouts();
-        }
-    } catch (const std::exception &e) {
-        std::cerr << "\nLayout pass error: " << e.what() << std::endl;
+    if (layout_result.is_err()) {
+        print_layout_pass_errors(layout_result.error());
         lexer_clear_tokens();
         return 1;
+    }
+
+    std::cout << "Layout pass completed successfully" << std::endl;
+
+    if (debug_mode) {
+        std::cout << "\n┌─────────────────────┐\n";
+        std::cout << "│   TYPE LAYOUTS      │\n";
+        std::cout << "└─────────────────────┘\n";
+        type_factory.print_type_layouts();
     }
 
     // Generate TAC
-    try {
-        std::cout << "\n┌─────────────────────┐\n";
-        std::cout << "│ TAC GENERATION      │\n";
-        std::cout << "└─────────────────────┘\n";
+    std::cout << "\n┌─────────────────────┐\n";
+    std::cout << "│ TAC GENERATION      │\n";
+    std::cout << "└─────────────────────┘\n";
 
-        auto translation_unit = get_parsed_translation_unit();
+    TACGenerator tac_gen;
+    auto tac_result = tac_gen.generate(translation_unit);
 
-        TACGenerator tac_gen;
-        tac_gen.generate(translation_unit);
-
-        std::cout << "TAC generation completed successfully\n\n";
-        tac_gen.get_program().print();
-    } catch (const std::exception &e) {
-        std::cerr << "\nTAC generation error: " << e.what() << std::endl;
+    if (tac_result.is_err()) {
+        print_tac_generation_errors(tac_result.error());
         lexer_clear_tokens();
         return 1;
     }
+
+    std::cout << "TAC generation completed successfully\n\n";
+    tac_gen.get_program().print();
 
     // IR generation-only mode: stop here
     if (irgen_only) {
