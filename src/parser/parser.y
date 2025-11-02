@@ -2059,6 +2059,16 @@ static void check_array_bounds(const TypePtr &array_type,
                          op_name + ": incompatible types for compound assignment");
         return nullptr;
       }
+    } else {
+      if(is_pointer_type(lhs_type) && is_integral_type(rhs_type))
+      {
+        return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type);
+      } else if (!are_types_equal(lhs_type, rhs_type)) {
+        parser_add_error(op_loc.begin.line,
+                         op_loc.begin.column,
+                         op_name + ": incompatible types for assignment");
+        return nullptr;
+      }
     }
 
     return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type);
