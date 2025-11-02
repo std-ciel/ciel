@@ -20,6 +20,7 @@
   #include <unordered_set>
   #include <unordered_map>
   #include <functional>
+  #include <format>
 
   #include "ast/ast_node.hpp"
   #include "symbol_table/type.hpp"
@@ -615,6 +616,54 @@
     if (!expr) return false;
     return expr->type == ASTNodeType::LITERAL_EXPR;
   }
+
+static void check_array_bounds(const TypePtr &array_type,
+                               const ASTNodePtr &index_expr,
+                               const yy::location &loc)
+{
+    using std::string, std::format;
+
+    if (!array_type || array_type->kind != TypeKind::ARRAY)
+        return; // not an array, ignore
+
+    const auto array = std::static_pointer_cast<ArrayType>(array_type);
+    if (array->size == 0)
+        return; // unsized array (e.g. int arr[])
+
+    if (!index_expr || index_expr->type != ASTNodeType::LITERAL_EXPR)
+        return; // dynamic index, can’t check at compile time
+
+    const auto lit = std::static_pointer_cast<LiteralExpr>(index_expr);
+
+    auto index_value_opt = std::visit(
+        [](auto &&val) -> std::optional<int64_t> {
+            using T = std::decay_t<decltype(val)>;
+            if constexpr (std::is_same_v<T, int64_t>)
+                return val;
+            else if constexpr (std::is_same_v<T, uint64_t>)
+                return static_cast<int64_t>(val);
+            else
+                return std::nullopt;
+        },
+        lit->value);
+
+    if (!index_value_opt)
+        return; // not an integer literal
+
+    const int64_t idx = *index_value_opt;
+
+    const auto report = [&](std::string_view msg) {
+        parser_add_error(loc.begin.line, loc.begin.column, string{msg});
+    };
+
+    if (idx < 0)
+        report(format("array subscript {} is negative", idx));
+    else if (static_cast<size_t>(idx) >= array->size)
+        report(format("array subscript {} is out of bounds (array size is {})",
+                      idx,
+                      array->size));
+}
+
 
   static bool has_duplicate_case_value(const ASTNodePtr& new_case_expr, const yy::location& loc) {
     if (parser_state.case_stmt_stack.empty()) return false;
@@ -1481,12 +1530,17 @@
       else if(op_enum == Operator::SUBSCRIPT_OP)
       {
         if (left_type->kind == TypeKind::ARRAY) {
+          // Check array bounds if index is a compile-time constant
+          check_array_bounds(left_type, right, right_loc);
+
           auto array_type = std::static_pointer_cast<ArrayType>(left_type);
           auto binary_expr = std::make_shared<BinaryExpr>(op_enum, left, right, array_type->element_type.type);
           binary_expr->is_lvalue = true;  // Array subscript produces lvalue
           return binary_expr;
         }
         else if (left_type->kind == TypeKind::POINTER) {
+          // For pointer subscript, we can't check bounds at compile time
+          // (unless we track allocation sizes, which is beyond static analysis)
           TypePtr result_type = dereference_pointer(left_type, op_loc, "array subscript");
           if (!result_type) {
             return nullptr;
@@ -2268,16 +2322,16 @@ primary_expression
           if (is_in_member_function_of_class() && parser_state.current_class_type) {
             ClassTypePtr searching_class = parser_state.current_class_type;
             ClassTypePtr current_class = parser_state.current_class_type;
-            
+
             // Search in current class and base classes
             while (current_class && !found_as_member) {
               if (current_class->members.find($1) != current_class->members.end()) {
                 MemberInfo member = current_class->members.at($1);
-                
+
                 // Check if the member is accessible from the current class context
                 // If the member is in a base class, we also need to verify the inheritance path is accessible
                 bool is_accessible = false;
-                
+
                 if (current_class == searching_class) {
                   // Member is in the same class - check direct access
                   is_accessible = is_member_accessible(current_class, member.access, searching_class);
@@ -2286,43 +2340,43 @@ primary_expression
                   // Walk from searching_class to current_class and ensure each step is accessible
                   ClassTypePtr walk = searching_class;
                   bool path_accessible = true;
-                  
+
                   while (walk && walk != current_class) {
                     if (walk->base.base_type && is_class_type(walk->base.base_type)) {
                       ClassTypePtr base = std::static_pointer_cast<ClassType>(walk->base.base_type);
-                      
+
                       // For private inheritance, members from base are not accessible in derived
                       if (walk->base.access == Access::PRIVATE && walk != searching_class) {
                         path_accessible = false;
                         break;
                       }
-                      
+
                       walk = base;
                     } else {
                       break;
                     }
                   }
-                  
+
                   // If we reached current_class and path is accessible, check member access
                   if (path_accessible && walk == current_class) {
                     is_accessible = is_member_accessible(current_class, member.access, searching_class);
                   }
                 }
-                
+
                 if (is_accessible) {
                   // Create implicit 'this->member' access
                   QualifiedType class_type(parser_state.current_class_type, Qualifier::NONE);
                   auto pointer_result = apply_pointer_levels_or_error(class_type, 1, "implicit this", @1.begin.line, @1.begin.column);
                   TypePtr this_type = pointer_result.type;
                   ASTNodePtr this_expr = std::make_shared<ThisExpr>(this_type);
-                  
+
                   TypePtr member_type = member.type.type;
                   $$ = std::make_shared<MemberExpr>(Operator::MEMBER_ACCESS_PTR, this_expr, $1, member_type);
                   found_as_member = true;
                 }
                 break;
               }
-              
+
               // Move to base class
               if (current_class->base.base_type && is_class_type(current_class->base.base_type)) {
                 current_class = std::static_pointer_cast<ClassType>(current_class->base.base_type);
@@ -2331,7 +2385,7 @@ primary_expression
               }
             }
           }
-          
+
           if (!found_as_member) {
             auto enum_opt = type_factory.lookup_by_scope("enum " + $1, symbol_table.get_scope_chain());
 
