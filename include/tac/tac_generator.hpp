@@ -102,6 +102,62 @@ class TACGenerator {
 
     TACOperand generate_initializer_value(ASTNodePtr value_node,
                                           TypePtr target_type);
+
+    void generate_aggregate_copy(const TACOperand &target,
+                                 const TACOperand &source,
+                                 TypePtr aggregate_type);
+
+    void generate_array_copy(const TACOperand &target_base,
+                             const TACOperand &source_base,
+                             const std::string &array_field_name,
+                             TypePtr base_type,
+                             TypePtr array_type);
+
+    template <typename AggregateFn, typename ArrayFn, typename PrimitiveFn>
+    void copy_field(const TACOperand &target,
+                    const TACOperand &source_field,
+                    const TypePtr &base_type,
+                    const TypePtr &field_type,
+                    const std::string &field_name,
+                    AggregateFn &&handle_aggregate,
+                    ArrayFn &&handle_array,
+                    PrimitiveFn &&handle_primitive)
+    {
+        if (!field_type)
+            return;
+
+        const auto make_member_op = [&](auto &&getter) -> TACOperand {
+            size_t offset = getter().value_or(0);
+            return TACOperand::member_access(target,
+                                             field_name,
+                                             offset,
+                                             field_type);
+        };
+
+        if (field_type->kind == TypeKind::RECORD ||
+            field_type->kind == TypeKind::CLASS) {
+            handle_aggregate(
+                make_member_op([&] {
+                    if (auto rec =
+                            std::dynamic_pointer_cast<RecordType>(base_type))
+                        return get_member_offset(rec, field_name);
+                    if (auto cls =
+                            std::dynamic_pointer_cast<ClassType>(base_type))
+                        return get_class_member_offset(cls, field_name);
+                    return std::optional<size_t>{};
+                }),
+                source_field,
+                field_type);
+        } else if (field_type->kind == TypeKind::ARRAY) {
+            handle_array(target,
+                         source_field,
+                         field_name,
+                         base_type,
+                         field_type);
+        } else {
+            handle_primitive(target, field_name, base_type, source_field);
+        }
+    }
 };
 
 #endif // TAC_GENERATOR_HPP

@@ -2147,7 +2147,7 @@ static void check_array_bounds(const TypePtr &array_type,
 %token <bool> BOOL_LITERAL
 
 %token INT UNSIGNED CHAR BOOL FLOAT VOID
-%token TYPEDEF STATIC CONST VOLATILE
+%token TYPEDEF STATIC AUTO REGISTER CONST VOLATILE
 %token ENUM STRUCT UNION CLASS
 %token RETURN IF ELSE SWITCH CASE DEFAULT FOR WHILE DO GOTO CONTINUE BREAK UNTIL
 %token NEW DELETE THIS
@@ -3911,6 +3911,14 @@ storage_class_specifier
     : STATIC
       {
         parser_state.current_storage = StorageClass::STATIC;
+      }
+    | AUTO
+      {
+        parser_state.current_storage = StorageClass::AUTO;
+      }
+    | REGISTER
+      {
+        parser_state.current_storage = StorageClass::REGISTER;
       }
     ;
 
