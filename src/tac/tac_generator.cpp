@@ -748,6 +748,13 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
         value = temp;
     }
 
+    TypePtr target_type = strip_typedefs(expr->expr_type);
+    if (target_type && (target_type->kind == TypeKind::RECORD ||
+                        target_type->kind == TypeKind::CLASS)) {
+        generate_aggregate_copy(target, value, target_type);
+        return target;
+    }
+
     emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN, target, value));
     return target;
 }
@@ -819,6 +826,175 @@ TACOperand TACGenerator::generate_ternary(std::shared_ptr<TernaryExpr> expr)
 
     emit_label(end_label);
     return result;
+}
+
+void TACGenerator::generate_aggregate_copy(const TACOperand &target,
+                                           const TACOperand &source,
+                                           TypePtr type)
+{
+    type = strip_typedefs(type);
+    if (!type)
+        return record_error("Cannot copy: invalid aggregate type");
+
+    const auto kind = type->kind;
+    const auto is_aggregate = [](TypeKind k) {
+        return k == TypeKind::RECORD || k == TypeKind::CLASS;
+    };
+
+    if (kind == TypeKind::RECORD) {
+        const auto record = std::static_pointer_cast<RecordType>(type);
+
+        for (const auto &[field_name, field_qual] : record->fields) {
+            const auto field_type = strip_typedefs(field_qual.type);
+            const auto source_field =
+                generate_member_access(source, field_name, type);
+
+            copy_field(
+                target,
+                source_field,
+                type,
+                field_type,
+                field_name,
+                [&](auto &&tgt, auto &&src, auto &&t) {
+                    generate_aggregate_copy(tgt, src, t);
+                },
+                [&](auto &&tgt,
+                    auto &&src,
+                    auto &&name,
+                    auto &&base_t,
+                    auto &&arr_t) {
+                    generate_array_copy(tgt, src, name, base_t, arr_t);
+                },
+                [&](auto &&tgt, auto &&name, auto &&base_t, auto &&src_field) {
+                    generate_member_store(tgt, name, base_t, src_field);
+                });
+        }
+    } else if (kind == TypeKind::CLASS) {
+        const auto cls = std::static_pointer_cast<ClassType>(type);
+
+        if (cls->base.base_type)
+            generate_aggregate_copy(target, source, cls->base.base_type);
+
+        for (const auto &[member_name, member_info] : cls->members) {
+            const auto member_type = strip_typedefs(member_info.type.type);
+            if (member_type && member_type->kind == TypeKind::FUNCTION)
+                continue;
+
+            const auto source_member =
+                generate_member_access(source, member_name, type);
+
+            copy_field(
+                target,
+                source_member,
+                type,
+                member_type,
+                member_name,
+                [&](auto &&tgt, auto &&src, auto &&t) {
+                    generate_aggregate_copy(tgt, src, t);
+                },
+                [&](auto &&tgt,
+                    auto &&src,
+                    auto &&name,
+                    auto &&base_t,
+                    auto &&arr_t) {
+                    generate_array_copy(tgt, src, name, base_t, arr_t);
+                },
+                [&](auto &&tgt, auto &&name, auto &&base_t, auto &&src_field) {
+                    generate_member_store(tgt, name, base_t, src_field);
+                });
+        }
+    } else {
+        record_error("Cannot copy: type is not a struct, union, or class");
+    }
+}
+
+void TACGenerator::generate_array_copy(const TACOperand &target_base,
+                                       const TACOperand &source_base,
+                                       const std::string &field_name,
+                                       TypePtr base_type,
+                                       TypePtr array_type)
+{
+    array_type = strip_typedefs(array_type);
+    if (!array_type || array_type->kind != TypeKind::ARRAY)
+        return record_error("Expected array type for array copy");
+
+    const auto arr = std::static_pointer_cast<ArrayType>(array_type);
+    const auto elem_type = strip_typedefs(arr->element_type.type);
+    const auto size = arr->size;
+
+    if (size == 0)
+        return record_error("Cannot copy unsized array");
+
+    const auto loop = new_label("array_copy_loop");
+    const auto loop_end = new_label("array_copy_end");
+
+    const auto counter = TACOperand::temporary(new_temp(nullptr), nullptr);
+    emit(
+        std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                         counter,
+                                         TACOperand::constant_int(0, nullptr)));
+
+    emit_label(loop);
+
+    const auto cond = TACOperand::temporary(new_temp(nullptr), nullptr);
+    emit(std::make_shared<TACInstruction>(
+        TACOpcode::LT,
+        cond,
+        counter,
+        TACOperand::constant_int(size, nullptr)));
+    emit_conditional_jump(TACOpcode::IF_FALSE, cond, loop_end);
+
+    const auto source_array =
+        generate_member_access(source_base, field_name, base_type);
+    const auto target_array =
+        generate_member_access(target_base, field_name, base_type);
+
+    const auto element_size = get_type_size(elem_type);
+    const auto offset = TACOperand::temporary(new_temp(nullptr), nullptr);
+    emit(std::make_shared<TACInstruction>(
+        TACOpcode::MUL,
+        offset,
+        counter,
+        TACOperand::constant_int(element_size, nullptr)));
+
+    const auto source_addr = TACOperand::temporary(new_temp(nullptr), nullptr);
+    const auto target_addr = TACOperand::temporary(new_temp(nullptr), nullptr);
+
+    emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                          source_addr,
+                                          source_array,
+                                          offset));
+    emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                          target_addr,
+                                          target_array,
+                                          offset));
+
+    const auto source_elem =
+        TACOperand::temporary(new_temp(elem_type), elem_type);
+    emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                          source_elem,
+                                          source_addr));
+
+    if (elem_type && (elem_type->kind == TypeKind::RECORD ||
+                      elem_type->kind == TypeKind::CLASS))
+        generate_aggregate_copy(target_addr, source_elem, elem_type);
+    else
+        emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                              target_addr,
+                                              source_elem));
+
+    const auto next_counter = TACOperand::temporary(new_temp(nullptr), nullptr);
+    emit(
+        std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                         next_counter,
+                                         counter,
+                                         TACOperand::constant_int(1, nullptr)));
+    emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                          counter,
+                                          next_counter));
+
+    emit_goto(loop);
+    emit_label(loop_end);
 }
 
 TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
