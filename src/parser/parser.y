@@ -617,52 +617,52 @@
     return expr->type == ASTNodeType::LITERAL_EXPR;
   }
 
-static void check_array_bounds(const TypePtr &array_type,
-                               const ASTNodePtr &index_expr,
-                               const yy::location &loc)
-{
-    using std::string, std::format;
+  static void check_array_bounds(const TypePtr &array_type,
+                                const ASTNodePtr &index_expr,
+                                const yy::location &loc)
+  {
+      using std::string, std::format;
 
-    if (!array_type || array_type->kind != TypeKind::ARRAY)
-        return; // not an array, ignore
+      if (!array_type || array_type->kind != TypeKind::ARRAY)
+          return; // not an array, ignore
 
-    const auto array = std::static_pointer_cast<ArrayType>(array_type);
-    if (array->size == 0)
-        return; // unsized array (e.g. int arr[])
+      const auto array = std::static_pointer_cast<ArrayType>(array_type);
+      if (array->size == 0)
+          return; // unsized array (e.g. int arr[])
 
-    if (!index_expr || index_expr->type != ASTNodeType::LITERAL_EXPR)
-        return; // dynamic index, can’t check at compile time
+      if (!index_expr || index_expr->type != ASTNodeType::LITERAL_EXPR)
+          return; // dynamic index, can’t check at compile time
 
-    const auto lit = std::static_pointer_cast<LiteralExpr>(index_expr);
+      const auto lit = std::static_pointer_cast<LiteralExpr>(index_expr);
 
-    auto index_value_opt = std::visit(
-        [](auto &&val) -> std::optional<int64_t> {
-            using T = std::decay_t<decltype(val)>;
-            if constexpr (std::is_same_v<T, int64_t>)
-                return val;
-            else if constexpr (std::is_same_v<T, uint64_t>)
-                return static_cast<int64_t>(val);
-            else
-                return std::nullopt;
-        },
-        lit->value);
+      auto index_value_opt = std::visit(
+          [](auto &&val) -> std::optional<int64_t> {
+              using T = std::decay_t<decltype(val)>;
+              if constexpr (std::is_same_v<T, int64_t>)
+                  return val;
+              else if constexpr (std::is_same_v<T, uint64_t>)
+                  return static_cast<int64_t>(val);
+              else
+                  return std::nullopt;
+          },
+          lit->value);
 
-    if (!index_value_opt)
-        return; // not an integer literal
+      if (!index_value_opt)
+          return; // not an integer literal
 
-    const int64_t idx = *index_value_opt;
+      const int64_t idx = *index_value_opt;
 
-    const auto report = [&](std::string_view msg) {
-        parser_add_error(loc.begin.line, loc.begin.column, string{msg});
-    };
+      const auto report = [&](std::string_view msg) {
+          parser_add_error(loc.begin.line, loc.begin.column, string{msg});
+      };
 
-    if (idx < 0)
-        report(format("array subscript {} is negative", idx));
-    else if (static_cast<size_t>(idx) >= array->size)
-        report(format("array subscript {} is out of bounds (array size is {})",
-                      idx,
-                      array->size));
-}
+      if (idx < 0)
+          report(format("array subscript {} is negative", idx));
+      else if (static_cast<size_t>(idx) >= array->size)
+          report(format("array subscript {} is out of bounds (array size is {})",
+                        idx,
+                        array->size));
+  }
 
 
   static bool has_duplicate_case_value(const ASTNodePtr& new_case_expr, const yy::location& loc) {
@@ -2246,7 +2246,7 @@ static void check_array_bounds(const TypePtr &array_type,
         }
 
         auto ptr_result = type_factory.pointer_from(pointee_type);
-        TypePtr result_type = unwrap_type_or_error(ptr_result, "new expression", @1.begin.line, @1.begin.column);
+        TypePtr result_type = unwrap_type_or_error(ptr_result, "new expression", loc.begin.line, loc.begin.column);
         return std::make_shared<NewExpr>(allocated_type, result_type);
   }
 
