@@ -116,7 +116,9 @@ bool is_void_type(TypePtr type)
 
 bool are_types_equal(TypePtr a, TypePtr b)
 {
-    return a->mangled_name() == b->mangled_name();
+    auto a_canonical = strip_typedefs(a);
+    auto b_canonical = strip_typedefs(b);
+    return a_canonical->mangled_name() == b_canonical->mangled_name();
 }
 
 bool is_integral_or_enum_non_bool(TypePtr type)
