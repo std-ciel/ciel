@@ -1442,6 +1442,24 @@ static void check_array_bounds(const TypePtr &array_type,
     // Validate builtin type
     if (type_validator(operand_type)) {
       TypePtr result_type = operand_type;
+
+      if (op_enum == Operator::ADDRESS_OF) {
+        QualifiedType ptr_type = apply_pointer_levels_or_error(
+            QualifiedType(operand_type, Qualifier::NONE),
+            1,
+            op_name,
+            loc.begin.line,
+            loc.begin.column
+        );
+        result_type = ptr_type.type;
+      }
+      else if (op_enum == Operator::POINTER_DEREF) {
+        result_type = dereference_pointer(operand_type, loc, op_name);
+        if (!result_type) {
+          return nullptr;
+        }
+      }
+
       auto unary_expr = std::make_shared<UnaryExpr>(op_enum, operand, result_type);
 
       // Set lvalue status based on operator type
