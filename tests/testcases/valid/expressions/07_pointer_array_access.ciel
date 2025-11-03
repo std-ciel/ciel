@@ -9,7 +9,7 @@ int main() {
     // Pointer to array
     int arr[10];
     int* ptr;
-    ptr = arr;
+    ptr = &arr[0];  // Explicitly take address of first element instead of relying on array decay
 
     ptr[0] = 5;
     ptr[1] = 10;
@@ -64,7 +64,7 @@ int main() {
     // Pointer to struct array
     struct Point point_arr[5];
     struct Point* pstruct;
-    pstruct = point_arr;
+    pstruct = &point_arr[0];  // Explicitly take address of first element instead of relying on array decay
 
     pstruct[0].x = 10;
     pstruct[0].y = 20;

@@ -2201,6 +2201,642 @@ static void check_array_bounds(const TypePtr &array_type,
 
     return false;
   }
+
+  // ====================================================================
+  // REFACTORED HELPER FUNCTIONS - Minimal code in semantic rules
+  // ====================================================================
+
+  // -------- Expression Helpers --------
+
+  static ASTNodePtr handle_cast_expression(TypePtr target_type, ASTNodePtr expr,
+                                           const yy::location& type_loc, const yy::location& expr_loc) {
+    if (!target_type) {
+      parser_add_error(type_loc.begin.line, type_loc.begin.column, "invalid target type in cast expression");
+      return nullptr;
+    }
+
+    if (!expr) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column, "invalid expression in cast");
+      return nullptr;
+    }
+
+    target_type = strip_typedefs(target_type);
+    TypePtr expr_type = get_expression_type(expr, expr_loc, "cast expression");
+
+    if (!expr_type) {
+      return nullptr;
+    }
+
+    if (!is_valid_cast(expr_type, target_type, expr, type_loc)) {
+      parser_add_error(type_loc.begin.line, type_loc.begin.column,
+                       "invalid cast from '" + expr_type->debug_name() +
+                       "' to '" + target_type->debug_name() + "'");
+      return nullptr;
+    }
+
+    return std::make_shared<CastExpr>(target_type, expr);
+  }
+
+  static ASTNodePtr handle_new_expression(TypePtr allocated_type, const yy::location& loc) {
+        TypePtr pointee_type = allocated_type;
+
+        if (allocated_type && allocated_type->kind == TypeKind::ARRAY) {
+          auto array_type = std::static_pointer_cast<ArrayType>(allocated_type);
+          pointee_type = array_type->element_type.type;
+        }
+
+        auto ptr_result = type_factory.pointer_from(pointee_type);
+        TypePtr result_type = unwrap_type_or_error(ptr_result, "new expression", @1.begin.line, @1.begin.column);
+        return std::make_shared<NewExpr>(allocated_type, result_type);
+  }
+
+  static ASTNodePtr handle_delete_expression(ASTNodePtr operand, const yy::location& op_loc, const yy::location& operand_loc) {
+    if (!operand) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand to 'delete'");
+      return nullptr;
+    }
+
+    if (operand->type == ASTNodeType::THIS_EXPR) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "cannot delete 'this' pointer");
+      return nullptr;
+    }
+
+    TypePtr operand_type = get_expression_type(operand, operand_loc, "delete operand");
+    if (!operand_type) {
+      parser_add_error(operand_loc.begin.line, operand_loc.begin.column,
+                      "unable to determine type of delete operand");
+      return nullptr;
+    }
+
+    if (!is_pointer_type(operand_type)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "delete operand is not a pointer type");
+      return nullptr;
+    }
+
+    TypePtr result_type = require_builtin("void", op_loc, "delete expression");
+    return std::make_shared<DeleteExpr>(operand, result_type);
+  }
+
+  static ASTNodePtr handle_ternary_expression(ASTNodePtr condition, ASTNodePtr true_expr, ASTNodePtr false_expr,
+                                               const yy::location& cond_loc, const yy::location& true_loc,
+                                               const yy::location& false_loc, const yy::location& op_loc) {
+    if (!condition || !true_expr || !false_expr) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand in conditional expression");
+      return nullptr;
+    }
+
+    TypePtr condition_type = get_expression_type(condition, cond_loc, "conditional condition");
+    TypePtr true_type = get_expression_type(true_expr, true_loc, "conditional true branch");
+    TypePtr false_type = get_expression_type(false_expr, false_loc, "conditional false branch");
+
+    if (!condition_type || !true_type || !false_type) {
+      return nullptr;
+    }
+
+    if (!is_bool_type(condition_type)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "conditional condition must be a bool type");
+      return nullptr;
+    }
+
+    if (!are_types_equal(true_type, false_type)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column,
+                       "conditional true and false branches must be of the same type");
+      return nullptr;
+    }
+
+    return std::make_shared<TernaryExpr>(condition, true_expr, false_expr, true_type);
+  }
+
+  static ASTNodePtr handle_comma_expression(ASTNodePtr left, ASTNodePtr right, const yy::location& right_loc) {
+    if (!left || !right) {
+      parser_add_error(right_loc.begin.line, right_loc.begin.column, "invalid operand in comma expression");
+      return nullptr;
+    }
+
+    TypePtr expr_type = get_expression_type(right, right_loc, "comma expression");
+    if (!expr_type) {
+      return nullptr;
+    }
+
+    return std::make_shared<BinaryExpr>(Operator::COMMA_OP, left, right, expr_type);
+  }
+
+  // -------- Function Call Helpers --------
+
+  // Helper to extract argument nodes from comma expression tree
+  static std::vector<ASTNodePtr> extract_argument_nodes(ASTNodePtr args_list) {
+    std::vector<ASTNodePtr> arg_nodes;
+
+    std::function<void(ASTNodePtr)> extract = [&](ASTNodePtr node) {
+      if (!node) return;
+
+      if (node->type == ASTNodeType::BINARY_EXPR) {
+        auto binary = std::static_pointer_cast<BinaryExpr>(node);
+        if (binary->op == Operator::COMMA_OP) {
+          extract(binary->left);
+          extract(binary->right);
+          return;
+        }
+      }
+
+      arg_nodes.push_back(node);
+    };
+
+    extract(args_list);
+    return arg_nodes;
+  }
+
+  // Helper to get types of argument nodes
+  static std::vector<QualifiedType> get_argument_types(const std::vector<ASTNodePtr>& arg_nodes, const yy::location& loc) {
+    std::vector<QualifiedType> arg_types;
+    for (const auto& arg : arg_nodes) {
+      TypePtr arg_type = get_expression_type(arg, loc, "function argument");
+      if (!arg_type) {
+        parser_add_error(loc.begin.line, loc.begin.column, "Type of function argument could not be inferred");
+      }
+      arg_types.push_back(QualifiedType{arg_type, Qualifier::NONE});
+    }
+    return arg_types;
+  }
+
+  // Helper for regular function calls (non-member)
+  static ASTNodePtr handle_regular_function_call(const std::string& function_name,
+                                                 const std::vector<ASTNodePtr>& arg_nodes,
+                                                 const std::vector<QualifiedType>& arg_types,
+                                                 const yy::location& func_loc) {
+    SymbolPtr func_symbol = lookup_function(function_name, arg_types, FunctionKind::NORMAL, std::nullopt);
+
+    if (!func_symbol) {
+      parser_add_error(func_loc.begin.line, func_loc.begin.column,
+                      "no matching function for call to '" + function_name + "' with " +
+                      std::to_string(arg_types.size()) + " argument(s)");
+      return nullptr;
+    }
+
+    auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+    return std::make_shared<CallExpr>(func_symbol, arg_nodes, fn_type->return_type.type);
+  }
+
+  // Helper for member function calls
+  static ASTNodePtr handle_member_function_call(ASTNodePtr member_expr,
+                                                const std::string& function_name,
+                                                const std::vector<ASTNodePtr>& arg_nodes,
+                                                const std::vector<QualifiedType>& arg_types,
+                                                const yy::location& func_loc,
+                                                const yy::location& call_loc) {
+    auto mem_node = std::static_pointer_cast<MemberExpr>(member_expr);
+    TypePtr base_class = get_expression_type(mem_node->object, func_loc, "member function call base");
+
+    if (mem_node->op == Operator::MEMBER_ACCESS_PTR) {
+      base_class = dereference_pointer(base_class, func_loc, "member function call base");
+    }
+
+    if (!base_class || !is_class_type(base_class)) {
+      parser_add_error(func_loc.begin.line, func_loc.begin.column,
+                      "member function call base is not a class type");
+      return nullptr;
+    }
+
+    SymbolPtr func_symbol = nullptr;
+    ClassTypePtr method_owner_class = nullptr;
+
+    // Search through class hierarchy
+    auto current_class = std::static_pointer_cast<ClassType>(base_class);
+    while (current_class && !func_symbol) {
+      func_symbol = lookup_function(function_name, arg_types, FunctionKind::METHOD, *current_class);
+      if (func_symbol) {
+        method_owner_class = current_class;
+        break;
+      }
+
+      // Move to base class if accessible (public inheritance only)
+      if (current_class->base.base_type && current_class->base.access == Access::PUBLIC) {
+        TypePtr base_type = current_class->base.base_type;
+        if (is_class_type(base_type)) {
+          current_class = std::static_pointer_cast<ClassType>(base_type);
+        } else {
+          current_class = nullptr;
+        }
+      } else {
+        current_class = nullptr;
+      }
+    }
+
+    if (!func_symbol) {
+      parser_add_error(func_loc.begin.line, func_loc.begin.column,
+                      "no matching member function for call to '" + function_name + "' with " +
+                      std::to_string(arg_types.size()) + " argument(s)");
+      return nullptr;
+    }
+
+    // Check accessibility
+    auto method_access = get_method_access(method_owner_class, func_symbol->get_name());
+    if (method_access.has_value() && !is_member_accessible(method_owner_class, method_access.value(), parser_state.current_class_type)) {
+      std::string access_str = (method_access.value() == Access::PRIVATE) ? "private" :
+                              (method_access.value() == Access::PROTECTED) ? "protected" : "public";
+      parser_add_error(func_loc.begin.line, func_loc.begin.column,
+                      "member function '" + function_name + "' is " + access_str + " and not accessible in this context");
+      return nullptr;
+    }
+
+    auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
+    std::vector<ASTNodePtr> final_args;
+
+    if (mem_node->op == Operator::MEMBER_ACCESS_PTR) {
+      final_args.push_back(mem_node->object);
+    } else {
+      final_args.push_back(make_address_of_expr(mem_node->object, func_loc));
+    }
+
+    final_args.insert(final_args.end(), arg_nodes.begin(), arg_nodes.end());
+    return std::make_shared<CallExpr>(func_symbol, final_args, fn_type->return_type.type);
+  }
+
+  // Helper for operator() overload calls
+  static ASTNodePtr handle_call_operator_overload(ASTNodePtr func_expr,
+                                                  const std::vector<ASTNodePtr>& arg_nodes,
+                                                  const std::vector<QualifiedType>& arg_types,
+                                                  const yy::location& func_loc,
+                                                  const yy::location& call_loc) {
+    TypePtr func_type = get_expression_type(func_expr, func_loc, "function call");
+
+    if (!is_class_type(func_type)) {
+      parser_add_error(func_loc.begin.line, func_loc.begin.column, "called object is not a function");
+      return nullptr;
+    }
+
+    SymbolPtr overload = get_operator_overload(func_type, "()", arg_types);
+    if (!overload) {
+      parser_add_error(call_loc.begin.line, call_loc.begin.column,
+                      "No operator() overload found for type '" + func_type->debug_name() + "'");
+      return nullptr;
+    }
+
+    TypePtr function_type = overload->get_type().type;
+    TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
+
+    std::vector<ASTNodePtr> final_args = {make_address_of_expr(func_expr, func_loc)};
+    final_args.insert(final_args.end(), arg_nodes.begin(), arg_nodes.end());
+
+    return std::make_shared<CallExpr>(overload, final_args, result_type);
+  }
+
+  // Unified function call handler
+  static ASTNodePtr handle_function_call(ASTNodePtr func_expr,
+                                        ASTNodePtr args_list,
+                                        const yy::location& func_loc,
+                                        const yy::location& call_loc) {
+    if (!func_expr) {
+      parser_add_error(func_loc.begin.line, func_loc.begin.column, "invalid function expression");
+      return nullptr;
+    }
+
+    // Extract and type-check arguments
+    std::vector<ASTNodePtr> arg_nodes = args_list ? extract_argument_nodes(args_list) : std::vector<ASTNodePtr>{};
+    std::vector<QualifiedType> arg_types = get_argument_types(arg_nodes, call_loc);
+
+    // Dispatch based on function expression type
+    if (func_expr->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR) {
+      std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>(func_expr)->function_name;
+      return handle_regular_function_call(function_name, arg_nodes, arg_types, func_loc);
+    }
+    else if (func_expr->type == ASTNodeType::MEMBER_EXPR) {
+      std::string function_name = std::static_pointer_cast<MemberExpr>(func_expr)->member_name;
+      return handle_member_function_call(func_expr, function_name, arg_nodes, arg_types, func_loc, call_loc);
+    }
+    else {
+      return handle_call_operator_overload(func_expr, arg_nodes, arg_types, func_loc, call_loc);
+    }
+  }
+
+  static ASTNodePtr handle_array_subscript(ASTNodePtr array, ASTNodePtr index,
+                                           const yy::location& array_loc, const yy::location& index_loc,
+                                           const yy::location& op_loc) {
+    if (!array || !index) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand to array subscript");
+      return nullptr;
+    }
+
+    return handle_binary_operator(array, index, array_loc, index_loc, op_loc,
+                                  Operator::SUBSCRIPT_OP,
+                                  [](TypePtr l, TypePtr r) {
+                                    return (is_pointer_type(l) || is_array_type(l)) && is_integral_type(r);
+                                  },
+                                  "pointer and integer types for array subscript");
+  }
+
+  static ASTNodePtr handle_postfix_increment(ASTNodePtr operand, const yy::location& op_loc) {
+    if (!operand) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand to postfix '++'");
+      return nullptr;
+    }
+
+    if (!get_expression_lvalue_status(operand)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "operand of postfix '++' must be an lvalue");
+      return nullptr;
+    }
+
+    auto result = handle_unary_operator(operand, op_loc, Operator::POST_INCREMENT,
+                                       [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                       "an integer or pointer type");
+    if (result && result->type == ASTNodeType::UNARY_EXPR) {
+      auto unary = std::static_pointer_cast<UnaryExpr>(result);
+      unary->is_lvalue = false;
+    }
+    return result;
+  }
+
+  static ASTNodePtr handle_postfix_decrement(ASTNodePtr operand, const yy::location& op_loc) {
+    if (!operand) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand to postfix '--'");
+      return nullptr;
+    }
+
+    if (!get_expression_lvalue_status(operand)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "operand of postfix '--' must be an lvalue");
+      return nullptr;
+    }
+
+    auto result = handle_unary_operator(operand, op_loc, Operator::POST_DECREMENT,
+                                       [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                       "an integer or pointer type");
+    if (result && result->type == ASTNodeType::UNARY_EXPR) {
+      auto unary = std::static_pointer_cast<UnaryExpr>(result);
+      unary->is_lvalue = false;
+    }
+    return result;
+  }
+
+  static ASTNodePtr handle_prefix_increment(ASTNodePtr operand, const yy::location& op_loc) {
+    if (!operand) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand to prefix '++'");
+      return nullptr;
+    }
+
+    if (!get_expression_lvalue_status(operand)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "operand of prefix '++' must be an lvalue");
+      return nullptr;
+    }
+
+    return handle_unary_operator(operand, op_loc, Operator::INCREMENT,
+                                 [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                 "an integer or pointer type");
+  }
+
+  static ASTNodePtr handle_prefix_decrement(ASTNodePtr operand, const yy::location& op_loc) {
+    if (!operand) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "invalid operand to prefix '--'");
+      return nullptr;
+    }
+
+    if (!get_expression_lvalue_status(operand)) {
+      parser_add_error(op_loc.begin.line, op_loc.begin.column, "operand of prefix '--' must be an lvalue");
+      return nullptr;
+    }
+
+    return handle_unary_operator(operand, op_loc, Operator::DECREMENT,
+                                 [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
+                                 "an integer or pointer type");
+  }
+
+  // -------- Statement Helpers --------
+
+  static ASTNodePtr handle_if_statement(ASTNodePtr condition, ASTNodePtr then_stmt, ASTNodePtr else_stmt,
+                                       const yy::location& cond_loc) {
+    if (!condition) {
+      parser_add_error(cond_loc.begin.line, cond_loc.begin.column, "invalid condition in if statement");
+      return nullptr;
+    }
+
+    ensure_condition_is_bool(condition, cond_loc, "if");
+    return std::make_shared<IfStmt>(condition, then_stmt, else_stmt);
+  }
+
+  static ASTNodePtr handle_if_statement_no_else(ASTNodePtr condition, ASTNodePtr then_stmt,
+                                                const yy::location& cond_loc) {
+    if (!condition) {
+      parser_add_error(cond_loc.begin.line, cond_loc.begin.column, "invalid condition in if statement");
+      return nullptr;
+    }
+
+    ensure_condition_is_bool(condition, cond_loc, "if");
+    return std::make_shared<IfStmt>(condition, then_stmt, nullptr);
+  }
+
+  static ASTNodePtr handle_while_statement(ASTNodePtr condition, ASTNodePtr body, const yy::location& cond_loc) {
+    if (!condition) {
+      parser_add_error(cond_loc.begin.line, cond_loc.begin.column, "invalid condition in while statement");
+      return nullptr;
+    }
+
+    ensure_condition_is_bool(condition, cond_loc, "while");
+    return std::make_shared<WhileStmt>(condition, body);
+  }
+
+  static ASTNodePtr handle_until_statement(ASTNodePtr condition, ASTNodePtr body, const yy::location& cond_loc) {
+    if (!condition) {
+      parser_add_error(cond_loc.begin.line, cond_loc.begin.column, "invalid condition in until statement");
+      return nullptr;
+    }
+
+    ensure_condition_is_bool(condition, cond_loc, "until");
+    return std::make_shared<UntilStmt>(condition, body);
+  }
+
+  static ASTNodePtr handle_do_while_statement(ASTNodePtr body, ASTNodePtr condition, const yy::location& cond_loc) {
+    if (!condition) {
+      parser_add_error(cond_loc.begin.line, cond_loc.begin.column, "invalid condition in do-while statement");
+      return nullptr;
+    }
+
+    ensure_condition_is_bool(condition, cond_loc, "do-while");
+    return std::make_shared<DoWhileStmt>(body, condition);
+  }
+
+  static ASTNodePtr handle_return_statement(const yy::location& loc) {
+    if (!parser_state.in_function()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'return' statement not within a function");
+      return nullptr;
+    }
+
+    TypePtr ret_type = parser_state.current_function_return();
+    if (ret_type && is_void_type(ret_type)) {
+      auto void_t = type_factory.get_builtin_type("void");
+      return std::make_shared<RetExpr>(std::nullopt, void_t ? void_t.value() : nullptr);
+    } else {
+      parser_add_error(loc.begin.line, loc.begin.column, "return without expression in non-void function");
+      return nullptr;
+    }
+  }
+
+  static ASTNodePtr handle_return_with_value(ASTNodePtr expr, const yy::location& expr_loc, const yy::location& loc) {
+    if (!expr) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column, "invalid return expression");
+      return nullptr;
+    }
+
+    TypePtr expr_type = get_expression_type(expr, expr_loc, "return expression");
+    if (!expr_type) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column,
+                      "unable to determine type of return expression");
+      return nullptr;
+    }
+
+    if (!parser_state.in_function()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'return' statement not within a function");
+      return nullptr;
+    }
+
+    auto fn_ret = strip_typedefs(parser_state.current_function_return());
+    auto expr_ret = strip_typedefs(expr_type);
+
+    if (!fn_ret) {
+      parser_add_error(loc.begin.line, loc.begin.column, "unable to determine function return type");
+      return nullptr;
+    }
+
+    if (is_void_type(fn_ret)) {
+      parser_add_error(loc.begin.line, loc.begin.column,
+                      "return with a value in function returning 'void'");
+      return nullptr;
+    }
+
+    if (fn_ret != expr_ret) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column,
+                      "return type mismatch: function expects '" +
+                      (fn_ret ? fn_ret->debug_name() : std::string("invalid")) +
+                      "', but returning expression of type '" +
+                      (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
+      return nullptr;
+    }
+
+    return std::make_shared<RetExpr>(expr, expr_type);
+  }
+
+  static ASTNodePtr handle_break_statement(const yy::location& loc) {
+    if (!in_loop_or_switch()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'break' statement not within a loop or switch");
+      return nullptr;
+    }
+    return std::make_shared<BreakStmt>();
+  }
+
+  static ASTNodePtr handle_continue_statement(const yy::location& loc) {
+    if (!in_loop()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'continue' statement not within a loop");
+      return nullptr;
+    }
+    return std::make_shared<ContinueStmt>();
+  }
+
+  static ASTNodePtr handle_goto_statement(const std::string& label, const yy::location& loc) {
+    if (label.empty()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "invalid label name in goto statement");
+      return nullptr;
+    }
+
+    if (!parser_state.in_function()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'goto' statement not within a function");
+      return nullptr;
+    }
+
+    auto label_sym_opt = symbol_table.lookup_symbol(label);
+    auto goto_node = std::make_shared<GotoStmt>(nullptr);
+
+    if (!label_sym_opt.has_value()) {
+      parser_state.add_unresolved_label(label, goto_node);
+    } else {
+      goto_node->target_label = label_sym_opt.value();
+    }
+
+    return goto_node;
+  }
+
+  static ASTNodePtr handle_label_statement(const std::string& label, ASTNodePtr stmt, const yy::location& loc) {
+    if (label.empty()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "invalid label name");
+      return stmt;
+    }
+
+    auto label_type = type_factory.lookup_by_scope(label, symbol_table.get_scope_chain());
+    if (!label_type.has_value()) {
+      label_type = unwrap_type_or_error(type_factory.make<BuiltinType>(BuiltinTypeKind::LABEL),
+                                       "label", loc.begin.line, loc.begin.column);
+    }
+
+    if (!label_type.has_value()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "unable to create label type");
+      return stmt;
+    }
+
+    add_symbol_if_valid(label, QualifiedType(label_type.value(), Qualifier::NONE), loc);
+    auto label_sym_opt = symbol_table.lookup_symbol(label);
+
+    if (!label_sym_opt.has_value()) {
+      parser_add_error(loc.begin.line, loc.begin.column,
+                      "label symbol '" + label + "' not found after adding it");
+      return stmt;
+    }
+
+    parser_state.resolve_label(label_sym_opt.value());
+    return std::make_shared<LabelStmt>(label_sym_opt.value(), stmt);
+  }
+
+  static ASTNodePtr handle_case_statement(ASTNodePtr case_expr, ASTNodePtr body,
+                                         const yy::location& expr_loc, const yy::location& loc) {
+    if (!case_expr) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column, "invalid case expression");
+      return body;
+    }
+
+    if (!in_switch()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'case' label not within a switch statement");
+      return body;
+    }
+
+    if (!is_literal_expression(case_expr)) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column,
+                      "'case' value must be a literal constant expression");
+      return body;
+    }
+
+    if (has_duplicate_case_value(case_expr, expr_loc)) {
+      parser_add_error(expr_loc.begin.line, expr_loc.begin.column,
+                      "duplicate 'case' value in switch statement");
+      return body;
+    }
+
+    auto switch_type = parser_state.current_switch_subject();
+    if (switch_type) {
+      auto expr_type_result = get_expression_type(case_expr);
+      if (expr_type_result && !are_types_equal(switch_type, expr_type_result.value())) {
+        parser_add_error(expr_loc.begin.line, expr_loc.begin.column,
+                        "'case' label type does not match switch expression type");
+      }
+    }
+
+    auto case_node = std::make_shared<CaseStmt>(case_expr, body);
+    parser_state.case_stmt_stack.back().push_back(case_node);
+
+    return case_node;
+  }
+
+  static ASTNodePtr handle_default_statement(ASTNodePtr body, const yy::location& loc) {
+    if (!in_switch()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "'default' label not within a switch statement");
+      return body;
+    }
+
+    if (parser_state.default_case.back().has_value()) {
+      parser_add_error(loc.begin.line, loc.begin.column, "multiple 'default' labels in the same switch");
+      return body;
+    }
+
+    auto default_node = std::make_shared<DefaultStmt>(body);
+    parser_state.default_case.back() = default_node;
+
+    return default_node;
+  }
 }
 
 %token <std::string> IDENTIFIER
@@ -2626,351 +3262,11 @@ postfix_expression
       $$ = $1;
     }
     | postfix_expression OPEN_BRACKET_OP expression CLOSE_BRACKET_OP
-    {
-      $$ = handle_binary_operator($1, $3, @1, @3, @2,
-          Operator::SUBSCRIPT_OP,
-          [](TypePtr left, TypePtr right) {
-            return (is_pointer_type(left) || is_array_type(left)) && is_integral_type(right);
-          },
-          "pointer and integer types for array subscript");
-    }
+      { $$ = handle_array_subscript($1, $3, @1, @3, @2); }
     | postfix_expression OPEN_PAREN_OP CLOSE_PAREN_OP
-    {
-      if($1->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR){
-        std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>($1)->function_name;
-        FunctionType non_variadic(QualifiedType{}, {}, false);
-        FunctionType variadic(QualifiedType{}, {}, true);
-
-        FunctionMeta meta{};
-
-        auto non_variadic_mangled_name = mangle_function_name(function_name, non_variadic, meta, std::nullopt).value();
-        auto variadic_mangled_name = mangle_function_name(function_name, variadic, meta, std::nullopt).value();
-
-        auto non_variadic_symbol = symbol_table.lookup_operator(non_variadic_mangled_name);
-        auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled_name);
-
-        if (!non_variadic_symbol.has_value() && !variadic_symbol.has_value()) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "use of undeclared function '" + function_name + "'");
-          $$ = nullptr;
-        }
-        else if (non_variadic_symbol.has_value() && variadic_symbol.has_value()) {
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "ambiguous call to overloaded function '" + function_name + "' with no arguments");
-          $$ = nullptr;
-        }
-        else {
-          SymbolPtr func_symbol = non_variadic_symbol.has_value() ? non_variadic_symbol.value() : variadic_symbol.value();
-          auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
-
-          if (!fn_type->param_types.empty() && !fn_type->is_variadic) {
-            parser_add_error(@2.begin.line,
-                             @2.begin.column,
-                             "too few arguments to function call, expected " +
-                             std::to_string(fn_type->param_types.size()) + ", have 0");
-            $$ = nullptr;
-          }
-          else {
-            std::vector<ASTNodePtr> args; // empty argument list
-            $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
-          }
-        }
-      }
-      else if ($1->type == ASTNodeType::MEMBER_EXPR) {
-        std::string function_name = std::static_pointer_cast<MemberExpr>($1)->member_name;
-        TypePtr base_class = get_expression_type(std::static_pointer_cast<MemberExpr>($1)->object, @1, "member function call base");
-
-        auto mem_node = std::static_pointer_cast<MemberExpr>($1);
-        if (mem_node->op == Operator::MEMBER_ACCESS_PTR) {
-          // If using '->', dereference pointer to get class type
-          base_class = dereference_pointer(base_class, @1, "member function call base");
-        }
-
-        if (!base_class || !is_class_type(base_class)) {
-          parser_add_error(@1.begin.line,
-                          @1.begin.column,
-                          "member function call base is not a class type");
-          $$ = nullptr;
-        }
-        else {
-          FunctionMeta meta(FunctionKind::METHOD, {});
-          SymbolPtr func_symbol = nullptr;
-          ClassTypePtr method_owner_class = nullptr;
-
-          // Search through class hierarchy for matching function
-          auto current_class = std::static_pointer_cast<ClassType>(base_class);
-
-          while (current_class && !func_symbol) {
-            FunctionType non_variadic(QualifiedType(), {}, false);
-            FunctionType variadic(QualifiedType(), {}, true);
-
-            // Try non-variadic version
-            auto non_variadic_mangled = mangle_function_name(function_name, non_variadic, meta, *current_class);
-            if (non_variadic_mangled.has_value()) {
-              auto non_variadic_symbol = symbol_table.lookup_operator(non_variadic_mangled.value());
-              if (non_variadic_symbol.has_value()) {
-                func_symbol = non_variadic_symbol.value();
-                method_owner_class = current_class;
-                break;
-              }
-            }
-
-            // Try variadic version
-            if (!func_symbol) {
-              auto variadic_mangled = mangle_function_name(function_name, variadic, meta, *current_class);
-              if (variadic_mangled.has_value()) {
-                auto variadic_symbol = symbol_table.lookup_operator(variadic_mangled.value());
-                if (variadic_symbol.has_value()) {
-                  func_symbol = variadic_symbol.value();
-                  method_owner_class = current_class;
-                  break;
-                }
-              }
-            }
-
-            // Move to base class if accessible (public inheritance only)
-            if (current_class->base.base_type && current_class->base.access == Access::PUBLIC) {
-              TypePtr base_type = current_class->base.base_type;
-              if (is_class_type(base_type)) {
-                current_class = std::static_pointer_cast<ClassType>(base_type);
-              } else {
-                current_class = nullptr;
-              }
-            } else {
-              current_class = nullptr;
-            }
-          }
-
-          if (!func_symbol) {
-            parser_add_error(@1.begin.line,
-                            @1.begin.column,
-                            "use of undeclared member function '" + function_name + "'");
-            $$ = nullptr;
-          }
-          else {
-            auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
-
-            if (!fn_type->param_types.empty() && !fn_type->is_variadic) {
-              parser_add_error(@2.begin.line,
-                              @2.begin.column,
-                              "too few arguments to member function call, expected " +
-                              std::to_string(fn_type->param_types.size()) + ", have 0");
-              $$ = nullptr;
-            }
-            else {
-              // Check if the method is accessible
-              auto method_access = get_method_access(method_owner_class, func_symbol->get_name());
-              if (method_access.has_value() && !is_member_accessible(method_owner_class, method_access.value(), parser_state.current_class_type)) {
-                std::string access_str = (method_access.value() == Access::PRIVATE) ? "private" :
-                                        (method_access.value() == Access::PROTECTED) ? "protected" : "public";
-                parser_add_error(@1.begin.line,
-                                @1.begin.column,
-                                "member function '" + function_name + "' is " + access_str + " and not accessible in this context");
-                $$ = nullptr;
-              }
-              else {
-                std::vector<ASTNodePtr> args;
-
-                if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
-                  args.push_back(mem_node->object);
-                }
-                else{
-                  args.push_back(make_address_of_expr(mem_node->object, @1));
-                }
-
-                $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
-              }
-            }
-          }
-        }
-      }
-      else {
-        TypePtr func_type = get_expression_type($1, @1, "function call");
-
-        if (is_class_type(func_type)) {
-          SymbolPtr overload = get_operator_overload(func_type, "()");
-          if (overload) {
-            TypePtr function_type = overload->get_type().type;
-            TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-            std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1)};
-            $$ = std::make_shared<CallExpr>(overload, args, result_type);
-          } else {
-            parser_add_error(@2.begin.line,
-                            @2.begin.column,
-                            "No operator() overload found for type '" + func_type->debug_name() + "'");
-            $$ = nullptr;
-          }
-        }
-        else{
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "called object is not a function");
-          $$ = nullptr;
-        }
-      }
-
-    }
+      { $$ = handle_function_call($1, nullptr, @1, @2); }
     | postfix_expression OPEN_PAREN_OP argument_expression_list CLOSE_PAREN_OP
-    {
-      ASTNodePtr args_list = $3;
-      std::vector<ASTNodePtr> arg_nodes;
-
-      std::function<void(ASTNodePtr)> extract_arg_nodes = [&](ASTNodePtr node) {
-        if (!node) return;
-
-        if (node->type == ASTNodeType::BINARY_EXPR) {
-          auto binary = std::static_pointer_cast<BinaryExpr>(node);
-          if (binary->op == Operator::COMMA_OP) {
-            // Recursively extract left side first (for left-to-right order)
-            extract_arg_nodes(binary->left);
-            // Then extract right side
-            extract_arg_nodes(binary->right);
-            return;
-          }
-        }
-
-        arg_nodes.push_back(node);
-      };
-
-      extract_arg_nodes(args_list);
-
-      std::vector<QualifiedType> arg_types;
-      for (const auto& arg : arg_nodes) {
-        TypePtr arg_type = get_expression_type(arg, @3, "function argument");
-        if (!arg_type) {
-          parser_add_error(@3.begin.line,
-                           @3.begin.column,
-                           "Type of function argument could not be inferred");
-        }
-        arg_types.push_back(QualifiedType{arg_type, Qualifier::NONE});
-      }
-
-      if($1->type == ASTNodeType::FUNCTION_IDENTIFIER_EXPR){
-        std::string function_name = std::static_pointer_cast<FunctionIdentifierExpr>($1)->function_name;
-
-        SymbolPtr func_symbol = lookup_function(function_name, arg_types, FunctionKind::NORMAL, std::nullopt);
-
-        // Step 5: Error if no match found
-        if (!func_symbol) {
-          parser_add_error(@1.begin.line,
-                          @1.begin.column,
-                          "no matching function for call to '" + function_name + "' with " +
-                          std::to_string(arg_types.size()) + " argument(s)");
-          $$ = nullptr;
-        }
-        else {
-          auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
-          $$ = std::make_shared<CallExpr>(func_symbol, arg_nodes, fn_type->return_type.type);
-        }
-      }
-      else if ($1->type == ASTNodeType::MEMBER_EXPR) {
-        std::string function_name = std::static_pointer_cast<MemberExpr>($1)->member_name;
-        TypePtr base_class = get_expression_type(std::static_pointer_cast<MemberExpr>($1)->object, @1, "member function call base");
-
-        auto mem_node = std::static_pointer_cast<MemberExpr>($1);
-        if (mem_node->op == Operator::MEMBER_ACCESS_PTR) {
-          // If using '->', dereference pointer to get class type
-          base_class = dereference_pointer(base_class, @1, "member function call base");
-        }
-
-        if (!base_class || !is_class_type(base_class)) {
-          parser_add_error(@1.begin.line,
-                          @1.begin.column,
-                          "member function call base is not a class type");
-          $$ = nullptr;
-        }
-        else {
-          SymbolPtr func_symbol = nullptr;
-          ClassTypePtr method_owner_class = nullptr;
-
-          // Search through class hierarchy for matching function
-          auto current_class = std::static_pointer_cast<ClassType>(base_class);
-
-          while (current_class && !func_symbol) {
-            func_symbol = lookup_function(function_name, arg_types, FunctionKind::METHOD, *current_class);
-
-            if (func_symbol) {
-              method_owner_class = current_class;
-              break;
-            }
-
-            // Move to base class if accessible (public inheritance only)
-            if (current_class->base.base_type && current_class->base.access == Access::PUBLIC) {
-              TypePtr base_type = current_class->base.base_type;
-              if (is_class_type(base_type)) {
-                current_class = std::static_pointer_cast<ClassType>(base_type);
-              } else {
-                current_class = nullptr;
-              }
-            } else {
-              current_class = nullptr;
-            }
-          }
-
-          // Error if no match found
-          if (!func_symbol) {
-            parser_add_error(@1.begin.line,
-                            @1.begin.column,
-                            "no matching member function for call to '" + function_name + "' with " +
-                            std::to_string(arg_types.size()) + " argument(s)");
-            $$ = nullptr;
-          }
-          else {
-            // Check if the method is accessible
-            auto method_access = get_method_access(method_owner_class, func_symbol->get_name());
-            if (method_access.has_value() && !is_member_accessible(method_owner_class, method_access.value(), parser_state.current_class_type)) {
-              std::string access_str = (method_access.value() == Access::PRIVATE) ? "private" :
-                                      (method_access.value() == Access::PROTECTED) ? "protected" : "public";
-              parser_add_error(@1.begin.line,
-                              @1.begin.column,
-                              "member function '" + function_name + "' is " + access_str + " and not accessible in this context");
-              $$ = nullptr;
-            }
-            else {
-              auto fn_type = std::static_pointer_cast<FunctionType>(func_symbol->get_type().type);
-              std::vector<ASTNodePtr> args;
-
-              if(mem_node->op == Operator::MEMBER_ACCESS_PTR){
-                args.push_back(mem_node->object);
-              }
-              else{
-                args.push_back(make_address_of_expr(mem_node->object, @1));
-              }
-
-              args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
-              $$ = std::make_shared<CallExpr>(func_symbol, args, fn_type->return_type.type);
-            }
-          }
-        }
-      }
-      else {
-        TypePtr func_type = get_expression_type($1, @1, "function call");
-
-        if (is_class_type(func_type)) {
-          SymbolPtr overload = get_operator_overload(func_type, "()", arg_types);
-          if (overload) {
-            TypePtr function_type = overload->get_type().type;
-            TypePtr result_type = std::static_pointer_cast<FunctionType>(function_type)->return_type.type;
-            std::vector<ASTNodePtr> args = {make_address_of_expr($1, @1)};
-            args.insert(args.end(), arg_nodes.begin(), arg_nodes.end());
-            $$ = std::make_shared<CallExpr>(overload, args, result_type);
-          } else {
-            parser_add_error(@2.begin.line,
-                            @2.begin.column,
-                            "No operator() overload found for type '" + func_type->debug_name() + "'");
-            $$ = nullptr;
-          }
-        }
-        else{
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "called object is not a function");
-          $$ = nullptr;
-        }
-      }
-    }
+      { $$ = handle_function_call($1, $3, @1, @2); }
     | postfix_expression DOT_OP IDENTIFIER
     {
       TypePtr base_type = get_expression_type($1, @1, "member access");
@@ -3174,47 +3470,9 @@ postfix_expression
       }
     }
     | postfix_expression INCREMENT_OP
-    {
-      // Postfix increment requires lvalue operand but produces rvalue
-      if (!get_expression_lvalue_status($1)) {
-        parser_add_error(@1.begin.line, @1.begin.column,
-                         "operand of postfix '++' must be an lvalue");
-        $$ = nullptr;
-      } else {
-        auto result = handle_unary_operator($1, @2, Operator::POST_INCREMENT,
-                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                   "an integer or pointer type");
-        if (result) {
-          // Force postfix increment to produce an rvalue
-          if (result->type == ASTNodeType::UNARY_EXPR) {
-            auto unary = std::static_pointer_cast<UnaryExpr>(result);
-            unary->is_lvalue = false;
-          }
-        }
-        $$ = result;
-      }
-    }
+      { $$ = handle_postfix_increment($1, @2); }
     | postfix_expression DECREMENT_OP
-    {
-      // Postfix decrement requires lvalue operand but produces rvalue
-      if (!get_expression_lvalue_status($1)) {
-        parser_add_error(@1.begin.line, @1.begin.column,
-                         "operand of postfix '--' must be an lvalue");
-        $$ = nullptr;
-      } else {
-        auto result = handle_unary_operator($1, @2, Operator::POST_DECREMENT,
-                                   [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                   "an integer or pointer type");
-        if (result) {
-          // Force postfix decrement to produce an rvalue
-          if (result->type == ASTNodeType::UNARY_EXPR) {
-            auto unary = std::static_pointer_cast<UnaryExpr>(result);
-            unary->is_lvalue = false;
-          }
-        }
-        $$ = result;
-      }
-    }
+      { $$ = handle_postfix_decrement($1, @2); }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP OPEN_BRACE_OP initializer_list CLOSE_BRACE_OP
     {
         TypePtr target_type = $2;
@@ -3291,123 +3549,33 @@ unary_expression
         $$ = $1;
       }
     | INCREMENT_OP unary_expression
-      {
-        // Prefix increment requires lvalue operand and produces lvalue
-        if (!get_expression_lvalue_status($2)) {
-          parser_add_error(@2.begin.line, @2.begin.column,
-                           "operand of prefix '++' must be an lvalue");
-          $$ = nullptr;
-        } else {
-          $$ = handle_unary_operator($2, @1, Operator::INCREMENT,
-                                     [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                     "an integer or pointer type");
-        }
-      }
+      { $$ = handle_prefix_increment($2, @1); }
     | DECREMENT_OP unary_expression
-      {
-        // Prefix decrement requires lvalue operand and produces lvalue
-        if (!get_expression_lvalue_status($2)) {
-          parser_add_error(@2.begin.line, @2.begin.column,
-                           "operand of prefix '--' must be an lvalue");
-          $$ = nullptr;
-        } else {
-          $$ = handle_unary_operator($2, @1, Operator::DECREMENT,
-                                     [](TypePtr t) { return is_integral_type(t) || is_pointer_type(t); },
-                                     "an integer or pointer type");
-        }
-      }
+      { $$ = handle_prefix_decrement($2, @1); }
     | LOGICAL_NOT_OP cast_expression
-      {
-        $$ = handle_unary_operator($2, @1, Operator::LOGICAL_NOT,
-                                   [](TypePtr t) { return is_bool_type(t); },
-                                   "a bool type");
-      }
+      { $$ = handle_unary_operator($2, @1, Operator::LOGICAL_NOT,
+                                   [](TypePtr t) { return is_bool_type(t); }, "a bool type"); }
     | TILDE_OP cast_expression
-      {
-        $$ = handle_unary_operator($2, @1, Operator::BITWISE_NOT,
-                                   [](TypePtr t) { return is_integral_type(t); },
-                                   "an integral type");
-      }
+      { $$ = handle_unary_operator($2, @1, Operator::BITWISE_NOT,
+                                   [](TypePtr t) { return is_integral_type(t); }, "an integral type"); }
     | AMPERSAND_OP cast_expression
-      {
-        $$ = handle_unary_operator($2, @1, Operator::ADDRESS_OF,
-                                   [](TypePtr t) { return true; },
-                                   "any type");
-      }
+      { $$ = handle_unary_operator($2, @1, Operator::ADDRESS_OF,
+                                   [](TypePtr t) { return true; }, "any type"); }
     | STAR_OP cast_expression
-      {
-        $$ = handle_unary_operator($2, @1, Operator::POINTER_DEREF,
-                                   [](TypePtr t) { return is_pointer_type(t); },
-                                   "a pointer type");
-      }
+      { $$ = handle_unary_operator($2, @1, Operator::POINTER_DEREF,
+                                   [](TypePtr t) { return is_pointer_type(t); }, "a pointer type"); }
     | PLUS_OP cast_expression %prec UNARY
-      {
-        $$ = handle_unary_operator($2, @1, Operator::UNARY_PLUS,
-                                   [](TypePtr t) { return is_arithmetic_type(t); },
-                                   "an arithmetic type");
-      }
+      { $$ = handle_unary_operator($2, @1, Operator::UNARY_PLUS,
+                                   [](TypePtr t) { return is_arithmetic_type(t); }, "an arithmetic type"); }
     | MINUS_OP cast_expression %prec UNARY
-      {
-        $$ = handle_unary_operator($2, @1, Operator::UNARY_MINUS,
-                                   [](TypePtr t) { return is_arithmetic_type(t); },
-                                   "an arithmetic type");
-      }
+      { $$ = handle_unary_operator($2, @1, Operator::UNARY_MINUS,
+                                   [](TypePtr t) { return is_arithmetic_type(t); }, "an arithmetic type"); }
     | NEW type_name
-      {
-        TypePtr allocated_type = $2;
-        TypePtr pointee_type = allocated_type;
-
-        if (allocated_type && allocated_type->kind == TypeKind::ARRAY) {
-          auto array_type = std::static_pointer_cast<ArrayType>(allocated_type);
-          pointee_type = array_type->element_type.type;
-        }
-
-        auto ptr_result = type_factory.pointer_from(pointee_type);
-        TypePtr result_type = unwrap_type_or_error(ptr_result, "new expression", @1.begin.line, @1.begin.column);
-        $$ = std::make_shared<NewExpr>(allocated_type, result_type);
-      }
+      { $$ = handle_new_expression($2, @1); }
     | DELETE unary_expression
-      {
-        if($2->type == ASTNodeType::THIS_EXPR ){
-          parser_add_error(@1.begin.line,
-                           @1.begin.column,
-                           "cannot delete 'this' pointer");
-          $$ = nullptr;
-        }
-        else{
-          TypePtr operand_type = get_expression_type($2, @2, "delete operand");
-          if (operand_type && !is_pointer_type(operand_type)) {
-            parser_add_error(@1.begin.line,
-                            @1.begin.column,
-                            "delete operand is not a pointer type");
-            $$ = nullptr;
-          }
-          else{
-            TypePtr result_type = require_builtin("void", @1, "delete expression");
-            $$ = std::make_shared<DeleteExpr>($2, result_type);
-          }
-        }
-      }
+      { $$ = handle_delete_expression($2, @1, @2); }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP cast_expression
-      {
-        TypePtr target_type = $2;
-        target_type = strip_typedefs(target_type);
-
-        // Get the type of the expression being cast
-        TypePtr expr_type = get_expression_type($4, @4, "cast expression");
-
-        if (!expr_type) {
-          $$ = nullptr;
-        } else if (!is_valid_cast(expr_type, target_type, $4, @2)) {
-          parser_add_error(@2.begin.line,
-                           @2.begin.column,
-                           "invalid cast from '" + expr_type->debug_name() +
-                           "' to '" + target_type->debug_name() + "'");
-          $$ = nullptr;
-        } else {
-          $$ = std::make_shared<CastExpr>(target_type, $4);
-        }
-      }
+      { $$ = handle_cast_expression($2, $4, @2, @4); }
     ;
 
 cast_expression
@@ -3676,32 +3844,7 @@ conditional_expression
         $$ = $1;
       }
     | logical_or_expression QUESTION_OP expression COLON_OP conditional_expression
-      {
-        TypePtr condition_type = get_expression_type($1, @1, "conditional condition");
-        TypePtr true_type = get_expression_type($3, @3, "conditional true branch");
-        TypePtr false_type = get_expression_type($5, @5, "conditional false branch");
-
-        if(!condition_type || !true_type || !false_type) {
-          $$ = nullptr;
-        }
-        else if(!is_bool_type(condition_type)){
-          parser_add_error(@2.begin.line,
-                             @2.begin.column,
-                             "conditional condition must be a bool type");
-            $$ = nullptr;
-        }
-        else {
-          if (are_types_equal(true_type, false_type)) {
-            $$ = std::make_shared<TernaryExpr>($1, $3, $5, true_type);
-          }
-          else{
-            parser_add_error(@2.begin.line,
-                             @2.begin.column,
-                             "conditional true and false branches must be of the same type");
-            $$ = nullptr;
-          }
-        }
-      }
+      { $$ = handle_ternary_expression($1, $3, $5, @1, @3, @5, @2); }
     ;
 
 assignment_expression
@@ -3761,10 +3904,7 @@ expression
       $$ = $1;
     }
     | expression COMMA_OP assignment_expression
-    {
-      TypePtr expr_type = get_expression_type($3, @3, "comma expression");
-      $$ = std::make_shared<BinaryExpr>(Operator::COMMA_OP, $1, $3, expr_type);
-    }
+      { $$ = handle_comma_expression($1, $3, @3); }
     ;
 
 constant_expression
@@ -5245,57 +5385,12 @@ statement
     ;
 
 labeled_statement
-    : IDENTIFIER COLON_OP statement {
-        auto label=type_factory.lookup_by_scope($1, symbol_table.get_scope_chain());
-        if (!label.has_value()) {
-          label = unwrap_type_or_error(type_factory.make<BuiltinType>(BuiltinTypeKind::LABEL), "label", @1.begin.line, @1.begin.column);
-        }
-        add_symbol_if_valid($1, QualifiedType(label.value(), Qualifier::NONE), @1);
-        auto label_sym_opt = symbol_table.lookup_symbol($1);
-        if (!label_sym_opt.has_value()) {
-          parser_add_error(@1.begin.line, @1.begin.column, "label symbol '" + $1 + "' not found after adding it");
-          $$ = nullptr; // TODO: replace with error node
-        } else {
-          $$ = std::make_shared<LabelStmt>(label_sym_opt.value(), $3);
-          parser_state.resolve_label(label_sym_opt.value());
-        }
-	  }
+    : IDENTIFIER COLON_OP statement
+      { $$ = handle_label_statement($1, $3, @1); }
     | CASE constant_expression COLON_OP compound_statement
-    {
-      if (!in_switch()) {
-        parser_add_error(@1.begin.line, @1.begin.column, "'case' label not within a switch statement");
-        $$ = nullptr; // TODO: replace with error node
-      } else if (!is_literal_expression($2)) {
-        parser_add_error(@2.begin.line, @2.begin.column, "'case' value must be a literal constant expression");
-        $$ = nullptr;
-      } else if (has_duplicate_case_value($2, @2)) {
-        parser_add_error(@2.begin.line, @2.begin.column, "duplicate 'case' value in switch statement");
-        $$ = nullptr;
-      } else {
-        auto t = parser_state.current_switch_subject();
-        if (t) {
-          auto expr_type = get_expression_type($2);
-          if (expr_type && !are_types_equal(t, expr_type.value())) {
-            parser_add_error(@2.begin.line, @2.begin.column, "'case' label type does not match switch expression type");
-          } else {
-            $$ = std::make_shared<CaseStmt>($2, $4);
-            parser_state.case_stmt_stack.back().push_back($$);
-          }
-        }
-      }
-    }
+      { $$ = handle_case_statement($2, $4, @2, @1); }
     | DEFAULT COLON_OP compound_statement
-    {
-      if (!in_switch()) {
-        parser_add_error(@1.begin.line, @1.begin.column, "'default' label not within a switch statement");
-        $$ = nullptr; // TODO: replace with error node
-      } else if (parser_state.default_case.back().has_value()) {
-        parser_add_error(@1.begin.line, @1.begin.column, "multiple 'default' labels in the same switch");
-      } else {
-        $$ = std::make_shared<DefaultStmt>($3);
-        parser_state.default_case.back() = $$;
-      }
-    }
+      { $$ = handle_default_statement($3, @1); }
     ;
 
 compound_statement
@@ -5337,16 +5432,10 @@ expression_statement
 
 selection_statement
     : IF OPEN_PAREN_OP expression CLOSE_PAREN_OP statement ELSE statement
-    {
-        ensure_condition_is_bool($3, @3, "if");
-        auto else_node = std::make_shared<ElseStmt>($7);
-        $$ = std::make_shared<IfStmt>($3, $5, else_node);
-    }
+      { auto else_node = std::make_shared<ElseStmt>($7);
+        $$ = handle_if_statement($3, $5, else_node, @3); }
     | IF OPEN_PAREN_OP expression CLOSE_PAREN_OP statement
-    {
-        ensure_condition_is_bool($3, @3, "if");
-        $$ = std::make_shared<IfStmt>($3, $5);
-    }
+      { $$ = handle_if_statement_no_else($3, $5, @3); }
     | SWITCH OPEN_PAREN_OP expression CLOSE_PAREN_OP
     {
         ensure_switch_subject_type($3, @3);
@@ -5375,26 +5464,14 @@ iteration_statement
     : WHILE OPEN_PAREN_OP expression CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
       statement
-    {
-    ensure_condition_is_bool($3, @3, "while");
-    $$ = std::make_shared<WhileStmt>($3, $6);
-        parser_state.pop_ctx();
-    }
+      { $$ = handle_while_statement($3, $6, @3); parser_state.pop_ctx(); }
 	  | UNTIL OPEN_PAREN_OP expression CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
      statement
-    {
-    ensure_condition_is_bool($3, @3, "until");
-    $$ = std::make_shared<UntilStmt>($3, $6);
-        parser_state.pop_ctx();
-    }
+      { $$ = handle_until_statement($3, $6, @3); parser_state.pop_ctx(); }
   | DO { parser_state.push_ctx(ContextKind::LOOP); } statement WHILE OPEN_PAREN_OP expression CLOSE_PAREN_OP
     SEMICOLON_OP
-    {
-    ensure_condition_is_bool($6, @6, "do-while");
-    $$ = std::make_shared<DoWhileStmt>( $3, $6);
-        parser_state.pop_ctx();
-    }
+      { $$ = handle_do_while_statement($3, $6, @6); parser_state.pop_ctx(); }
     | for_start expression_statement expression_statement CLOSE_PAREN_OP
     { parser_state.push_ctx(ContextKind::LOOP); }
       statement
@@ -5442,78 +5519,15 @@ FOR OPEN_PAREN_OP
 
 jump_statement
     : GOTO IDENTIFIER SEMICOLON_OP
-    {
-        if (!parser_state.in_function()) {
-          parser_add_error(@1.begin.line, @1.begin.column, "'goto' statement not within a function");
-          $$ = nullptr; // TODO: replace with error node
-        } else {
-          auto label_sym_opt = symbol_table.lookup_symbol($2);
-          auto goto_node = std::make_shared<GotoStmt>(nullptr);
-          if (!label_sym_opt.has_value()) {
-            parser_state.add_unresolved_label($2, goto_node);
-          }
-          else {
-            goto_node->target_label = label_sym_opt.value();
-          }
-          $$ = goto_node;
-        }
-    }
+      { $$ = handle_goto_statement($2, @1); }
     | CONTINUE SEMICOLON_OP
-    {
-        if (!in_loop()) {
-          parser_add_error(@1.begin.line, @1.begin.column, "'continue' statement not within a loop");
-          $$ = nullptr; // TODO: replace with error node
-        } else {
-          $$ = std::make_shared<ContinueStmt>();
-        }
-    }
+      { $$ = handle_continue_statement(@1); }
     | BREAK SEMICOLON_OP
-    {
-        if (!in_loop_or_switch()) {
-          parser_add_error(@1.begin.line, @1.begin.column, "'break' statement not within a loop or switch");
-          $$ = nullptr; // TODO: replace with error node
-        } else {
-          $$ = std::make_shared<BreakStmt>();
-        }
-    }
+      { $$ = handle_break_statement(@1); }
     | RETURN SEMICOLON_OP
-    {
-      if (!parser_state.in_function()) {
-          parser_add_error(@1.begin.line, @1.begin.column, "'return' statement not within a function");
-          $$ = nullptr; // TODO: replace with error node
-      } else if (parser_state.current_function_return() && is_void_type(parser_state.current_function_return())) {
-          auto void_t = type_factory.get_builtin_type("void");
-          $$ = std::make_shared<RetExpr>(std::nullopt, void_t ? void_t.value() : nullptr);
-      } else {
-          parser_add_error(@1.begin.line, @1.begin.column, "return without expression in non-void function");
-          $$ = nullptr; // TODO: replace with error node
-      }
-    }
+      { $$ = handle_return_statement(@1); }
     | RETURN expression SEMICOLON_OP
-    {
-      auto expr_type = get_expression_type($2, @2, "return expression");
-      if (!expr_type) {
-        parser_add_error(@2.begin.line, @2.begin.column, "unable to determine type of return expression");
-        $$ = nullptr; // TODO: replace with error node
-      } else if (!parser_state.in_function()) {
-        parser_add_error(@1.begin.line, @1.begin.column, "'return' statement not within a function");
-        $$ = nullptr; // TODO: replace with error node
-      } else {
-        auto fn_ret = strip_typedefs(parser_state.current_function_return());
-        auto expr_ret = strip_typedefs(expr_type);
-
-        // Check for return with value in void function first
-        if (is_void_type(fn_ret)) {
-          parser_add_error(@1.begin.line, @1.begin.column, "return with a value in function returning 'void'");
-          $$ = nullptr; // TODO: replace with error node
-        } else if (fn_ret != expr_ret) {
-          parser_add_error(@2.begin.line, @2.begin.column, "return type mismatch: function expects '" + (fn_ret ? fn_ret->debug_name() : std::string("invalid")) + "', but returning expression of type '" + (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
-          $$ = nullptr; // TODO: replace with error node
-        } else {
-          $$ = std::make_shared<RetExpr>($2, expr_type);
-        }
-      }
-    }
+      { $$ = handle_return_with_value($2, @2, @1); }
     ;
 
 translation_unit
