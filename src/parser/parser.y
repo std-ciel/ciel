@@ -3309,7 +3309,14 @@ unary_expression
     | NEW type_name
       {
         TypePtr allocated_type = $2;
-        auto ptr_result = type_factory.pointer_from(allocated_type);
+        TypePtr pointee_type = allocated_type;
+
+        if (allocated_type && allocated_type->kind == TypeKind::ARRAY) {
+          auto array_type = std::static_pointer_cast<ArrayType>(allocated_type);
+          pointee_type = array_type->element_type.type;
+        }
+
+        auto ptr_result = type_factory.pointer_from(pointee_type);
         TypePtr result_type = unwrap_type_or_error(ptr_result, "new expression", @1.begin.line, @1.begin.column);
         $$ = std::make_shared<NewExpr>(allocated_type, result_type);
       }
