@@ -2084,7 +2084,7 @@ static void check_array_bounds(const TypePtr &array_type,
       } else if (!are_types_equal(lhs_type, rhs_type)) {
         parser_add_error(op_loc.begin.line,
                          op_loc.begin.column,
-                         op_name + ": incompatible types for assignment");
+                         op_name + ": incompatible types for assignment ('" + lhs_type->debug_name() + "' and '" + rhs_type->debug_name() + "')");
         return nullptr;
       }
     }
@@ -2111,7 +2111,53 @@ static void check_array_bounds(const TypePtr &array_type,
     }
 
     if (is_pointer_type(from_type) && is_pointer_type(to_type)) {
-      return true;
+      auto from_ptr = std::static_pointer_cast<PointerType>(from_type);
+      auto to_ptr = std::static_pointer_cast<PointerType>(to_type);
+
+      TypePtr from_pointee = strip_typedefs(from_ptr->pointee.type);
+      TypePtr to_pointee = strip_typedefs(to_ptr->pointee.type);
+
+      if (are_types_equal(from_pointee, to_pointee)) {
+        return true;
+      }
+
+      // Allow void* conversions (void* can point to anything)
+      if (is_void_type(from_pointee) || is_void_type(to_pointee)) {
+        // TODO: add warning for void* casts
+        return true;
+      }
+
+      // Allow casting between related class types (base/derived)
+      if (is_class_type(from_pointee) && is_class_type(to_pointee)) {
+        auto from_class = std::static_pointer_cast<ClassType>(from_pointee);
+        auto to_class = std::static_pointer_cast<ClassType>(to_pointee);
+
+        ClassTypePtr current = from_class;
+        while (current && current->base.base_type) {
+          if (is_class_type(current->base.base_type)) {
+            ClassTypePtr base = std::static_pointer_cast<ClassType>(current->base.base_type);
+            if (are_types_equal(base, to_class)) {
+              return true; // Upcasting (derived to base)
+            }
+            current = base;
+          } else {
+            break;
+          }
+        }
+        current = to_class;
+        while (current && current->base.base_type) {
+          if (is_class_type(current->base.base_type)) {
+            ClassTypePtr base = std::static_pointer_cast<ClassType>(current->base.base_type);
+            if (are_types_equal(base, from_class)) {
+              return true; // Downcasting (base to derived) - allowed in explicit cast
+            }
+            current = base;
+          } else {
+            break;
+          }
+        }
+      }
+      return false;
     }
 
     // Special case: allow casting literal 0 to pointer type (NULL pointer idiom)
