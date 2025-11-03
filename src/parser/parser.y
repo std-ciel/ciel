@@ -5987,6 +5987,16 @@ function_declaration_or_definition
       {
         DeclaratorInfo di = $2;
   		  TypePtr ret = $1;
+
+        if (ret && di.is_function && di.pointer_levels > 0) {
+          QualifiedType qt = apply_pointer_levels_or_error(QualifiedType(ret, Qualifier::NONE),
+                                                           di.pointer_levels,
+                                                           "member function pointer definition",
+                                                           @1.begin.line,
+                                                           @2.begin.column);
+          ret = qt.type;
+        }
+
         if (!parser_state.ctx_stack.empty() && in_class() && parser_state.current_class_type && !di.name.empty()) {
           if (di.is_function) {
             if (di.pointer_levels == 0 && ret) {
