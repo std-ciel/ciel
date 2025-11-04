@@ -1,14 +1,12 @@
 #include "codegen/riscv32_backend.hpp"
 #include "codegen/riscv32_regalloc.hpp"
+#include <algorithm>
+#include <cstring>
 #include <ostream>
 
 namespace ciel {
 namespace codegen {
 namespace riscv32 {
-
-// ============================================================================
-// MachineFunction Implementation
-// ============================================================================
 
 MachineFunction::MachineFunction(const TACFunction &tac_fn, TypeFactory &types)
     : name_(tac_fn.mangled_name), frame_(tac_fn.mangled_name), next_vreg_(1),
@@ -16,26 +14,20 @@ MachineFunction::MachineFunction(const TACFunction &tac_fn, TypeFactory &types)
 {
 }
 
-// ============================================================================
-// InstructionSelector Implementation
-// ============================================================================
-
 InstructionSelector::InstructionSelector(MachineFunction &mfn,
-                                         TypeFactory &types)
-    : mfn_(mfn), types_(types)
+                                         TypeFactory &types,
+                                         RiscV32Backend &backend)
+    : mfn_(mfn), types_(types), backend_(backend)
 {
 }
 
 void InstructionSelector::select(const TACFunction &tac_fn)
 {
-    // Process each basic block
     for (const auto &bb : tac_fn.basic_blocks) {
-        // Emit basic block label if present
         if (!bb->label.empty()) {
             mfn_.add_instruction(make_label(bb->label));
         }
 
-        // Select instructions for each TAC instruction
         for (const auto &tac_instr : bb->instructions) {
             select_instruction(*tac_instr);
         }
@@ -44,14 +36,7 @@ void InstructionSelector::select(const TACFunction &tac_fn)
 
 void InstructionSelector::select_instruction(const TACInstruction &instr)
 {
-    // For minimal baseline: map common TAC ops to RV32 instructions
-    // This is a simplified implementation you can expand
-
     switch (instr.opcode) {
-    case TACOpcode::ENTER:
-        // Handled by prologue
-        break;
-
     case TACOpcode::RETURN:
         select_return(instr);
         break;
@@ -100,7 +85,6 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
         break;
 
     case TACOpcode::LABEL:
-        // Already handled above
         break;
 
     case TACOpcode::JUMP_TABLE:
@@ -108,7 +92,6 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
         break;
 
     default:
-        // For unimplemented opcodes, emit a comment
         break;
     }
 }
@@ -116,7 +99,6 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
 void InstructionSelector::select_return(const TACInstruction &instr)
 {
     if (instr.operand1.is_valid()) {
-        // Load return value into a0
         VirtReg val = load_operand(instr.operand1);
         mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
                                  .add_use(val)
@@ -139,41 +121,63 @@ void InstructionSelector::select_binary_op(const TACInstruction &instr)
     VirtReg dst = mfn_.get_next_vreg();
 
     MachineOpcode opc;
+    bool is_float = is_float_type(instr.result.type);
     bool is_signed = is_signed_type(instr.result.type);
 
-    switch (instr.opcode) {
-    case TACOpcode::ADD:
-        opc = MachineOpcode::ADD;
-        break;
-    case TACOpcode::SUB:
-        opc = MachineOpcode::SUB;
-        break;
-    case TACOpcode::MUL:
-        opc = MachineOpcode::MUL;
-        break;
-    case TACOpcode::DIV:
-        opc = is_signed ? MachineOpcode::DIV : MachineOpcode::DIVU;
-        break;
-    case TACOpcode::MOD:
-        opc = is_signed ? MachineOpcode::REM : MachineOpcode::REMU;
-        break;
-    case TACOpcode::AND:
-        opc = MachineOpcode::AND;
-        break;
-    case TACOpcode::OR:
-        opc = MachineOpcode::OR;
-        break;
-    case TACOpcode::XOR:
-        opc = MachineOpcode::XOR;
-        break;
-    case TACOpcode::SHL:
-        opc = MachineOpcode::SLL;
-        break;
-    case TACOpcode::SHR:
-        opc = is_signed ? MachineOpcode::SRA : MachineOpcode::SRL;
-        break;
-    default:
-        return; // Unsupported
+    if (is_float) {
+        switch (instr.opcode) {
+        case TACOpcode::ADD:
+            opc = MachineOpcode::FADD_S;
+            break;
+        case TACOpcode::SUB:
+            opc = MachineOpcode::FSUB_S;
+            break;
+        case TACOpcode::MUL:
+            opc = MachineOpcode::FMUL_S;
+            break;
+        case TACOpcode::DIV:
+            opc = MachineOpcode::FDIV_S;
+            break;
+        case TACOpcode::MOD:
+            return;
+        default:
+            return;
+        }
+    } else {
+        switch (instr.opcode) {
+        case TACOpcode::ADD:
+            opc = MachineOpcode::ADD;
+            break;
+        case TACOpcode::SUB:
+            opc = MachineOpcode::SUB;
+            break;
+        case TACOpcode::MUL:
+            opc = MachineOpcode::MUL;
+            break;
+        case TACOpcode::DIV:
+            opc = is_signed ? MachineOpcode::DIV : MachineOpcode::DIVU;
+            break;
+        case TACOpcode::MOD:
+            opc = is_signed ? MachineOpcode::REM : MachineOpcode::REMU;
+            break;
+        case TACOpcode::AND:
+            opc = MachineOpcode::AND;
+            break;
+        case TACOpcode::OR:
+            opc = MachineOpcode::OR;
+            break;
+        case TACOpcode::XOR:
+            opc = MachineOpcode::XOR;
+            break;
+        case TACOpcode::SHL:
+            opc = MachineOpcode::SLL;
+            break;
+        case TACOpcode::SHR:
+            opc = is_signed ? MachineOpcode::SRA : MachineOpcode::SRL;
+            break;
+        default:
+            return;
+        }
     }
 
     mfn_.add_instruction(MachineInstr(opc)
@@ -193,101 +197,171 @@ void InstructionSelector::select_comparison(const TACInstruction &instr)
     VirtReg op2 = load_operand(instr.operand2);
     VirtReg dst = mfn_.get_next_vreg();
 
+    bool is_float = is_float_type(instr.operand1.type);
     bool is_signed = is_signed_type(instr.operand1.type);
 
-    switch (instr.opcode) {
-    case TACOpcode::EQ: {
-        VirtReg tmp = mfn_.get_next_vreg();
-        mfn_.add_instruction(MachineInstr(MachineOpcode::SUB)
-                                 .add_def(tmp)
-                                 .add_use(op1)
-                                 .add_use(op2)
-                                 .add_operand(VRegOperand(tmp))
-                                 .add_operand(VRegOperand(op1))
-                                 .add_operand(VRegOperand(op2)));
-        mfn_.add_instruction(MachineInstr(MachineOpcode::SEQZ)
-                                 .add_def(dst)
-                                 .add_use(tmp)
-                                 .add_operand(VRegOperand(dst))
-                                 .add_operand(VRegOperand(tmp)));
-        break;
-    }
-    case TACOpcode::NE: {
-        VirtReg tmp = mfn_.get_next_vreg();
-        mfn_.add_instruction(MachineInstr(MachineOpcode::SUB)
-                                 .add_def(tmp)
-                                 .add_use(op1)
-                                 .add_use(op2)
-                                 .add_operand(VRegOperand(tmp))
-                                 .add_operand(VRegOperand(op1))
-                                 .add_operand(VRegOperand(op2)));
-        mfn_.add_instruction(MachineInstr(MachineOpcode::SNEZ)
-                                 .add_def(dst)
-                                 .add_use(tmp)
-                                 .add_operand(VRegOperand(dst))
-                                 .add_operand(VRegOperand(tmp)));
-        break;
-    }
-    case TACOpcode::LT: {
-        auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
-        mfn_.add_instruction(MachineInstr(opc)
-                                 .add_def(dst)
-                                 .add_use(op1)
-                                 .add_use(op2)
-                                 .add_operand(VRegOperand(dst))
-                                 .add_operand(VRegOperand(op1))
-                                 .add_operand(VRegOperand(op2)));
-        break;
-    }
-    case TACOpcode::GT: {
-        auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
-        mfn_.add_instruction(MachineInstr(opc)
-                                 .add_def(dst)
-                                 .add_use(op2)
-                                 .add_use(op1)
-                                 .add_operand(VRegOperand(dst))
-                                 .add_operand(VRegOperand(op2))
-                                 .add_operand(VRegOperand(op1)));
-        break;
-    }
-    case TACOpcode::LE: {
-        auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
-        VirtReg tmp = mfn_.get_next_vreg();
-        mfn_.add_instruction(MachineInstr(opc)
-                                 .add_def(tmp)
-                                 .add_use(op2)
-                                 .add_use(op1)
-                                 .add_operand(VRegOperand(tmp))
-                                 .add_operand(VRegOperand(op2))
-                                 .add_operand(VRegOperand(op1)));
-        mfn_.add_instruction(MachineInstr(MachineOpcode::XORI)
-                                 .add_def(dst)
-                                 .add_use(tmp)
-                                 .add_operand(VRegOperand(dst))
-                                 .add_operand(VRegOperand(tmp))
-                                 .add_operand(ImmOperand(1)));
-        break;
-    }
-    case TACOpcode::GE: {
-        auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
-        VirtReg tmp = mfn_.get_next_vreg();
-        mfn_.add_instruction(MachineInstr(opc)
-                                 .add_def(tmp)
-                                 .add_use(op1)
-                                 .add_use(op2)
-                                 .add_operand(VRegOperand(tmp))
-                                 .add_operand(VRegOperand(op1))
-                                 .add_operand(VRegOperand(op2)));
-        mfn_.add_instruction(MachineInstr(MachineOpcode::XORI)
-                                 .add_def(dst)
-                                 .add_use(tmp)
-                                 .add_operand(VRegOperand(dst))
-                                 .add_operand(VRegOperand(tmp))
-                                 .add_operand(ImmOperand(1)));
-        break;
-    }
-    default:
-        return;
+    if (is_float) {
+        switch (instr.opcode) {
+        case TACOpcode::EQ:
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FEQ_S)
+                                     .add_def(dst)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            break;
+        case TACOpcode::NE: {
+            VirtReg tmp = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FEQ_S)
+                                     .add_def(tmp)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::XORI)
+                                     .add_def(dst)
+                                     .add_use(tmp)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(ImmOperand(1)));
+            break;
+        }
+        case TACOpcode::LT:
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FLT_S)
+                                     .add_def(dst)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            break;
+        case TACOpcode::LE:
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FLE_S)
+                                     .add_def(dst)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            break;
+        case TACOpcode::GT:
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FLT_S)
+                                     .add_def(dst)
+                                     .add_use(op2)
+                                     .add_use(op1)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op2))
+                                     .add_operand(VRegOperand(op1)));
+            break;
+        case TACOpcode::GE:
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FLE_S)
+                                     .add_def(dst)
+                                     .add_use(op2)
+                                     .add_use(op1)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op2))
+                                     .add_operand(VRegOperand(op1)));
+            break;
+        default:
+            return;
+        }
+    } else {
+        switch (instr.opcode) {
+        case TACOpcode::EQ: {
+            VirtReg tmp = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::SUB)
+                                     .add_def(tmp)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::SEQZ)
+                                     .add_def(dst)
+                                     .add_use(tmp)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(tmp)));
+            break;
+        }
+        case TACOpcode::NE: {
+            VirtReg tmp = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::SUB)
+                                     .add_def(tmp)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::SNEZ)
+                                     .add_def(dst)
+                                     .add_use(tmp)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(tmp)));
+            break;
+        }
+        case TACOpcode::LT: {
+            auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
+            mfn_.add_instruction(MachineInstr(opc)
+                                     .add_def(dst)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            break;
+        }
+        case TACOpcode::GT: {
+            auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
+            mfn_.add_instruction(MachineInstr(opc)
+                                     .add_def(dst)
+                                     .add_use(op2)
+                                     .add_use(op1)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(op2))
+                                     .add_operand(VRegOperand(op1)));
+            break;
+        }
+        case TACOpcode::LE: {
+            auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
+            VirtReg tmp = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(opc)
+                                     .add_def(tmp)
+                                     .add_use(op2)
+                                     .add_use(op1)
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(VRegOperand(op2))
+                                     .add_operand(VRegOperand(op1)));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::XORI)
+                                     .add_def(dst)
+                                     .add_use(tmp)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(ImmOperand(1)));
+            break;
+        }
+        case TACOpcode::GE: {
+            auto opc = is_signed ? MachineOpcode::SLT : MachineOpcode::SLTU;
+            VirtReg tmp = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(opc)
+                                     .add_def(tmp)
+                                     .add_use(op1)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(VRegOperand(op1))
+                                     .add_operand(VRegOperand(op2)));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::XORI)
+                                     .add_def(dst)
+                                     .add_use(tmp)
+                                     .add_operand(VRegOperand(dst))
+                                     .add_operand(VRegOperand(tmp))
+                                     .add_operand(ImmOperand(1)));
+            break;
+        }
+        default:
+            return;
+        }
     }
 
     store_result(dst, instr.result);
@@ -309,8 +383,6 @@ void InstructionSelector::select_if_branch(const TACInstruction &instr)
     if (instr.operand1.kind == TACOperand::Kind::LABEL) {
         std::string target = std::get<std::string>(instr.operand1.value);
 
-        // IF_TRUE: branch if non-zero
-        // IF_FALSE: branch if zero
         MachineOpcode branch_opc = (instr.opcode == TACOpcode::IF_TRUE)
                                        ? MachineOpcode::BNE
                                        : MachineOpcode::BEQ;
@@ -331,7 +403,6 @@ void InstructionSelector::select_param(const TACInstruction &instr)
 
 void InstructionSelector::select_call(const TACInstruction &instr)
 {
-    // Marshal parameters into a0-a7
     for (size_t i = 0; i < pending_params_.size() && i < 8; ++i) {
         PhysReg arg_reg =
             static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) + i);
@@ -341,13 +412,11 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                                  .add_operand(VRegOperand(pending_params_[i])));
     }
 
-    // Update max call args for frame layout
     if (pending_params_.size() > 8) {
         mfn_.get_frame().update_max_call_args(
             static_cast<uint32_t>(pending_params_.size()));
     }
 
-    // Emit call
     if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
         mfn_.add_instruction(make_call(func_sym->get_name()));
@@ -356,7 +425,6 @@ void InstructionSelector::select_call(const TACInstruction &instr)
         mfn_.add_instruction(make_call(func_name));
     }
 
-    // Store return value if needed
     if (instr.result.is_valid()) {
         VirtReg result = mfn_.get_next_vreg();
         mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
@@ -394,9 +462,33 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
     switch (operand.kind) {
     case TACOperand::Kind::CONSTANT: {
         VirtReg vreg = mfn_.get_next_vreg();
-        int64_t val = std::get<int64_t>(operand.value);
-        mfn_.add_instruction(make_li(vreg, static_cast<int32_t>(val)));
-        return vreg;
+        if (std::holds_alternative<double>(operand.value)) {
+            double fval = std::get<double>(operand.value);
+            float f = static_cast<float>(fval);
+
+            // Add constant to pool and get label
+            std::string label = backend_.add_float_constant(f);
+
+            // TODO: Proper approach is lui + flw with %hi/%lo relocations
+            // For now, use la + flw pattern (will be fixed in register
+            // allocation)
+            VirtReg addr_vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(make_la(addr_vreg, label));
+
+            auto flw_instr = MachineInstr(MachineOpcode::FLW);
+            flw_instr.add_def(vreg);
+            flw_instr.add_use(addr_vreg);
+            flw_instr.add_operand(VRegOperand(vreg));
+            flw_instr.add_operand(VRegOperand(addr_vreg));
+            flw_instr.add_operand(ImmOperand(0));
+            mfn_.add_instruction(std::move(flw_instr));
+
+            return vreg;
+        } else {
+            int64_t val = std::get<int64_t>(operand.value);
+            mfn_.add_instruction(make_li(vreg, static_cast<int32_t>(val)));
+            return vreg;
+        }
     }
     case TACOperand::Kind::LABEL: {
         VirtReg vreg = mfn_.get_next_vreg();
@@ -458,6 +550,18 @@ bool InstructionSelector::is_signed_type(TypePtr type) const
     return true;
 }
 
+bool InstructionSelector::is_float_type(TypePtr type) const
+{
+    if (!type)
+        return false;
+
+    if (type->kind == TypeKind::BUILTIN) {
+        auto builtin = std::static_pointer_cast<BuiltinType>(type);
+        return builtin->builtin_kind == BuiltinTypeKind::FLOAT;
+    }
+    return false;
+}
+
 VirtReg
 InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
 {
@@ -475,16 +579,28 @@ InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
     return vreg;
 }
 
-// ============================================================================
-// RiscV32Backend Implementation
-// ============================================================================
-
 RiscV32Backend::RiscV32Backend(const TACProgram &program,
                                SymbolTable &symtab,
                                TypeFactory &types)
-    : program_(program), symtab_(symtab), types_(types)
+    : program_(program), symtab_(symtab), types_(types),
+      next_float_constant_id_(0)
 {
     lower_functions();
+}
+
+std::string RiscV32Backend::add_float_constant(float value)
+{
+    uint32_t bits;
+    std::memcpy(&bits, &value, sizeof(float));
+
+    auto it = float_constants_.find(bits);
+    if (it != float_constants_.end()) {
+        return it->second;
+    }
+
+    std::string label = ".LC" + std::to_string(next_float_constant_id_++);
+    float_constants_[bits] = label;
+    return label;
 }
 
 void RiscV32Backend::lower_functions()
@@ -493,7 +609,7 @@ void RiscV32Backend::lower_functions()
         auto mfn = std::make_unique<MachineFunction>(*tac_fn, types_);
 
         // Instruction selection
-        InstructionSelector selector(*mfn, types_);
+        InstructionSelector selector(*mfn, types_, *this);
         selector.select(*tac_fn);
 
         // Register allocation (use simple stack-only for baseline)
@@ -518,16 +634,19 @@ void RiscV32Backend::emit(std::ostream &os)
 void RiscV32Backend::emit_preamble(std::ostream &os) const
 {
     os << "    .option nopic\n";
-    os << "    .attribute arch, \"rv32im\"\n";
+    os << "    .attribute arch, \"rv32imf\"\n";
 }
 
 void RiscV32Backend::emit_rodata(std::ostream &os) const
 {
-    if (program_.string_literals.empty()) {
+    bool has_data =
+        !program_.string_literals.empty() || !float_constants_.empty();
+    if (!has_data) {
         return;
     }
 
     os << "\n    .section .rodata\n";
+
     for (const auto &str_lit : program_.string_literals) {
         os << "    .balign 4\n";
         os << str_lit.label << ":\n";
@@ -562,6 +681,19 @@ void RiscV32Backend::emit_rodata(std::ostream &os) const
             }
         }
         os << "\"\n";
+    }
+
+    std::vector<std::pair<uint32_t, std::string>> sorted_floats(
+        float_constants_.begin(),
+        float_constants_.end());
+    std::sort(sorted_floats.begin(),
+              sorted_floats.end(),
+              [](const auto &a, const auto &b) { return a.second < b.second; });
+
+    for (const auto &[bits, label] : sorted_floats) {
+        os << "    .balign 4\n";
+        os << label << ":\n";
+        os << "    .word   " << bits << "\n";
     }
 }
 
@@ -634,8 +766,13 @@ void RiscV32Backend::emit_prologue(std::ostream &os,
     // Save callee-saved registers
     for (auto reg : frame.get_used_callee_regs()) {
         int32_t offset = frame.get_callee_save_offset(reg);
-        os << "    sw " << get_reg_name(reg) << ", " << (frame_size + offset)
-           << "(sp)\n";
+        if (reg >= PhysReg::FT0 && reg <= PhysReg::FA7) {
+            os << "    fsw " << get_reg_name(reg) << ", "
+               << (frame_size + offset) << "(sp)\n";
+        } else {
+            os << "    sw " << get_reg_name(reg) << ", "
+               << (frame_size + offset) << "(sp)\n";
+        }
     }
 }
 
@@ -653,8 +790,13 @@ void RiscV32Backend::emit_epilogue(std::ostream &os,
     // Restore callee-saved registers
     for (auto reg : frame.get_used_callee_regs()) {
         int32_t offset = frame.get_callee_save_offset(reg);
-        os << "    lw " << get_reg_name(reg) << ", " << (frame_size + offset)
-           << "(sp)\n";
+        if (reg >= PhysReg::FT0 && reg <= PhysReg::FA7) {
+            os << "    flw " << get_reg_name(reg) << ", "
+               << (frame_size + offset) << "(sp)\n";
+        } else {
+            os << "    lw " << get_reg_name(reg) << ", "
+               << (frame_size + offset) << "(sp)\n";
+        }
     }
 
     // Restore frame pointer

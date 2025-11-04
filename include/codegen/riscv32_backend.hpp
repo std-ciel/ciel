@@ -15,7 +15,8 @@ namespace ciel {
 namespace codegen {
 namespace riscv32 {
 
-/// Machine-level function representation
+class RiscV32Backend;
+
 class MachineFunction {
   public:
     explicit MachineFunction(const TACFunction &tac_fn, TypeFactory &types);
@@ -64,7 +65,9 @@ class MachineFunction {
 /// Instruction selector: lowers TAC to machine instructions
 class InstructionSelector {
   public:
-    InstructionSelector(MachineFunction &mfn, TypeFactory &types);
+    InstructionSelector(MachineFunction &mfn,
+                        TypeFactory &types,
+                        RiscV32Backend &backend);
 
     /// Select instructions for a TAC function
     void select(const TACFunction &tac_fn);
@@ -87,25 +90,22 @@ class InstructionSelector {
     void select_load(const TACInstruction &instr);
     void select_store(const TACInstruction &instr);
 
-    /// Load a TAC operand into a virtual register
     VirtReg load_operand(const TACOperand &operand);
 
-    /// Store a virtual register to a TAC operand destination
     void store_result(VirtReg vreg, const TACOperand &dest);
 
-    /// Get the size of a type in bytes
     uint32_t get_type_size(TypePtr type) const;
 
-    /// Check if a type is signed
     bool is_signed_type(TypePtr type) const;
 
-    /// Map TAC temporary name to virtual register
+    bool is_float_type(TypePtr type) const;
+
     VirtReg get_or_create_vreg_for_temp(const std::string &temp_name);
 
     MachineFunction &mfn_;
     TypeFactory &types_;
+    RiscV32Backend &backend_;
 
-    // TAC temporary -> VirtReg mapping
     std::unordered_map<std::string, VirtReg> temp_to_vreg_;
 
     // Pending parameters for next CALL
@@ -122,6 +122,8 @@ class RiscV32Backend {
 
     /// Emit complete assembly to output stream
     void emit(std::ostream &os);
+
+    std::string add_float_constant(float value);
 
   private:
     /// Emit assembly preamble (.option, etc.)
@@ -157,6 +159,10 @@ class RiscV32Backend {
 
     // Machine functions (post instruction selection + regalloc)
     std::vector<std::unique_ptr<MachineFunction>> machine_functions_;
+
+    // Float constant pool: value -> label
+    std::unordered_map<uint32_t, std::string> float_constants_;
+    uint32_t next_float_constant_id_ = 0;
 };
 
 } // namespace riscv32
