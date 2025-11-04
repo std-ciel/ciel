@@ -55,6 +55,11 @@ foreach(sample_rel ${VALID_SAMPLE_FILES})
         COMMAND $<TARGET_FILE:cielc> -i ${sample_abs}
     )
 
+    add_test(
+        NAME codegen_valid_${test_prefix}${sample_name}
+        COMMAND bash -c "$<TARGET_FILE:cielc> -S '${sample_name}.s' '${sample_abs}' && riscv64-linux-gnu-as -march=rv64imfd -mabi=lp64d -o '${sample_name}.o' '${sample_name}.s' && riscv64-linux-gnu-gcc -march=rv64imfd -mabi=lp64d -static -o '${sample_name}.elf' '${sample_name}.o' && qemu-riscv64 '${sample_name}.elf'"
+    )
+
 endforeach()
 
 
