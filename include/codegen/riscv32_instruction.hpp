@@ -80,6 +80,38 @@ enum class MachineOpcode {
     SH,
     SW,
 
+    // Floating-point loads/stores (F extension)
+    FLW, // Load word from memory to FP register
+    FSW, // Store word from FP register to memory
+
+    // Floating-point arithmetic (single-precision)
+    FADD_S,  // FP add
+    FSUB_S,  // FP subtract
+    FMUL_S,  // FP multiply
+    FDIV_S,  // FP divide
+    FSQRT_S, // FP square root
+    FMIN_S,  // FP minimum
+    FMAX_S,  // FP maximum
+
+    // Floating-point comparisons
+    FEQ_S, // FP equal
+    FLT_S, // FP less than
+    FLE_S, // FP less than or equal
+
+    // Floating-point conversions
+    FCVT_W_S,  // Convert float to signed int
+    FCVT_WU_S, // Convert float to unsigned int
+    FCVT_S_W,  // Convert signed int to float
+    FCVT_S_WU, // Convert unsigned int to float
+
+    // Floating-point move/sign injection
+    FMV_X_W, // Move float to integer register (bitcast)
+    FMV_W_X, // Move integer to float register (bitcast)
+    FMV_S, // Move float register to float register (pseudo: fsgnj.s rd, rs, rs)
+    FSGNJ_S,  // Sign injection (copy)
+    FSGNJN_S, // Sign injection with negation
+    FSGNJX_S, // Sign injection with XOR
+
     // Label (pseudo for code generation)
     LABEL,
 
@@ -214,6 +246,7 @@ inline MachineInstr make_li(VirtReg dst, int32_t imm)
 {
     return MachineInstr(MachineOpcode::LI)
         .add_def(dst)
+        .add_operand(VRegOperand(dst))
         .add_operand(ImmOperand(imm));
 }
 
@@ -221,12 +254,17 @@ inline MachineInstr make_la(VirtReg dst, const std::string &label)
 {
     return MachineInstr(MachineOpcode::LA)
         .add_def(dst)
+        .add_operand(VRegOperand(dst))
         .add_operand(LabelOperand(label));
 }
 
 inline MachineInstr make_mv(VirtReg dst, VirtReg src)
 {
-    return MachineInstr(MachineOpcode::MV).add_def(dst).add_use(src);
+    return MachineInstr(MachineOpcode::MV)
+        .add_def(dst)
+        .add_use(src)
+        .add_operand(VRegOperand(dst))
+        .add_operand(VRegOperand(src));
 }
 
 inline MachineInstr make_lw(VirtReg dst, PhysReg base, int32_t offset)
@@ -256,6 +294,52 @@ inline MachineInstr make_call(const std::string &target)
 inline MachineInstr make_ret()
 {
     return MachineInstr(MachineOpcode::RET);
+}
+
+inline MachineInstr make_flw(VirtReg dst, PhysReg base, int32_t offset)
+{
+    return MachineInstr(MachineOpcode::FLW)
+        .add_def(dst)
+        .add_operand(MemOperand(base, offset));
+}
+
+inline MachineInstr make_fsw(VirtReg src, PhysReg base, int32_t offset)
+{
+    return MachineInstr(MachineOpcode::FSW)
+        .add_use(src)
+        .add_operand(MemOperand(base, offset));
+}
+
+inline MachineInstr make_fadd_s(VirtReg dst, VirtReg src1, VirtReg src2)
+{
+    return MachineInstr(MachineOpcode::FADD_S)
+        .add_def(dst)
+        .add_use(src1)
+        .add_use(src2);
+}
+
+inline MachineInstr make_fsub_s(VirtReg dst, VirtReg src1, VirtReg src2)
+{
+    return MachineInstr(MachineOpcode::FSUB_S)
+        .add_def(dst)
+        .add_use(src1)
+        .add_use(src2);
+}
+
+inline MachineInstr make_fmul_s(VirtReg dst, VirtReg src1, VirtReg src2)
+{
+    return MachineInstr(MachineOpcode::FMUL_S)
+        .add_def(dst)
+        .add_use(src1)
+        .add_use(src2);
+}
+
+inline MachineInstr make_fdiv_s(VirtReg dst, VirtReg src1, VirtReg src2)
+{
+    return MachineInstr(MachineOpcode::FDIV_S)
+        .add_def(dst)
+        .add_use(src1)
+        .add_use(src2);
 }
 
 } // namespace riscv32

@@ -144,12 +144,72 @@ const char *opcode_to_string(MachineOpcode opc)
         return "sh";
     case MachineOpcode::SW:
         return "sw";
+    // Floating-point instructions
+    case MachineOpcode::FLW:
+        return "flw";
+    case MachineOpcode::FSW:
+        return "fsw";
+    case MachineOpcode::FADD_S:
+        return "fadd.s";
+    case MachineOpcode::FSUB_S:
+        return "fsub.s";
+    case MachineOpcode::FMUL_S:
+        return "fmul.s";
+    case MachineOpcode::FDIV_S:
+        return "fdiv.s";
+    case MachineOpcode::FSQRT_S:
+        return "fsqrt.s";
+    case MachineOpcode::FMIN_S:
+        return "fmin.s";
+    case MachineOpcode::FMAX_S:
+        return "fmax.s";
+    case MachineOpcode::FEQ_S:
+        return "feq.s";
+    case MachineOpcode::FLT_S:
+        return "flt.s";
+    case MachineOpcode::FLE_S:
+        return "fle.s";
+    case MachineOpcode::FCVT_W_S:
+        return "fcvt.w.s";
+    case MachineOpcode::FCVT_WU_S:
+        return "fcvt.wu.s";
+    case MachineOpcode::FCVT_S_W:
+        return "fcvt.s.w";
+    case MachineOpcode::FCVT_S_WU:
+        return "fcvt.s.wu";
+    case MachineOpcode::FMV_X_W:
+        return "fmv.x.w";
+    case MachineOpcode::FMV_W_X:
+        return "fmv.w.x";
+    case MachineOpcode::FMV_S:
+        return "fmv.s";
+    case MachineOpcode::FSGNJ_S:
+        return "fsgnj.s";
+    case MachineOpcode::FSGNJN_S:
+        return "fsgnjn.s";
+    case MachineOpcode::FSGNJX_S:
+        return "fsgnjx.s";
     default:
         return "UNKNOWN";
     }
 }
 
-void emit_operand(std::ostream &os, const MachineOperand &op)
+bool is_float_opcode(MachineOpcode opc)
+{
+    return opc == MachineOpcode::FLW || opc == MachineOpcode::FSW ||
+           opc == MachineOpcode::FADD_S || opc == MachineOpcode::FSUB_S ||
+           opc == MachineOpcode::FMUL_S || opc == MachineOpcode::FDIV_S ||
+           opc == MachineOpcode::FSQRT_S || opc == MachineOpcode::FMIN_S ||
+           opc == MachineOpcode::FMAX_S || opc == MachineOpcode::FEQ_S ||
+           opc == MachineOpcode::FLT_S || opc == MachineOpcode::FLE_S ||
+           opc == MachineOpcode::FCVT_W_S || opc == MachineOpcode::FCVT_WU_S ||
+           opc == MachineOpcode::FCVT_S_W || opc == MachineOpcode::FCVT_S_WU ||
+           opc == MachineOpcode::FMV_X_W || opc == MachineOpcode::FMV_W_X ||
+           opc == MachineOpcode::FMV_S || opc == MachineOpcode::FSGNJ_S ||
+           opc == MachineOpcode::FSGNJN_S || opc == MachineOpcode::FSGNJX_S;
+}
+
+void emit_operand(std::ostream &os, const MachineOperand &op, bool use_fp_regs)
 {
     if (std::holds_alternative<ImmOperand>(op)) {
         os << std::get<ImmOperand>(op).value;
@@ -181,15 +241,39 @@ void MachineInstr::emit(std::ostream &os) const
 
     os << "    " << opcode_to_string(opcode_);
 
-    bool first = true;
-    for (const auto &operand : operands_) {
-        if (!first) {
-            os << ",";
-        } else {
+    if (opcode_ == MachineOpcode::FLW || opcode_ == MachineOpcode::FSW ||
+        opcode_ == MachineOpcode::LW || opcode_ == MachineOpcode::LH ||
+        opcode_ == MachineOpcode::LB || opcode_ == MachineOpcode::LHU ||
+        opcode_ == MachineOpcode::LBU || opcode_ == MachineOpcode::SW ||
+        opcode_ == MachineOpcode::SH || opcode_ == MachineOpcode::SB) {
+
+        if (operands_.size() >= 3) {
             os << " ";
+            bool dest_is_fp = (opcode_ == MachineOpcode::FLW);
+            emit_operand(os, operands_[0], dest_is_fp);
+            os << ", ";
+            emit_operand(os, operands_[2], false);
+            os << "(";
+            emit_operand(os, operands_[1], false);
+            os << ")";
         }
-        emit_operand(os, operand);
-        first = false;
+    } else {
+        bool dest_is_int_for_fcmp = (opcode_ == MachineOpcode::FLT_S ||
+                                     opcode_ == MachineOpcode::FLE_S ||
+                                     opcode_ == MachineOpcode::FEQ_S);
+
+        bool use_fp = is_float_opcode(opcode_);
+        bool first = true;
+        for (size_t i = 0; i < operands_.size(); ++i) {
+            if (!first) {
+                os << ",";
+            } else {
+                os << " ";
+            }
+            bool this_operand_fp = use_fp && !(dest_is_int_for_fcmp && i == 0);
+            emit_operand(os, operands_[i], this_operand_fp);
+            first = false;
+        }
     }
 
     os << "\n";
