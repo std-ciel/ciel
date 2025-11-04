@@ -271,6 +271,7 @@ inline MachineInstr make_lw(VirtReg dst, PhysReg base, int32_t offset)
 {
     return MachineInstr(MachineOpcode::LW)
         .add_def(dst)
+        .add_operand(VRegOperand(dst))
         .add_operand(MemOperand(base, offset));
 }
 
@@ -278,6 +279,7 @@ inline MachineInstr make_sw(VirtReg src, PhysReg base, int32_t offset)
 {
     return MachineInstr(MachineOpcode::SW)
         .add_use(src)
+        .add_operand(VRegOperand(src))
         .add_operand(MemOperand(base, offset));
 }
 
