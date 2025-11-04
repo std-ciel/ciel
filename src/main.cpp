@@ -69,9 +69,9 @@ int main(int argc, char *argv[])
         .implicit_value(true);
 
     program.add_argument("-S", "--emit-asm")
-        .help("Emit RISC-V assembly output file")
+        .help("Emit RISC-V assembly output file (stdout if no file specified)")
         .default_value(std::string(""))
-        .nargs(1);
+        .nargs(0, 1);
 
     try {
         program.parse_args(argc, argv);
@@ -266,8 +266,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    std::string asm_output = program.get<std::string>("--emit-asm");
-    if (!asm_output.empty()) {
+    if (program.is_used("--emit-asm")) {
         try {
             std::cout << "\n┌─────────────────────────┐\n";
             std::cout << "│ RISC-V CODE GENERATION  │\n";
@@ -278,10 +277,15 @@ int main(int argc, char *argv[])
                 get_symbol_table(),
                 get_type_factory());
 
-            codegen.emit_to_file(asm_output);
-
-            std::cout << "Code generation completed successfully" << std::endl;
-            std::cout << "Assembly written to: " << asm_output << std::endl;
+            std::string asm_output = program.get<std::string>("--emit-asm");
+            if (asm_output.empty()) {
+                std::cout << "Code generation completed successfully\n" << std::endl;
+                codegen.emit(std::cout);
+            } else {
+                codegen.emit_to_file(asm_output);
+                std::cout << "Code generation completed successfully" << std::endl;
+                std::cout << "Assembly written to: " << asm_output << std::endl;
+            }
         } catch (const std::exception &e) {
             std::cerr << "\nCode generation error: " << e.what() << std::endl;
             lexer_clear_tokens();
