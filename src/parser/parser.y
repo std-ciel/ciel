@@ -196,6 +196,7 @@
   // Track current function being defined for body_scope_id capture
   static std::optional<std::string> current_function_mangled;
   static TypePtr current_function_type;
+  static std::vector<SymbolPtr> current_function_parameters;
 
   // External reference to the global parsed_translation_unit
   extern std::vector<ASTNodePtr> parsed_translation_unit;
@@ -2353,7 +2354,23 @@ open_brace
     : OPEN_BRACE_OP {
         symbol_table.enter_scope();
         parser_state.push_ctx(ContextKind::BLOCK);
+
+        // Save pending parameter names before they're cleared
+        std::vector<std::string> pending_names = parser_state.pending_param_names;
+
         add_pending_parameters_to_scope(@1);
+
+        if (!pending_names.empty()) {
+          current_function_parameters.clear();
+          for (const auto& param_name : pending_names) {
+            if (!param_name.empty()) {
+              auto param_sym = symbol_table.lookup_symbol(param_name);
+              if (param_sym.has_value()) {
+                current_function_parameters.push_back(param_sym.value());
+              }
+            }
+          }
+        }
 
         // Push new scope tracking for brace-initialized objects
         parser_state.brace_init_objects.emplace_back();
@@ -5654,8 +5671,8 @@ function_definition
               sym_opt = symbol_table.lookup_symbol(*mangled);
             }
 
-            // Build FunctionDef AST node
-            $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), return_type, std::vector<SymbolPtr>{}, $4);
+            // Build FunctionDef AST node using captured parameter symbols
+            $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), return_type, current_function_parameters, $4);
 
             // Check that non-void functions have a return statement
             check_function_returns(return_type, $4, @4);
