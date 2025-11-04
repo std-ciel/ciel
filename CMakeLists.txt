@@ -53,6 +53,11 @@ add_library(ciel_parser STATIC
     src/passes/layout_pass.cpp
     src/tac/tac.cpp
     src/tac/tac_generator.cpp
+    src/codegen/riscv32_instruction.cpp
+    src/codegen/riscv32_frame.cpp
+    src/codegen/riscv32_regalloc.cpp
+    src/codegen/riscv32_backend.cpp
+    src/codegen/riscv32_codegen.cpp
 )
 
 target_include_directories(ciel_parser PUBLIC
@@ -63,6 +68,7 @@ target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/passes
     ${CMAKE_SOURCE_DIR}/include/tac
     ${CMAKE_SOURCE_DIR}/include/ast
+    ${CMAKE_SOURCE_DIR}/include/codegen
     ${CMAKE_CURRENT_BINARY_DIR})
 
 target_compile_definitions(ciel_parser PUBLIC )

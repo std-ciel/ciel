@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "codegen/riscv32_codegen.hpp"
 #include "common/error_printer.hpp"
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
@@ -66,6 +67,11 @@ int main(int argc, char *argv[])
         .help("Run all phases up to and including IR generation (TAC)")
         .default_value(false)
         .implicit_value(true);
+
+    program.add_argument("-S", "--emit-asm")
+        .help("Emit RISC-V assembly output file")
+        .default_value(std::string(""))
+        .nargs(1);
 
     try {
         program.parse_args(argc, argv);
@@ -258,6 +264,29 @@ int main(int argc, char *argv[])
     if (irgen_only) {
         lexer_clear_tokens();
         return 0;
+    }
+
+    std::string asm_output = program.get<std::string>("--emit-asm");
+    if (!asm_output.empty()) {
+        try {
+            std::cout << "\n┌─────────────────────────┐\n";
+            std::cout << "│ RISC-V CODE GENERATION  │\n";
+            std::cout << "└─────────────────────────┘\n";
+
+            ciel::codegen::riscv32::RiscV32Codegen codegen(
+                tac_gen.get_program(),
+                get_symbol_table(),
+                get_type_factory());
+
+            codegen.emit_to_file(asm_output);
+
+            std::cout << "Code generation completed successfully" << std::endl;
+            std::cout << "Assembly written to: " << asm_output << std::endl;
+        } catch (const std::exception &e) {
+            std::cerr << "\nCode generation error: " << e.what() << std::endl;
+            lexer_clear_tokens();
+            return 1;
+        }
     }
 
     lexer_clear_tokens();
