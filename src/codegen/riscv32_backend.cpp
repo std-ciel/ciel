@@ -634,7 +634,7 @@ void RiscV32Backend::emit(std::ostream &os)
 void RiscV32Backend::emit_preamble(std::ostream &os) const
 {
     os << "    .option nopic\n";
-    os << "    .attribute arch, \"rv32imf\"\n";
+    os << "    .attribute arch, \"rv64imfd\"\n";
 }
 
 void RiscV32Backend::emit_rodata(std::ostream &os) const
