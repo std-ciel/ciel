@@ -65,6 +65,45 @@ enum class PhysReg : uint8_t {
     T5 = 30,
     T6 = 31,
 
+    // Floating-point registers (F extension, RV32F)
+    // Temporary FP registers (caller-saved)
+    FT0 = 32,
+    FT1 = 33,
+    FT2 = 34,
+    FT3 = 35,
+    FT4 = 36,
+    FT5 = 37,
+    FT6 = 38,
+    FT7 = 39,
+    FT8 = 40,
+    FT9 = 41,
+    FT10 = 42,
+    FT11 = 43,
+
+    // Saved FP registers (callee-saved)
+    FS0 = 44,
+    FS1 = 45,
+    FS2 = 46,
+    FS3 = 47,
+    FS4 = 48,
+    FS5 = 49,
+    FS6 = 50,
+    FS7 = 51,
+    FS8 = 52,
+    FS9 = 53,
+    FS10 = 54,
+    FS11 = 55,
+
+    // FP argument/return value registers (caller-saved)
+    FA0 = 56,
+    FA1 = 57,
+    FA2 = 58,
+    FA3 = 59,
+    FA4 = 60,
+    FA5 = 61,
+    FA6 = 62,
+    FA7 = 63,
+
     // Pseudo-register for invalid/unallocated
     INVALID = 255
 };
@@ -73,46 +112,114 @@ enum class PhysReg : uint8_t {
 using VirtReg = uint32_t;
 constexpr VirtReg INVALID_VREG = 0;
 
-/// Register ABI names for assembly output
 constexpr std::string_view get_reg_name(PhysReg reg) noexcept
 {
-    constexpr std::array<std::string_view, 32> names = {
-        "zero", "ra", "sp", "gp", "tp",  "t0",  "t1", "t2", "s0", "s1", "a0",
-        "a1",   "a2", "a3", "a4", "a5",  "a6",  "a7", "s2", "s3", "s4", "s5",
-        "s6",   "s7", "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"};
+    constexpr std::array<std::string_view, 64> names = {
+        // Integer registers (x0-x31)
+        "zero",
+        "ra",
+        "sp",
+        "gp",
+        "tp",
+        "t0",
+        "t1",
+        "t2",
+        "s0",
+        "s1",
+        "a0",
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "s6",
+        "s7",
+        "s8",
+        "s9",
+        "s10",
+        "s11",
+        "t3",
+        "t4",
+        "t5",
+        "t6",
+        // Floating-point registers (f0-f31)
+        "ft0",
+        "ft1",
+        "ft2",
+        "ft3",
+        "ft4",
+        "ft5",
+        "ft6",
+        "ft7",
+        "ft8",
+        "ft9",
+        "ft10",
+        "ft11",
+        "fs0",
+        "fs1",
+        "fs2",
+        "fs3",
+        "fs4",
+        "fs5",
+        "fs6",
+        "fs7",
+        "fs8",
+        "fs9",
+        "fs10",
+        "fs11",
+        "fa0",
+        "fa1",
+        "fa2",
+        "fa3",
+        "fa4",
+        "fa5",
+        "fa6",
+        "fa7"};
 
     const auto idx = static_cast<uint8_t>(reg);
-    if (idx < 32) {
+    if (idx < 64) {
         return names[idx];
     }
     return "INVALID";
 }
 
-/// Check if register is caller-saved (clobbered across calls)
 constexpr bool is_caller_saved(PhysReg reg) noexcept
 {
     return reg == PhysReg::RA || (reg >= PhysReg::T0 && reg <= PhysReg::T2) ||
            (reg >= PhysReg::A0 && reg <= PhysReg::A7) ||
-           (reg >= PhysReg::T3 && reg <= PhysReg::T6);
+           (reg >= PhysReg::T3 && reg <= PhysReg::T6) ||
+           (reg >= PhysReg::FT0 && reg <= PhysReg::FT11) ||
+           (reg >= PhysReg::FA0 && reg <= PhysReg::FA7);
 }
 
-/// Check if register is callee-saved (must be preserved by callee)
 constexpr bool is_callee_saved(PhysReg reg) noexcept
 {
     return (reg >= PhysReg::S0_FP && reg <= PhysReg::S1) ||
-           (reg >= PhysReg::S2 && reg <= PhysReg::S11);
+           (reg >= PhysReg::S2 && reg <= PhysReg::S11) ||
+           (reg >= PhysReg::FS0 && reg <= PhysReg::FS11);
 }
 
-/// Check if register is allocatable for general use
 constexpr bool is_allocatable(PhysReg reg) noexcept
 {
     // Exclude: zero, sp, gp, tp, ra (special purpose)
     // Exclude: s0/fp (reserved as frame pointer)
     return reg != PhysReg::ZERO && reg != PhysReg::SP && reg != PhysReg::GP &&
-           reg != PhysReg::TP && reg != PhysReg::RA && reg != PhysReg::S0_FP;
+           reg != PhysReg::TP && reg != PhysReg::RA && reg != PhysReg::S0_FP &&
+           reg <= PhysReg::T6; // Only integer registers
 }
 
-/// Get all allocatable registers in allocation order
+constexpr bool is_fp_allocatable(PhysReg reg) noexcept
+{
+    return reg >= PhysReg::FT0 && reg <= PhysReg::FA7;
+}
+
+/// Get all allocatable integer registers in allocation order
 /// Priority: temporaries first (no save/restore), then saved regs
 inline const std::array<PhysReg, 26> &get_allocatable_regs() noexcept
 {
@@ -148,6 +255,52 @@ inline const std::array<PhysReg, 26> &get_allocatable_regs() noexcept
          PhysReg::S9,
          PhysReg::S10,
          PhysReg::S11}};
+    return regs;
+}
+
+/// Get all allocatable floating-point registers in allocation order
+/// Priority: temporaries first (no save/restore), then saved regs
+inline const std::array<PhysReg, 32> &get_fp_allocatable_regs() noexcept
+{
+    static const std::array<PhysReg, 32> regs = {
+        {// FP Temporaries (no save/restore cost) - 12 regs
+         PhysReg::FT0,
+         PhysReg::FT1,
+         PhysReg::FT2,
+         PhysReg::FT3,
+         PhysReg::FT4,
+         PhysReg::FT5,
+         PhysReg::FT6,
+         PhysReg::FT7,
+         PhysReg::FT8,
+         PhysReg::FT9,
+         PhysReg::FT10,
+         PhysReg::FT11,
+
+         // FP Arguments (used for args but available for allocation) - 8 regs
+         PhysReg::FA0,
+         PhysReg::FA1,
+         PhysReg::FA2,
+         PhysReg::FA3,
+         PhysReg::FA4,
+         PhysReg::FA5,
+         PhysReg::FA6,
+         PhysReg::FA7,
+
+         // FP Saved registers (require prologue/epilogue save/restore) - 12
+         // regs
+         PhysReg::FS0,
+         PhysReg::FS1,
+         PhysReg::FS2,
+         PhysReg::FS3,
+         PhysReg::FS4,
+         PhysReg::FS5,
+         PhysReg::FS6,
+         PhysReg::FS7,
+         PhysReg::FS8,
+         PhysReg::FS9,
+         PhysReg::FS10,
+         PhysReg::FS11}};
     return regs;
 }
 
