@@ -219,89 +219,101 @@ constexpr bool is_fp_allocatable(PhysReg reg) noexcept
     return reg >= PhysReg::FT0 && reg <= PhysReg::FA7;
 }
 
-/// Get all allocatable integer registers in allocation order
-/// Priority: temporaries first (no save/restore), then saved regs
-inline const std::array<PhysReg, 26> &get_allocatable_regs() noexcept
+/// Get all allocatable integer registers in allocation order.
+/// Priority: temporaries first (caller-saved, no prologue/epilogue cost),
+/// then argument registers, then callee-saved registers.
+/// NOTE: T0-T2 are reserved for spill temps and NOT included here.
+[[nodiscard]] inline constexpr std::array<PhysReg, 23>
+get_allocatable_regs() noexcept
 {
-    static const std::array<PhysReg, 26> regs = {
-        {// Temporaries (no save/restore cost) - 7 regs
-         PhysReg::T0,
-         PhysReg::T1,
-         PhysReg::T2,
-         PhysReg::T3,
-         PhysReg::T4,
-         PhysReg::T5,
-         PhysReg::T6,
+    return {// Temporaries: T3-T6 (4 regs, caller-saved)
+            // T0-T2 reserved for spill temporaries
+            PhysReg::T3,
+            PhysReg::T4,
+            PhysReg::T5,
+            PhysReg::T6,
 
-         // Arguments (used for args but available for allocation) - 8 regs
-         PhysReg::A0,
-         PhysReg::A1,
-         PhysReg::A2,
-         PhysReg::A3,
-         PhysReg::A4,
-         PhysReg::A5,
-         PhysReg::A6,
-         PhysReg::A7,
+            // Arguments: A0-A7 (8 regs, caller-saved, used for parameters)
+            PhysReg::A0,
+            PhysReg::A1,
+            PhysReg::A2,
+            PhysReg::A3,
+            PhysReg::A4,
+            PhysReg::A5,
+            PhysReg::A6,
+            PhysReg::A7,
 
-         // Saved registers (require prologue/epilogue save/restore) - 11 regs
-         PhysReg::S1,
-         PhysReg::S2,
-         PhysReg::S3,
-         PhysReg::S4,
-         PhysReg::S5,
-         PhysReg::S6,
-         PhysReg::S7,
-         PhysReg::S8,
-         PhysReg::S9,
-         PhysReg::S10,
-         PhysReg::S11}};
-    return regs;
+            // Saved: S1-S11 (11 regs, callee-saved, require save/restore)
+            PhysReg::S1,
+            PhysReg::S2,
+            PhysReg::S3,
+            PhysReg::S4,
+            PhysReg::S5,
+            PhysReg::S6,
+            PhysReg::S7,
+            PhysReg::S8,
+            PhysReg::S9,
+            PhysReg::S10,
+            PhysReg::S11};
 }
 
-/// Get all allocatable floating-point registers in allocation order
-/// Priority: temporaries first (no save/restore), then saved regs
-inline const std::array<PhysReg, 32> &get_fp_allocatable_regs() noexcept
+/// Get integer registers reserved for spill temporaries.
+/// These are used to load/store spilled values and are never allocated.
+[[nodiscard]] inline constexpr std::array<PhysReg, 3>
+get_int_spill_temps() noexcept
 {
-    static const std::array<PhysReg, 32> regs = {
-        {// FP Temporaries (no save/restore cost) - 12 regs
-         PhysReg::FT0,
-         PhysReg::FT1,
-         PhysReg::FT2,
-         PhysReg::FT3,
-         PhysReg::FT4,
-         PhysReg::FT5,
-         PhysReg::FT6,
-         PhysReg::FT7,
-         PhysReg::FT8,
-         PhysReg::FT9,
-         PhysReg::FT10,
-         PhysReg::FT11,
+    return {PhysReg::T0, PhysReg::T1, PhysReg::T2};
+}
 
-         // FP Arguments (used for args but available for allocation) - 8 regs
-         PhysReg::FA0,
-         PhysReg::FA1,
-         PhysReg::FA2,
-         PhysReg::FA3,
-         PhysReg::FA4,
-         PhysReg::FA5,
-         PhysReg::FA6,
-         PhysReg::FA7,
+/// Get all allocatable floating-point registers in allocation order.
+/// Priority: temporaries first, then argument registers, then callee-saved.
+/// NOTE: FT0-FT2 are reserved for spill temps and NOT included here.
+[[nodiscard]] inline constexpr std::array<PhysReg, 29>
+get_fp_allocatable_regs() noexcept
+{
+    return {// FP Temporaries: FT3-FT11 (9 regs, caller-saved)
+            // FT0-FT2 reserved for spill temporaries
+            PhysReg::FT3,
+            PhysReg::FT4,
+            PhysReg::FT5,
+            PhysReg::FT6,
+            PhysReg::FT7,
+            PhysReg::FT8,
+            PhysReg::FT9,
+            PhysReg::FT10,
+            PhysReg::FT11,
 
-         // FP Saved registers (require prologue/epilogue save/restore) - 12
-         // regs
-         PhysReg::FS0,
-         PhysReg::FS1,
-         PhysReg::FS2,
-         PhysReg::FS3,
-         PhysReg::FS4,
-         PhysReg::FS5,
-         PhysReg::FS6,
-         PhysReg::FS7,
-         PhysReg::FS8,
-         PhysReg::FS9,
-         PhysReg::FS10,
-         PhysReg::FS11}};
-    return regs;
+            // FP Arguments: FA0-FA7 (8 regs, caller-saved)
+            PhysReg::FA0,
+            PhysReg::FA1,
+            PhysReg::FA2,
+            PhysReg::FA3,
+            PhysReg::FA4,
+            PhysReg::FA5,
+            PhysReg::FA6,
+            PhysReg::FA7,
+
+            // FP Saved: FS0-FS11 (12 regs, callee-saved)
+            PhysReg::FS0,
+            PhysReg::FS1,
+            PhysReg::FS2,
+            PhysReg::FS3,
+            PhysReg::FS4,
+            PhysReg::FS5,
+            PhysReg::FS6,
+            PhysReg::FS7,
+            PhysReg::FS8,
+            PhysReg::FS9,
+            PhysReg::FS10,
+            PhysReg::FS11};
+}
+
+/// Get floating-point registers reserved for spill temporaries.
+/// These are used to load/store spilled FP values and are never allocated.
+[[nodiscard]] inline constexpr std::array<PhysReg, 3>
+get_fp_spill_temps() noexcept
+{
+    return {PhysReg::FT0, PhysReg::FT1, PhysReg::FT2};
 }
 
 } // namespace riscv32
