@@ -119,20 +119,19 @@ enum class MachineOpcode {
     DIRECTIVE
 };
 
-/// Operand types for machine instructions
 struct ImmOperand {
     int32_t value;
-    explicit ImmOperand(int32_t val) : value(val) {}
+    constexpr explicit ImmOperand(int32_t val) noexcept : value(val) {}
 };
 
 struct RegOperand {
     PhysReg reg;
-    explicit RegOperand(PhysReg r) : reg(r) {}
+    constexpr explicit RegOperand(PhysReg r) noexcept : reg(r) {}
 };
 
 struct VRegOperand {
     VirtReg vreg;
-    explicit VRegOperand(VirtReg vr) : vreg(vr) {}
+    constexpr explicit VRegOperand(VirtReg vr) noexcept : vreg(vr) {}
 };
 
 struct LabelOperand {
@@ -143,7 +142,9 @@ struct LabelOperand {
 struct MemOperand {
     PhysReg base;
     int32_t offset;
-    MemOperand(PhysReg b, int32_t off) : base(b), offset(off) {}
+    constexpr MemOperand(PhysReg b, int32_t off) noexcept : base(b), offset(off)
+    {
+    }
 };
 
 using MachineOperand =
@@ -152,69 +153,80 @@ using MachineOperand =
 /// Machine instruction representation
 class MachineInstr {
   public:
-    explicit MachineInstr(MachineOpcode opc) : opcode_(opc) {}
+    explicit constexpr MachineInstr(MachineOpcode opc) noexcept : opcode_(opc)
+    {
+    }
 
-    MachineOpcode get_opcode() const
+    [[nodiscard]] constexpr MachineOpcode get_opcode() const noexcept
     {
         return opcode_;
     }
+    [[nodiscard]] constexpr bool is_call() const noexcept
+    {
+        return opcode_ == MachineOpcode::CALL;
+    }
 
-    // Builder-style interface
+    [[nodiscard]] const auto &defs() const noexcept
+    {
+        return defs_;
+    }
+    [[nodiscard]] const auto &uses() const noexcept
+    {
+        return uses_;
+    }
+    [[nodiscard]] const auto &operands() const noexcept
+    {
+        return operands_;
+    }
+    [[nodiscard]] const std::string &label() const noexcept
+    {
+        return label_;
+    }
+
+    // Legacy accessors for compatibility
+    [[nodiscard]] const std::vector<VirtReg> &get_defs() const noexcept
+    {
+        return defs_;
+    }
+    [[nodiscard]] const std::vector<VirtReg> &get_uses() const noexcept
+    {
+        return uses_;
+    }
+    [[nodiscard]] const std::vector<MachineOperand> &
+    get_operands() const noexcept
+    {
+        return operands_;
+    }
+    [[nodiscard]] const std::string &get_label() const noexcept
+    {
+        return label_;
+    }
+
+    // Builder pattern
     MachineInstr &add_def(VirtReg vreg)
     {
         defs_.push_back(vreg);
         return *this;
     }
-
     MachineInstr &add_use(VirtReg vreg)
     {
         uses_.push_back(vreg);
         return *this;
     }
-
     MachineInstr &add_operand(MachineOperand op)
     {
         operands_.push_back(std::move(op));
         return *this;
     }
-
     MachineInstr &set_label(std::string lbl)
     {
         label_ = std::move(lbl);
         return *this;
     }
 
-    const std::vector<VirtReg> &get_defs() const
-    {
-        return defs_;
-    }
-    const std::vector<VirtReg> &get_uses() const
-    {
-        return uses_;
-    }
-    const std::vector<MachineOperand> &get_operands() const
-    {
-        return operands_;
-    }
-    const std::string &get_label() const
-    {
-        return label_;
-    }
-
-    /// Replace virtual register with physical register
     void replace_vreg(VirtReg vreg, PhysReg preg);
-
-    /// Check if this instruction defines/uses the given virtual register
-    bool defines(VirtReg vreg) const;
-    bool uses(VirtReg vreg) const;
-
-    /// Check if this is a call instruction (clobbers caller-saved regs)
-    bool is_call() const
-    {
-        return opcode_ == MachineOpcode::CALL;
-    }
-
-    /// Emit assembly string for this instruction
+    [[nodiscard]] bool defines(VirtReg vreg) const;
+    [[nodiscard]] bool uses(VirtReg vreg) const;
     void emit(std::ostream &os) const;
 
   private:
@@ -343,6 +355,20 @@ inline MachineInstr make_fdiv_s(VirtReg dst, VirtReg src1, VirtReg src2)
         .add_use(src1)
         .add_use(src2);
 }
+
+struct MachineBasicBlock {
+    size_t start_instr_idx{};
+    size_t end_instr_idx{};
+    std::string label;
+    std::vector<size_t> successors;
+    std::vector<size_t> predecessors;
+
+    MachineBasicBlock() = default;
+    MachineBasicBlock(size_t start, size_t end, std::string lbl = "")
+        : start_instr_idx(start), end_instr_idx(end), label(std::move(lbl))
+    {
+    }
+};
 
 } // namespace riscv32
 } // namespace codegen
