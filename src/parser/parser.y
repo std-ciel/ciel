@@ -2019,7 +2019,8 @@ static void check_array_bounds(const TypePtr &array_type,
       const yy::location& rhs_loc,
       const yy::location& op_loc,
       Operator op_enum,
-      const std::string& op_name)
+      const std::string& op_name,
+      const bool is_static_assignment = false)
   {
     // Check if lhs is a valid lvalue using the new field-based check
     if (!get_expression_lvalue_status(lhs)) {
@@ -2089,7 +2090,7 @@ static void check_array_bounds(const TypePtr &array_type,
       }
     }
 
-    return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type);
+    return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type, is_static_assignment);
   }
 
   // Helper function to check if a cast is valid
@@ -3844,13 +3845,14 @@ declaration
                   // Create an assignment expression: var = initializer
                   auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
                   auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
-                  auto assign_expr = std::make_shared<AssignmentExpr>(
-                    Operator::ASSIGN,
-                    id_expr,
-                    di.initializer,
-                    sym.value()->get_type().type,
-                    is_static
-                  );
+                  auto assign_expr = handle_assignment_operator(id_expr,
+                                                                di.initializer,
+                                                                @2,
+                                                                @2,
+                                                                @2,
+                                                                Operator::ASSIGN,
+                                                                is_static ? "static variable initialization" : "variable initialization",
+                                                                is_static);
                   init_stmts.push_back(assign_expr);
                 }
               }
