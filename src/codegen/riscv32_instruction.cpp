@@ -1,6 +1,8 @@
 #include "codegen/riscv32_instruction.hpp"
+#include "codegen/riscv32_register.hpp"
 #include <algorithm>
 #include <ostream>
+#include <variant>
 
 namespace ciel {
 namespace codegen {
@@ -11,14 +13,14 @@ void MachineInstr::replace_vreg(VirtReg vreg, PhysReg preg)
     // Replace in defs
     for (auto &def : defs_) {
         if (def == vreg) {
-            def = 0; // Mark as physical (convention: vreg 0 = invalid)
+            def = INVALID_VREG;
         }
     }
 
     // Replace in uses
     for (auto &use : uses_) {
         if (use == vreg) {
-            use = 0;
+            use = INVALID_VREG;
         }
     }
 
@@ -246,8 +248,15 @@ void MachineInstr::emit(std::ostream &os) const
         opcode_ == MachineOpcode::LB || opcode_ == MachineOpcode::LHU ||
         opcode_ == MachineOpcode::LBU || opcode_ == MachineOpcode::SW ||
         opcode_ == MachineOpcode::SH || opcode_ == MachineOpcode::SB) {
-
-        if (operands_.size() >= 3) {
+        if (operands_.size() == 2 &&
+            std::holds_alternative<MemOperand>(operands_[1])) {
+            os << " ";
+            bool dest_is_fp = (opcode_ == MachineOpcode::FLW ||
+                               opcode_ == MachineOpcode::FSW);
+            emit_operand(os, operands_[0], dest_is_fp);
+            os << ", ";
+            emit_operand(os, operands_[1], false);
+        } else if (operands_.size() >= 3) {
             os << " ";
             bool dest_is_fp = (opcode_ == MachineOpcode::FLW);
             emit_operand(os, operands_[0], dest_is_fp);
