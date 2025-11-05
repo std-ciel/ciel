@@ -279,11 +279,13 @@ int main(int argc, char *argv[])
 
             std::string asm_output = program.get<std::string>("--emit-asm");
             if (asm_output.empty()) {
-                std::cout << "Code generation completed successfully\n" << std::endl;
+                std::cout << "Code generation completed successfully\n"
+                          << std::endl;
                 codegen.emit(std::cout);
             } else {
                 codegen.emit_to_file(asm_output);
-                std::cout << "Code generation completed successfully" << std::endl;
+                std::cout << "Code generation completed successfully"
+                          << std::endl;
                 std::cout << "Assembly written to: " << asm_output << std::endl;
             }
         } catch (const std::exception &e) {
