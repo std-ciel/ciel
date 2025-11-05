@@ -14,6 +14,115 @@ MachineFunction::MachineFunction(const TACFunction &tac_fn, TypeFactory &types)
 {
 }
 
+void MachineFunction::build_cfg()
+{
+    if (instructions_.empty())
+        return;
+
+    basic_blocks_.clear();
+    std::unordered_map<std::string, size_t> label_to_block;
+
+    auto is_terminator = [](MachineOpcode op) {
+        return op == MachineOpcode::J || op == MachineOpcode::JR ||
+               op == MachineOpcode::BEQ || op == MachineOpcode::BNE ||
+               op == MachineOpcode::BLT || op == MachineOpcode::BGE ||
+               op == MachineOpcode::BLTU || op == MachineOpcode::BGEU ||
+               op == MachineOpcode::RET;
+    };
+
+    auto get_branch_target =
+        [](const MachineInstr &instr) -> std::optional<std::string> {
+        const auto &operands = instr.get_operands();
+        for (const auto &op : operands) {
+            if (std::holds_alternative<LabelOperand>(op)) {
+                return std::get<LabelOperand>(op).label;
+            }
+        }
+        return std::nullopt;
+    };
+
+    // Phase 1: Identify block boundaries
+    // Blocks start at: (1) function entry, (2) labels, (3) instruction after
+    // terminator
+    // Blocks end at: (1) terminator, (2) instruction before label,
+    // (3) last instruction
+    std::vector<bool> is_block_start(instructions_.size(), false);
+    is_block_start[0] = true; // Entry point
+
+    for (size_t pos = 0; pos < instructions_.size(); ++pos) {
+        const auto &instr = instructions_[pos];
+
+        // Labels start new blocks
+        if (instr.get_opcode() == MachineOpcode::LABEL) {
+            is_block_start[pos] = true;
+        }
+
+        // Instruction after terminator starts new block
+        if (is_terminator(instr.get_opcode()) &&
+            pos + 1 < instructions_.size()) {
+            is_block_start[pos + 1] = true;
+        }
+    }
+
+    // Phase 2: Create basic blocks
+    size_t block_start = 0;
+    for (size_t pos = 0; pos < instructions_.size(); ++pos) {
+        // Start new block when we hit a boundary (and not at the first
+        // instruction of current block)
+        if (is_block_start[pos] && pos > block_start) {
+            basic_blocks_.emplace_back(block_start, pos - 1);
+            block_start = pos;
+        }
+
+        // Record label positions for successor computation
+        if (instructions_[pos].get_opcode() == MachineOpcode::LABEL) {
+            label_to_block[instructions_[pos].get_label()] =
+                basic_blocks_.size();
+        }
+    }
+
+    // Add final block
+    if (block_start < instructions_.size()) {
+        basic_blocks_.emplace_back(block_start, instructions_.size() - 1);
+    }
+
+    // Phase 3: Build CFG edges (successors/predecessors)
+    for (size_t bb_idx = 0; bb_idx < basic_blocks_.size(); ++bb_idx) {
+        auto &block = basic_blocks_[bb_idx];
+        const auto &last_instr = instructions_[block.end_instr_idx];
+        const auto opcode = last_instr.get_opcode();
+
+        if (is_terminator(opcode)) {
+            // Handle explicit branch target
+            if (auto target = get_branch_target(last_instr)) {
+                if (auto it = label_to_block.find(*target);
+                    it != label_to_block.end()) {
+                    block.successors.push_back(it->second);
+                    basic_blocks_[it->second].predecessors.push_back(bb_idx);
+                }
+            }
+
+            // Conditional branches also fall through
+            const bool is_conditional =
+                (opcode == MachineOpcode::BEQ || opcode == MachineOpcode::BNE ||
+                 opcode == MachineOpcode::BLT || opcode == MachineOpcode::BGE ||
+                 opcode == MachineOpcode::BLTU ||
+                 opcode == MachineOpcode::BGEU);
+
+            if (is_conditional && bb_idx + 1 < basic_blocks_.size()) {
+                block.successors.push_back(bb_idx + 1);
+                basic_blocks_[bb_idx + 1].predecessors.push_back(bb_idx);
+            }
+        } else {
+            // Non-terminator: fall through to next block
+            if (bb_idx + 1 < basic_blocks_.size()) {
+                block.successors.push_back(bb_idx + 1);
+                basic_blocks_[bb_idx + 1].predecessors.push_back(bb_idx);
+            }
+        }
+    }
+}
+
 InstructionSelector::InstructionSelector(MachineFunction &mfn,
                                          TypeFactory &types,
                                          RiscV32Backend &backend)
@@ -23,13 +132,33 @@ InstructionSelector::InstructionSelector(MachineFunction &mfn,
 
 void InstructionSelector::select(const TACFunction &tac_fn)
 {
+    // Map function parameters to argument registers (a0-a7)
+    for (size_t i = 0; i < tac_fn.parameters.size() && i < 8; ++i) {
+        const auto &param = tac_fn.parameters[i];
+        if (param.kind == TACOperand::Kind::SYMBOL) {
+            SymbolPtr sym = std::get<SymbolPtr>(param.value);
+            PhysReg arg_reg =
+                static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) + i);
+            param_to_reg_[sym->get_name()] = arg_reg;
+        }
+    }
+
+    // Process each basic block
     for (const auto &bb : tac_fn.basic_blocks) {
         if (!bb->label.empty()) {
             mfn_.add_instruction(make_label(bb->label));
         }
 
-        for (const auto &tac_instr : bb->instructions) {
-            select_instruction(*tac_instr);
+        // Select instructions for each TAC instruction
+        for (size_t i = 0; i < bb->instructions.size(); ++i) {
+            const auto &tac_instr = bb->instructions[i];
+            try {
+                select_instruction(*tac_instr);
+            } catch (const std::exception &e) {
+                throw std::runtime_error(
+                    std::string("Error selecting instruction #") +
+                    std::to_string(i) + " in BB: " + e.what());
+            }
         }
     }
 }
@@ -43,6 +172,16 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
 
     case TACOpcode::ASSIGN:
         select_assign(instr);
+        break;
+
+    case TACOpcode::ADDR_OF:
+        select_addr_of(instr);
+        break;
+
+    case TACOpcode::NEG:
+    case TACOpcode::NOT:
+    case TACOpcode::LNOT:
+        select_unary_op(instr);
         break;
 
     case TACOpcode::ADD:
@@ -85,6 +224,11 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
         break;
 
     case TACOpcode::LABEL:
+        // Emit the label from the instruction
+        if (instr.operand1.is_valid() &&
+            instr.operand1.kind == TACOperand::Kind::LABEL) {
+            mfn_.add_instruction(make_label(instr.operand1.to_string()));
+        }
         break;
 
     case TACOpcode::JUMP_TABLE:
@@ -100,10 +244,23 @@ void InstructionSelector::select_return(const TACInstruction &instr)
 {
     if (instr.operand1.is_valid()) {
         VirtReg val = load_operand(instr.operand1);
-        mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                 .add_use(val)
-                                 .add_operand(RegOperand(PhysReg::A0))
-                                 .add_operand(VRegOperand(val)));
+        bool is_float = false;
+        if (instr.operand1.type) {
+            is_float = is_float_type(instr.operand1.type);
+        } else {
+            is_float = float_vregs_.contains(val);
+        }
+        if (is_float) {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_S)
+                                     .add_use(val)
+                                     .add_operand(RegOperand(PhysReg::FA0))
+                                     .add_operand(VRegOperand(val)));
+        } else {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                     .add_use(val)
+                                     .add_operand(RegOperand(PhysReg::A0))
+                                     .add_operand(VRegOperand(val)));
+        }
     }
     mfn_.add_instruction(make_ret());
 }
@@ -112,6 +269,83 @@ void InstructionSelector::select_assign(const TACInstruction &instr)
 {
     VirtReg src = load_operand(instr.operand1);
     store_result(src, instr.result);
+}
+void InstructionSelector::select_addr_of(const TACInstruction &instr)
+{
+    // ADDR_OF computes the address of a variable
+    // For global variables: use la instruction
+    // For local variables: compute stack address using addi from frame pointer
+
+    if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
+        SymbolPtr sym = std::get<SymbolPtr>(instr.operand1.value);
+        std::string sym_name = sym->get_name();
+
+        if (sym->get_storage_class() == StorageClass::AUTO) {
+            // Local variable - use scope-qualified name
+            std::string unique_key =
+                std::to_string(sym->get_scope_id()) + "_" + sym_name;
+            VirtReg value_vreg = get_or_create_vreg_for_temp(unique_key);
+
+            // We'll emit a pseudo-instruction that will be replaced with the
+            // actual stack address calculation during frame finalization For
+            // now, emit a comment and store a placeholder
+            // TODO: This needs proper implementation with LEA (load effective
+            // address) For now, treat it as if we're loading the value itself
+            // (wrong but won't crash)
+            store_result(value_vreg, instr.result);
+        } else {
+            // Global variable - load its address
+            VirtReg addr_vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(make_la(addr_vreg, sym_name));
+            store_result(addr_vreg, instr.result);
+        }
+    } else {
+        // For temporaries or other types, load the operand
+        VirtReg addr = load_operand(instr.operand1);
+        store_result(addr, instr.result);
+    }
+}
+
+void InstructionSelector::select_unary_op(const TACInstruction &instr)
+{
+    VirtReg src = load_operand(instr.operand1);
+    VirtReg dst = mfn_.get_next_vreg();
+
+    switch (instr.opcode) {
+    case TACOpcode::NEG: {
+        // NEG: dst = 0 - src
+        mfn_.add_instruction(MachineInstr(MachineOpcode::SUB)
+                                 .add_def(dst)
+                                 .add_use(src)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(RegOperand(PhysReg::ZERO))
+                                 .add_operand(VRegOperand(src)));
+        break;
+    }
+    case TACOpcode::NOT: {
+        // NOT: bitwise not, dst = ~src = src XOR -1
+        mfn_.add_instruction(MachineInstr(MachineOpcode::XORI)
+                                 .add_def(dst)
+                                 .add_use(src)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(VRegOperand(src))
+                                 .add_operand(ImmOperand(-1)));
+        break;
+    }
+    case TACOpcode::LNOT: {
+        // LNOT: logical not, dst = !src = (src == 0)
+        mfn_.add_instruction(MachineInstr(MachineOpcode::SEQZ)
+                                 .add_def(dst)
+                                 .add_use(src)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(VRegOperand(src)));
+        break;
+    }
+    default:
+        return;
+    }
+
+    store_result(dst, instr.result);
 }
 
 void InstructionSelector::select_binary_op(const TACInstruction &instr)
@@ -125,6 +359,7 @@ void InstructionSelector::select_binary_op(const TACInstruction &instr)
     bool is_signed = is_signed_type(instr.result.type);
 
     if (is_float) {
+        float_vregs_.insert(dst);
         switch (instr.opcode) {
         case TACOpcode::ADD:
             opc = MachineOpcode::FADD_S;
@@ -378,11 +613,15 @@ void InstructionSelector::select_goto(const TACInstruction &instr)
 
 void InstructionSelector::select_if_branch(const TACInstruction &instr)
 {
-    VirtReg cond = load_operand(instr.result);
+    // TAC IF_FALSE/IF_TRUE structure: (opcode,
+    // operand1=condition, operand2=label)
+    VirtReg cond = load_operand(instr.operand1);
 
-    if (instr.operand1.kind == TACOperand::Kind::LABEL) {
-        std::string target = std::get<std::string>(instr.operand1.value);
+    if (instr.operand2.kind == TACOperand::Kind::LABEL) {
+        std::string target = std::get<std::string>(instr.operand2.value);
 
+        // IF_TRUE: branch if cond != 0 (BNE with zero)
+        // IF_FALSE: branch if cond == 0 (BEQ with zero)
         MachineOpcode branch_opc = (instr.opcode == TACOpcode::IF_TRUE)
                                        ? MachineOpcode::BNE
                                        : MachineOpcode::BEQ;
@@ -397,19 +636,30 @@ void InstructionSelector::select_if_branch(const TACInstruction &instr)
 
 void InstructionSelector::select_param(const TACInstruction &instr)
 {
-    VirtReg param = load_operand(instr.result);
+    VirtReg param = load_operand(instr.operand1);
     pending_params_.push_back(param);
 }
 
 void InstructionSelector::select_call(const TACInstruction &instr)
 {
-    for (size_t i = 0; i < pending_params_.size() && i < 8; ++i) {
-        PhysReg arg_reg =
-            static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) + i);
-        mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                 .add_use(pending_params_[i])
-                                 .add_operand(RegOperand(arg_reg))
-                                 .add_operand(VRegOperand(pending_params_[i])));
+    for (size_t i = 0, f_idx = 0, i_idx = 0;
+         i < pending_params_.size() && i < 8;
+         ++i) {
+        if (float_vregs_.contains(pending_params_[i])) {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::FMV_S)
+                    .add_use(pending_params_[i])
+                    .add_operand(RegOperand(static_cast<PhysReg>(
+                        static_cast<uint8_t>(PhysReg::FA0) + f_idx++)))
+                    .add_operand(VRegOperand(pending_params_[i])));
+        } else {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::MV)
+                    .add_use(pending_params_[i])
+                    .add_operand(RegOperand(static_cast<PhysReg>(
+                        static_cast<uint8_t>(PhysReg::A0) + i_idx++)))
+                    .add_operand(VRegOperand(pending_params_[i])));
+        }
     }
 
     if (pending_params_.size() > 8) {
@@ -417,20 +667,31 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             static_cast<uint32_t>(pending_params_.size()));
     }
 
+    TypePtr ret_type = instr.result.type;
     if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
         mfn_.add_instruction(make_call(func_sym->get_name()));
-    } else if (instr.operand1.kind == TACOperand::Kind::LABEL) {
-        std::string func_name = std::get<std::string>(instr.operand1.value);
-        mfn_.add_instruction(make_call(func_name));
     }
+    // else if (instr.operand1.kind == TACOperand::Kind::LABEL) {
+    //     std::string func_name = std::get<std::string>(instr.operand1.value);
+    //     mfn_.add_instruction(make_call(func_name));
+    // }
 
     if (instr.result.is_valid()) {
         VirtReg result = mfn_.get_next_vreg();
-        mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                 .add_def(result)
-                                 .add_operand(VRegOperand(result))
-                                 .add_operand(RegOperand(PhysReg::A0)));
+        // TODO: handle this better for complex return types
+        if (ret_type && is_float_type(ret_type)) {
+            float_vregs_.insert(result);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_S)
+                                     .add_def(result)
+                                     .add_operand(VRegOperand(result))
+                                     .add_operand(RegOperand(PhysReg::FA0)));
+        } else {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                     .add_def(result)
+                                     .add_operand(VRegOperand(result))
+                                     .add_operand(RegOperand(PhysReg::A0)));
+        }
         store_result(result, instr.result);
     }
 
@@ -466,6 +727,9 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             double fval = std::get<double>(operand.value);
             float f = static_cast<float>(fval);
 
+            // Mark as float vreg
+            float_vregs_.insert(vreg);
+
             // Add constant to pool and get label
             std::string label = backend_.add_float_constant(f);
 
@@ -476,11 +740,11 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             mfn_.add_instruction(make_la(addr_vreg, label));
 
             auto flw_instr = MachineInstr(MachineOpcode::FLW);
-            flw_instr.add_def(vreg);
-            flw_instr.add_use(addr_vreg);
-            flw_instr.add_operand(VRegOperand(vreg));
-            flw_instr.add_operand(VRegOperand(addr_vreg));
-            flw_instr.add_operand(ImmOperand(0));
+            flw_instr.add_def(vreg)
+                .add_use(addr_vreg)
+                .add_operand(VRegOperand(vreg))
+                .add_operand(VRegOperand(addr_vreg))
+                .add_operand(ImmOperand(0));
             mfn_.add_instruction(std::move(flw_instr));
 
             return vreg;
@@ -497,14 +761,53 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
         return vreg;
     }
     case TACOperand::Kind::SYMBOL: {
-        VirtReg vreg = mfn_.get_next_vreg();
         SymbolPtr sym = std::get<SymbolPtr>(operand.value);
-        mfn_.add_instruction(make_la(vreg, sym->get_name()));
-        return vreg;
+        std::string sym_name = sym->get_name();
+        // Create unique key: scope_id + name to handle shadowed variables
+        std::string unique_key =
+            std::to_string(sym->get_scope_id()) + "_" + sym_name;
+
+        // Check if this symbol is a function parameter
+        auto param_it = param_to_reg_.find(sym_name);
+        if (param_it != param_to_reg_.end()) {
+            // It's a parameter - copy from its argument register
+            VirtReg vreg = mfn_.get_next_vreg();
+            PhysReg param_reg = param_it->second;
+            if (is_float_type(sym->get_type().type)) {
+                float_vregs_.insert(vreg);
+                mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_S)
+                                         .add_def(vreg)
+                                         .add_operand(VRegOperand(vreg))
+                                         .add_operand(RegOperand(param_reg)));
+            } else {
+                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                         .add_def(vreg)
+                                         .add_operand(VRegOperand(vreg))
+                                         .add_operand(RegOperand(param_reg)));
+            }
+            return vreg;
+        } else if (sym->get_storage_class() == StorageClass::AUTO) {
+            // It's a local variable - use scope-qualified name
+            VirtReg vreg = get_or_create_vreg_for_temp(unique_key);
+            auto qual_type = sym->get_type();
+            if (qual_type.type && is_float_type(qual_type.type)) {
+                float_vregs_.insert(vreg);
+            }
+            return vreg;
+        } else {
+            // It's a global symbol (STATIC storage class) - load its address
+            VirtReg vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(make_la(vreg, sym_name));
+            return vreg;
+        }
     }
     case TACOperand::Kind::TEMPORARY: {
         std::string temp_name = std::get<std::string>(operand.value);
-        return get_or_create_vreg_for_temp(temp_name);
+        VirtReg vreg = get_or_create_vreg_for_temp(temp_name);
+        if (operand.type && is_float_type(operand.type)) {
+            float_vregs_.insert(vreg);
+        }
+        return vreg;
     }
     default:
         return INVALID_VREG;
@@ -515,9 +818,74 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
 {
     if (dest.kind == TACOperand::Kind::TEMPORARY) {
         std::string temp_name = std::get<std::string>(dest.value);
-        VirtReg dest_vreg = get_or_create_vreg_for_temp(temp_name);
-        if (dest_vreg != vreg) {
-            mfn_.add_instruction(make_mv(dest_vreg, vreg));
+
+        auto it = temp_to_vreg_.find(temp_name);
+        if (it != temp_to_vreg_.end()) {
+            // Temporary already has a vreg (redefinition) - emit move
+            VirtReg dest_vreg = it->second;
+            if (dest_vreg != vreg) {
+                bool is_float = float_vregs_.contains(vreg);
+                if (is_float) {
+                    float_vregs_.insert(dest_vreg);
+                    auto fmv = MachineInstr(MachineOpcode::FMV_S)
+                                   .add_def(dest_vreg)
+                                   .add_use(vreg)
+                                   .add_operand(VRegOperand(dest_vreg))
+                                   .add_operand(VRegOperand(vreg));
+                    mfn_.add_instruction(std::move(fmv));
+                } else {
+                    mfn_.add_instruction(make_mv(dest_vreg, vreg));
+                }
+            }
+        } else {
+            // First definition - just record mapping (no copy for compiler
+            // temporaries)
+            temp_to_vreg_[temp_name] = vreg;
+            mfn_.get_frame().allocate_temp(temp_name, 4);
+        }
+    } else if (dest.kind == TACOperand::Kind::SYMBOL) {
+        SymbolPtr sym = std::get<SymbolPtr>(dest.value);
+        if (sym->get_storage_class() == StorageClass::AUTO) {
+            // Create unique key: scope_id + name to handle shadowed variables
+            std::string unique_key =
+                std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
+
+            auto it = temp_to_vreg_.find(unique_key);
+            if (it != temp_to_vreg_.end()) {
+                // Symbol already has a vreg (redefinition) - emit move
+                VirtReg dest_vreg = it->second;
+                if (dest_vreg != vreg) {
+                    bool is_float = float_vregs_.contains(vreg);
+                    if (is_float) {
+                        float_vregs_.insert(dest_vreg);
+                        auto fmv = MachineInstr(MachineOpcode::FMV_S)
+                                       .add_def(dest_vreg)
+                                       .add_use(vreg)
+                                       .add_operand(VRegOperand(dest_vreg))
+                                       .add_operand(VRegOperand(vreg));
+                        mfn_.add_instruction(std::move(fmv));
+                    } else {
+                        mfn_.add_instruction(make_mv(dest_vreg, vreg));
+                    }
+                }
+            } else {
+                // First definition - create independent copy
+                VirtReg dest_vreg = mfn_.get_next_vreg();
+                bool is_float = float_vregs_.contains(vreg);
+                if (is_float) {
+                    float_vregs_.insert(dest_vreg);
+                    auto fmv = MachineInstr(MachineOpcode::FMV_S)
+                                   .add_def(dest_vreg)
+                                   .add_use(vreg)
+                                   .add_operand(VRegOperand(dest_vreg))
+                                   .add_operand(VRegOperand(vreg));
+                    mfn_.add_instruction(std::move(fmv));
+                } else {
+                    mfn_.add_instruction(make_mv(dest_vreg, vreg));
+                }
+                temp_to_vreg_[unique_key] = dest_vreg;
+                mfn_.get_frame().allocate_temp(unique_key, 4);
+            }
         }
     }
 }
@@ -570,10 +938,10 @@ InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
         return it->second;
     }
 
+    // Temp not yet defined - this should only happen for loads before stores
+    // (e.g., loading a parameter or pre-existing symbol)
     VirtReg vreg = mfn_.get_next_vreg();
     temp_to_vreg_[temp_name] = vreg;
-
-    // Allocate stack slot
     mfn_.get_frame().allocate_temp(temp_name, 4);
 
     return vreg;
@@ -606,20 +974,24 @@ std::string RiscV32Backend::add_float_constant(float value)
 void RiscV32Backend::lower_functions()
 {
     for (const auto &tac_fn : program_.functions) {
-        auto mfn = std::make_unique<MachineFunction>(*tac_fn, types_);
+        try {
+            auto mfn = std::make_unique<MachineFunction>(*tac_fn, types_);
 
-        // Instruction selection
-        InstructionSelector selector(*mfn, types_, *this);
-        selector.select(*tac_fn);
+            InstructionSelector selector(*mfn, types_, *this);
+            selector.select(*tac_fn);
 
-        // Register allocation (use simple stack-only for baseline)
-        StackOnlyAllocator allocator(mfn->get_instructions(), mfn->get_frame());
-        allocator.run();
+            mfn->build_cfg();
 
-        // Finalize frame layout
-        mfn->get_frame().finalize();
+            LinearScanAllocator allocator(*mfn);
+            allocator.run();
 
-        machine_functions_.push_back(std::move(mfn));
+            mfn->get_frame().finalize();
+
+            machine_functions_.push_back(std::move(mfn));
+        } catch (const std::exception &e) {
+            throw std::runtime_error(std::string("Error lowering function '") +
+                                     tac_fn->mangled_name + "': " + e.what());
+        }
     }
 }
 
@@ -727,18 +1099,31 @@ void RiscV32Backend::emit_text(std::ostream &os)
 
 void RiscV32Backend::emit_function(std::ostream &os, MachineFunction &mfn)
 {
-    os << "\n    .globl " << mfn.get_name() << "\n";
-    os << "    .type " << mfn.get_name() << ", @function\n";
-    os << mfn.get_name() << ":\n";
+    try {
+        // For the main function, use "main" as the label name instead of the
+        // mangled name This is required for linking with the C runtime
+        std::string label_name = mfn.get_name();
+        if (label_name == "_Z4mainv") {
+            label_name = "main";
+        }
 
-    emit_prologue(os, mfn);
+        os << "\n    .globl " << label_name << "\n";
+        os << "    .type " << label_name << ", @function\n";
+        os << label_name << ":\n";
 
-    // Emit instructions
-    for (const auto &instr : mfn.get_instructions()) {
-        emit_instruction(os, instr);
+        emit_prologue(os, mfn);
+
+        // Emit instructions
+        for (size_t i = 0; i < mfn.get_instructions().size(); ++i) {
+            const auto &instr = mfn.get_instructions()[i];
+            emit_instruction(os, instr, mfn);
+        }
+
+        // Note: epilogue is emitted as part of RET instruction handling
+    } catch (const std::exception &e) {
+        throw std::runtime_error(std::string("Error in function ") +
+                                 mfn.get_name() + ": " + e.what());
     }
-
-    // Note: epilogue is emitted as part of RET instruction handling
 }
 
 void RiscV32Backend::emit_prologue(std::ostream &os,
@@ -777,7 +1162,7 @@ void RiscV32Backend::emit_prologue(std::ostream &os,
 }
 
 void RiscV32Backend::emit_epilogue(std::ostream &os,
-                                   const MachineFunction &mfn) const
+                                   const MachineFunction &mfn) const noexcept
 {
     const auto &frame = mfn.get_frame();
     int32_t frame_size = frame.get_frame_size();
@@ -813,16 +1198,13 @@ void RiscV32Backend::emit_epilogue(std::ostream &os,
 }
 
 void RiscV32Backend::emit_instruction(std::ostream &os,
-                                      const MachineInstr &instr) const
+                                      const MachineInstr &instr,
+                                      const MachineFunction &mfn) const
 {
     // Special handling for RET - emit epilogue
     if (instr.get_opcode() == MachineOpcode::RET) {
-        // Find the machine function this belongs to
-        for (const auto &mfn : machine_functions_) {
-            // Check if this instruction is in this function (simplified check)
-            emit_epilogue(os, *mfn);
-            return;
-        }
+        emit_epilogue(os, mfn);
+        return;
     }
 
     // For all other instructions, use the instruction's emit method

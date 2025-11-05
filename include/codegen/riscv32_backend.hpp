@@ -1,14 +1,15 @@
 #ifndef CIEL_CODEGEN_RISCV32_BACKEND_HPP
 #define CIEL_CODEGEN_RISCV32_BACKEND_HPP
 
-#include "riscv32_frame.hpp"
-#include "riscv32_instruction.hpp"
+#include "codegen/riscv32_frame.hpp"
+#include "codegen/riscv32_instruction.hpp"
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type_factory.hpp"
 #include "tac/tac.hpp"
 #include <iosfwd>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace ciel {
@@ -21,42 +22,79 @@ class MachineFunction {
   public:
     explicit MachineFunction(const TACFunction &tac_fn, TypeFactory &types);
 
-    const std::string &get_name() const
+    [[nodiscard]] const std::string &name() const noexcept
     {
         return name_;
     }
-    const std::vector<MachineInstr> &get_instructions() const
+
+    [[nodiscard]] const auto &instructions() const noexcept
     {
         return instructions_;
     }
-    std::vector<MachineInstr> &get_instructions()
+
+    [[nodiscard]] auto &instructions() noexcept
     {
         return instructions_;
     }
-    FrameLayout &get_frame()
+
+    [[nodiscard]] const auto &basic_blocks() const noexcept
     {
-        return frame_;
+        return basic_blocks_;
     }
-    const FrameLayout &get_frame() const
+
+    [[nodiscard]] auto &frame() noexcept
     {
         return frame_;
     }
 
-    /// Add an instruction to this function
+    [[nodiscard]] const auto &frame() const noexcept
+    {
+        return frame_;
+    }
+
+    // Legacy accessors for compatibility
+    [[nodiscard]] const std::string &get_name() const noexcept
+    {
+        return name_;
+    }
+    [[nodiscard]] const std::vector<MachineInstr> &
+    get_instructions() const noexcept
+    {
+        return instructions_;
+    }
+    [[nodiscard]] std::vector<MachineInstr> &get_instructions() noexcept
+    {
+        return instructions_;
+    }
+    [[nodiscard]] const std::vector<MachineBasicBlock> &
+    get_basic_blocks() const noexcept
+    {
+        return basic_blocks_;
+    }
+    [[nodiscard]] FrameLayout &get_frame() noexcept
+    {
+        return frame_;
+    }
+    [[nodiscard]] const FrameLayout &get_frame() const noexcept
+    {
+        return frame_;
+    }
+
     void add_instruction(MachineInstr instr)
     {
         instructions_.push_back(std::move(instr));
     }
-
-    /// Get a fresh virtual register
-    VirtReg get_next_vreg()
+    [[nodiscard]] VirtReg get_next_vreg() noexcept
     {
         return next_vreg_++;
     }
 
+    void build_cfg();
+
   private:
     std::string name_;
     std::vector<MachineInstr> instructions_;
+    std::vector<MachineBasicBlock> basic_blocks_;
     FrameLayout frame_;
     VirtReg next_vreg_;
     TypeFactory &types_;
@@ -80,6 +118,8 @@ class InstructionSelector {
     void select_enter(const TACInstruction &instr);
     void select_return(const TACInstruction &instr);
     void select_assign(const TACInstruction &instr);
+    void select_addr_of(const TACInstruction &instr);
+    void select_unary_op(const TACInstruction &instr);
     void select_binary_op(const TACInstruction &instr);
     void select_comparison(const TACInstruction &instr);
     void select_goto(const TACInstruction &instr);
@@ -108,8 +148,14 @@ class InstructionSelector {
 
     std::unordered_map<std::string, VirtReg> temp_to_vreg_;
 
+    // Parameter symbols -> argument register mapping (a0-a7)
+    std::unordered_map<std::string, PhysReg> param_to_reg_;
+
     // Pending parameters for next CALL
     std::vector<VirtReg> pending_params_;
+
+    // Track whether each vreg holds a float value
+    std::unordered_set<VirtReg> float_vregs_;
 };
 
 /// RV32 backend: orchestrates instruction selection, register allocation,
@@ -145,10 +191,13 @@ class RiscV32Backend {
     void emit_prologue(std::ostream &os, const MachineFunction &mfn) const;
 
     /// Emit function epilogue (restore regs, return)
-    void emit_epilogue(std::ostream &os, const MachineFunction &mfn) const;
+    void emit_epilogue(std::ostream &os,
+                       const MachineFunction &mfn) const noexcept;
 
     /// Emit a single machine instruction
-    void emit_instruction(std::ostream &os, const MachineInstr &instr) const;
+    void emit_instruction(std::ostream &os,
+                          const MachineInstr &instr,
+                          const MachineFunction &mfn) const;
 
     /// Lower TAC functions to machine functions
     void lower_functions();
