@@ -119,6 +119,7 @@ class InstructionSelector {
     void select_return(const TACInstruction &instr);
     void select_assign(const TACInstruction &instr);
     void select_addr_of(const TACInstruction &instr);
+    void select_deref(const TACInstruction &instr);
     void select_unary_op(const TACInstruction &instr);
     void select_binary_op(const TACInstruction &instr);
     void select_comparison(const TACInstruction &instr);

@@ -178,6 +178,10 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
         select_addr_of(instr);
         break;
 
+    case TACOpcode::DEREF:
+        select_deref(instr);
+        break;
+
     case TACOpcode::NEG:
     case TACOpcode::NOT:
     case TACOpcode::LNOT:
@@ -235,6 +239,14 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
         select_jump_table(instr);
         break;
 
+    case TACOpcode::LOAD:
+        select_load(instr);
+        break;
+
+    case TACOpcode::STORE:
+        select_store(instr);
+        break;
+
     default:
         break;
     }
@@ -281,29 +293,58 @@ void InstructionSelector::select_addr_of(const TACInstruction &instr)
         std::string sym_name = sym->get_name();
 
         if (sym->get_storage_class() == StorageClass::AUTO) {
-            // Local variable - use scope-qualified name
-            std::string unique_key =
-                std::to_string(sym->get_scope_id()) + "_" + sym_name;
-            VirtReg value_vreg = get_or_create_vreg_for_temp(unique_key);
 
-            // We'll emit a pseudo-instruction that will be replaced with the
-            // actual stack address calculation during frame finalization For
-            // now, emit a comment and store a placeholder
-            // TODO: This needs proper implementation with LEA (load effective
-            // address) For now, treat it as if we're loading the value itself
-            // (wrong but won't crash)
-            store_result(value_vreg, instr.result);
+            int32_t offset = get_local_variable_offset(sym);
+            VirtReg addr_vreg = mfn_.get_next_vreg();
+
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(addr_vreg)
+                                     .add_operand(VRegOperand(addr_vreg))
+                                     .add_operand(RegOperand(PhysReg::S0_FP))
+                                     .add_operand(ImmOperand(offset)));
+
+            store_result(addr_vreg, instr.result);
         } else {
-            // Global variable - load its address
             VirtReg addr_vreg = mfn_.get_next_vreg();
             mfn_.add_instruction(make_la(addr_vreg, sym_name));
             store_result(addr_vreg, instr.result);
         }
     } else {
-        // For temporaries or other types, load the operand
         VirtReg addr = load_operand(instr.operand1);
         store_result(addr, instr.result);
     }
+}
+
+void InstructionSelector::select_deref(const TACInstruction &instr)
+{
+    VirtReg addr = load_operand(instr.operand1);
+    VirtReg result = mfn_.get_next_vreg();
+
+    bool is_float = false;
+    if (instr.result.type) {
+        is_float = is_float_type(instr.result.type);
+    }
+
+    if (is_float) {
+        float_vregs_.insert(result);
+        auto load = MachineInstr(MachineOpcode::FLD);
+        load.add_def(result);
+        load.add_use(addr);
+        load.add_operand(VRegOperand(result));
+        load.add_operand(VRegOperand(addr));
+        load.add_operand(ImmOperand(0));
+        mfn_.add_instruction(std::move(load));
+    } else {
+        auto load = MachineInstr(MachineOpcode::LD);
+        load.add_def(result);
+        load.add_use(addr);
+        load.add_operand(VRegOperand(result));
+        load.add_operand(VRegOperand(addr));
+        load.add_operand(ImmOperand(0));
+        mfn_.add_instruction(std::move(load));
+    }
+
+    store_result(result, instr.result);
 }
 
 void InstructionSelector::select_unary_op(const TACInstruction &instr)
@@ -718,6 +759,73 @@ void InstructionSelector::select_jump_table(const TACInstruction &instr)
     }
 }
 
+void InstructionSelector::select_load(const TACInstruction &instr)
+{
+    // LOAD: result = *address
+    VirtReg addr = load_operand(instr.operand1);
+    VirtReg result = mfn_.get_next_vreg();
+
+    bool is_float = false;
+    if (instr.result.type) {
+        is_float = is_float_type(instr.result.type);
+    }
+
+    if (is_float) {
+        float_vregs_.insert(result);
+        auto load = MachineInstr(MachineOpcode::FLD);
+        load.add_def(result);
+        load.add_use(addr);
+        load.add_operand(VRegOperand(result));
+        load.add_operand(VRegOperand(addr));
+        load.add_operand(ImmOperand(0));
+        mfn_.add_instruction(std::move(load));
+    } else {
+        // All non-float types use LD (64-bit load)
+        auto load = MachineInstr(MachineOpcode::LD);
+        load.add_def(result);
+        load.add_use(addr);
+        load.add_operand(VRegOperand(result));
+        load.add_operand(VRegOperand(addr));
+        load.add_operand(ImmOperand(0));
+        mfn_.add_instruction(std::move(load));
+    }
+
+    store_result(result, instr.result);
+}
+
+void InstructionSelector::select_store(const TACInstruction &instr)
+{
+    // STORE: *address = value
+    VirtReg addr = load_operand(instr.result);
+    VirtReg value = load_operand(instr.operand1);
+
+    bool is_float = false;
+    if (instr.operand1.type) {
+        is_float = is_float_type(instr.operand1.type);
+    } else {
+        is_float = float_vregs_.contains(value);
+    }
+
+    if (is_float) {
+        auto store = MachineInstr(MachineOpcode::FSD);
+        store.add_use(value);
+        store.add_use(addr);
+        store.add_operand(VRegOperand(value));
+        store.add_operand(VRegOperand(addr));
+        store.add_operand(ImmOperand(0));
+        mfn_.add_instruction(std::move(store));
+    } else {
+
+        auto store = MachineInstr(MachineOpcode::SD);
+        store.add_use(value);
+        store.add_use(addr);
+        store.add_operand(VRegOperand(value));
+        store.add_operand(VRegOperand(addr));
+        store.add_operand(ImmOperand(0));
+        mfn_.add_instruction(std::move(store));
+    }
+}
+
 VirtReg InstructionSelector::load_operand(const TACOperand &operand)
 {
     switch (operand.kind) {
@@ -790,10 +898,40 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             // It's a local variable - use scope-qualified name
             VirtReg vreg = get_or_create_vreg_for_temp(unique_key);
             auto qual_type = sym->get_type();
-            if (qual_type.type && is_float_type(qual_type.type)) {
-                float_vregs_.insert(vreg);
+
+            if (qual_type.type && qual_type.type->kind == TypeKind::ARRAY) {
+
+                int32_t offset = get_local_variable_offset(sym);
+                VirtReg vreg = mfn_.get_next_vreg();
+
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::ADDI)
+                        .add_def(vreg)
+                        .add_operand(VRegOperand(vreg))
+                        .add_operand(RegOperand(PhysReg::S0_FP))
+                        .add_operand(ImmOperand(offset)));
+                return vreg;
+            } else {
+
+                int32_t offset = get_local_variable_offset(sym);
+                VirtReg vreg = mfn_.get_next_vreg();
+
+                if (qual_type.type && is_float_type(qual_type.type)) {
+                    float_vregs_.insert(vreg);
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::FLD)
+                            .add_def(vreg)
+                            .add_operand(VRegOperand(vreg))
+                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                } else {
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::LD)
+                            .add_def(vreg)
+                            .add_operand(VRegOperand(vreg))
+                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                }
+                return vreg;
             }
-            return vreg;
         } else {
             // It's a global symbol (STATIC storage class) - load its address
             VirtReg vreg = mfn_.get_next_vreg();
@@ -846,45 +984,23 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
     } else if (dest.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr sym = std::get<SymbolPtr>(dest.value);
         if (sym->get_storage_class() == StorageClass::AUTO) {
-            // Create unique key: scope_id + name to handle shadowed variables
-            std::string unique_key =
-                std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
 
-            auto it = temp_to_vreg_.find(unique_key);
-            if (it != temp_to_vreg_.end()) {
-                // Symbol already has a vreg (redefinition) - emit move
-                VirtReg dest_vreg = it->second;
-                if (dest_vreg != vreg) {
-                    bool is_float = float_vregs_.contains(vreg);
-                    if (is_float) {
-                        float_vregs_.insert(dest_vreg);
-                        auto fmv = MachineInstr(MachineOpcode::FMV_S)
-                                       .add_def(dest_vreg)
-                                       .add_use(vreg)
-                                       .add_operand(VRegOperand(dest_vreg))
-                                       .add_operand(VRegOperand(vreg));
-                        mfn_.add_instruction(std::move(fmv));
-                    } else {
-                        mfn_.add_instruction(make_mv(dest_vreg, vreg));
-                    }
-                }
+            int32_t offset = get_local_variable_offset(sym);
+            bool is_float = float_vregs_.contains(vreg);
+
+            if (is_float) {
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::FSD)
+                        .add_use(vreg)
+                        .add_operand(VRegOperand(vreg))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
             } else {
-                // First definition - create independent copy
-                VirtReg dest_vreg = mfn_.get_next_vreg();
-                bool is_float = float_vregs_.contains(vreg);
-                if (is_float) {
-                    float_vregs_.insert(dest_vreg);
-                    auto fmv = MachineInstr(MachineOpcode::FMV_S)
-                                   .add_def(dest_vreg)
-                                   .add_use(vreg)
-                                   .add_operand(VRegOperand(dest_vreg))
-                                   .add_operand(VRegOperand(vreg));
-                    mfn_.add_instruction(std::move(fmv));
-                } else {
-                    mfn_.add_instruction(make_mv(dest_vreg, vreg));
-                }
-                temp_to_vreg_[unique_key] = dest_vreg;
-                mfn_.get_frame().allocate_temp(unique_key, 4);
+
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::SD)
+                        .add_use(vreg)
+                        .add_operand(VRegOperand(vreg))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
             }
         }
     }
