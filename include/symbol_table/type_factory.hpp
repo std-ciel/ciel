@@ -228,6 +228,8 @@ class TypeFactory {
 
     std::vector<std::pair<TypeId, TypePtr>> get_custom_types() const;
 
+    std::vector<std::pair<TypeId, TypePtr>> get_all_types() const;
+
     void print_custom_types() const;
 
     void print_type_layouts() const;

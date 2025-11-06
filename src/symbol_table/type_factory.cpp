@@ -101,6 +101,15 @@ std::vector<std::pair<TypeId, TypePtr>> TypeFactory::get_custom_types() const
     return result;
 }
 
+std::vector<std::pair<TypeId, TypePtr>> TypeFactory::get_all_types() const
+{
+    std::vector<std::pair<TypeId, TypePtr>> result;
+    for (const auto &[id, type] : types) {
+        result.emplace_back(id, type);
+    }
+    return result;
+}
+
 void TypeFactory::print_custom_types() const
 {
     std::size_t w_id = std::string("Type ID").size();
