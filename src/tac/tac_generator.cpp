@@ -618,6 +618,37 @@ TACOperand TACGenerator::generate_unary_op(std::shared_ptr<UnaryExpr> expr)
         return generate_expression(expr->operand);
     }
 
+    if (expr->op == Operator::ADDRESS_OF &&
+        expr->operand->type == ASTNodeType::BINARY_EXPR) {
+        auto binary = std::static_pointer_cast<BinaryExpr>(expr->operand);
+        if (binary->op == Operator::SUBSCRIPT_OP) {
+
+            auto base = generate_expression(binary->left);
+            auto index = generate_expression(binary->right);
+
+            TypePtr element_type = binary->expr_type;
+            size_t element_size = compute_type_size(element_type);
+
+            auto size_operand = TACOperand::constant_int(element_size, nullptr);
+            auto offset_temp = new_temp(nullptr);
+            auto offset = TACOperand::temporary(offset_temp, nullptr);
+
+            emit(std::make_shared<TACInstruction>(TACOpcode::MUL,
+                                                  offset,
+                                                  index,
+                                                  size_operand));
+
+            auto addr_temp = new_temp(nullptr);
+            auto addr = TACOperand::temporary(addr_temp, nullptr);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                                  addr,
+                                                  base,
+                                                  offset));
+
+            return addr;
+        }
+    }
+
     // Other unary operations
     auto operand = generate_expression(expr->operand);
     auto result_temp = new_temp(expr->expr_type);
@@ -679,6 +710,38 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
         generate_member_store(base, member->member_name, base_type, value);
         return value;
+    }
+
+    if (expr->target->type == ASTNodeType::UNARY_EXPR) {
+        auto unary = std::static_pointer_cast<UnaryExpr>(expr->target);
+        if (unary->op == Operator::POINTER_DEREF) {
+
+            auto ptr = generate_expression(unary->operand);
+
+            if (expr->op != Operator::ASSIGN) {
+                auto current_temp = new_temp(expr->expr_type);
+                auto current =
+                    TACOperand::temporary(current_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                                      current,
+                                                      ptr));
+
+                auto opcode = operator_to_tac_opcode(expr->op);
+
+                auto result_temp = new_temp(expr->expr_type);
+                auto result =
+                    TACOperand::temporary(result_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(opcode,
+                                                      result,
+                                                      current,
+                                                      value));
+                value = result;
+            }
+
+            emit(
+                std::make_shared<TACInstruction>(TACOpcode::STORE, ptr, value));
+            return value;
+        }
     }
 
     // Handle array subscript assignment
