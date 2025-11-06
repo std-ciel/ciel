@@ -315,8 +315,8 @@ void LinearScanAllocator::rewrite_instructions()
 
                     const auto opcode =
                         (interval.reg_class == RegClass::INTEGER)
-                            ? MachineOpcode::LW
-                            : MachineOpcode::FLW;
+                            ? MachineOpcode::LD
+                            : MachineOpcode::FLD;
 
                     new_instructions.emplace_back(opcode)
                         .add_operand(RegOperand(temp))
@@ -362,8 +362,8 @@ void LinearScanAllocator::rewrite_instructions()
 
                     const auto opcode =
                         (interval.reg_class == RegClass::INTEGER)
-                            ? MachineOpcode::SW
-                            : MachineOpcode::FSW;
+                            ? MachineOpcode::SD
+                            : MachineOpcode::FSD;
 
                     new_instructions.emplace_back(opcode)
                         .add_operand(RegOperand(temp))
@@ -389,24 +389,24 @@ RegClass LinearScanAllocator::determine_reg_class(VirtReg vreg) const
                 continue;
 
             switch (instr.get_opcode()) {
-            case MachineOpcode::FADD_S:
-            case MachineOpcode::FSUB_S:
-            case MachineOpcode::FMUL_S:
-            case MachineOpcode::FDIV_S:
-            case MachineOpcode::FSQRT_S:
-            case MachineOpcode::FMIN_S:
-            case MachineOpcode::FMAX_S:
-            case MachineOpcode::FEQ_S:
-            case MachineOpcode::FLT_S:
-            case MachineOpcode::FLE_S:
-            case MachineOpcode::FMV_S:
-            case MachineOpcode::FSGNJ_S:
-            case MachineOpcode::FSGNJN_S:
-            case MachineOpcode::FSGNJX_S:
+            case MachineOpcode::FADD_D:
+            case MachineOpcode::FSUB_D:
+            case MachineOpcode::FMUL_D:
+            case MachineOpcode::FDIV_D:
+            case MachineOpcode::FSQRT_D:
+            case MachineOpcode::FMIN_D:
+            case MachineOpcode::FMAX_D:
+            case MachineOpcode::FEQ_D:
+            case MachineOpcode::FLT_D:
+            case MachineOpcode::FLE_D:
+            case MachineOpcode::FMV_D:
+            case MachineOpcode::FSGNJ_D:
+            case MachineOpcode::FSGNJN_D:
+            case MachineOpcode::FSGNJX_D:
                 return RegClass::FLOAT;
 
-            case MachineOpcode::FSW:
-                // FSW rs2, offset(rs1): rs2 is float data, rs1 is integer
+            case MachineOpcode::FSD:
+                // FSD rs2, offset(rs1): rs2 is float data, rs1 is integer
                 // address
                 if (!instr.get_uses().empty() && instr.get_uses()[0] == vreg) {
                     return RegClass::FLOAT;
@@ -422,20 +422,22 @@ RegClass LinearScanAllocator::determine_reg_class(VirtReg vreg) const
                 continue;
 
             switch (instr.get_opcode()) {
-            case MachineOpcode::FADD_S:
-            case MachineOpcode::FSUB_S:
-            case MachineOpcode::FMUL_S:
-            case MachineOpcode::FDIV_S:
-            case MachineOpcode::FSQRT_S:
-            case MachineOpcode::FMIN_S:
-            case MachineOpcode::FMAX_S:
-            case MachineOpcode::FLW:
-            case MachineOpcode::FMV_S:
-            case MachineOpcode::FSGNJ_S:
-            case MachineOpcode::FSGNJN_S:
-            case MachineOpcode::FSGNJX_S:
-            case MachineOpcode::FCVT_S_W:
-            case MachineOpcode::FCVT_S_WU:
+            case MachineOpcode::FADD_D:
+            case MachineOpcode::FSUB_D:
+            case MachineOpcode::FMUL_D:
+            case MachineOpcode::FDIV_D:
+            case MachineOpcode::FSQRT_D:
+            case MachineOpcode::FMIN_D:
+            case MachineOpcode::FMAX_D:
+            case MachineOpcode::FLD:
+            case MachineOpcode::FMV_D:
+            case MachineOpcode::FSGNJ_D:
+            case MachineOpcode::FSGNJN_D:
+            case MachineOpcode::FSGNJX_D:
+            case MachineOpcode::FCVT_D_W:
+            case MachineOpcode::FCVT_D_WU:
+            case MachineOpcode::FCVT_D_L:
+            case MachineOpcode::FCVT_D_LU:
                 return RegClass::FLOAT;
             default:
                 break;

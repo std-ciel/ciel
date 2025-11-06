@@ -72,45 +72,52 @@ enum class MachineOpcode {
     LB,
     LH,
     LW,
+    LD,
     LBU,
     LHU,
+    LWU,
 
     // Stores
     SB,
     SH,
     SW,
+    SD,
 
-    // Floating-point loads/stores (F extension)
-    FLW, // Load word from memory to FP register
-    FSW, // Store word from FP register to memory
+    // Floating-point loads/stores
+    FLD,
+    FSD,
 
-    // Floating-point arithmetic (single-precision)
-    FADD_S,  // FP add
-    FSUB_S,  // FP subtract
-    FMUL_S,  // FP multiply
-    FDIV_S,  // FP divide
-    FSQRT_S, // FP square root
-    FMIN_S,  // FP minimum
-    FMAX_S,  // FP maximum
+    // Floating-point arithmetic (double-precision)
+    FADD_D,
+    FSUB_D,
+    FMUL_D,
+    FDIV_D,
+    FSQRT_D,
+    FMIN_D,
+    FMAX_D,
 
-    // Floating-point comparisons
-    FEQ_S, // FP equal
-    FLT_S, // FP less than
-    FLE_S, // FP less than or equal
+    // Floating-point comparisons (double)
+    FEQ_D,
+    FLT_D,
+    FLE_D,
 
-    // Floating-point conversions
-    FCVT_W_S,  // Convert float to signed int
-    FCVT_WU_S, // Convert float to unsigned int
-    FCVT_S_W,  // Convert signed int to float
-    FCVT_S_WU, // Convert unsigned int to float
+    // Floating-point conversions (double)
+    FCVT_W_D,
+    FCVT_WU_D,
+    FCVT_L_D,
+    FCVT_LU_D,
+    FCVT_D_W,
+    FCVT_D_WU,
+    FCVT_D_L,
+    FCVT_D_LU,
 
-    // Floating-point move/sign injection
-    FMV_X_W, // Move float to integer register (bitcast)
-    FMV_W_X, // Move integer to float register (bitcast)
-    FMV_S, // Move float register to float register (pseudo: fsgnj.s rd, rs, rs)
-    FSGNJ_S,  // Sign injection (copy)
-    FSGNJN_S, // Sign injection with negation
-    FSGNJX_S, // Sign injection with XOR
+    // Floating-point move/sign injection (double)
+    FMV_X_D,
+    FMV_D_X,
+    FMV_D,
+    FSGNJ_D,
+    FSGNJN_D,
+    FSGNJX_D,
 
     // Label (pseudo for code generation)
     LABEL,
@@ -120,8 +127,8 @@ enum class MachineOpcode {
 };
 
 struct ImmOperand {
-    int32_t value;
-    constexpr explicit ImmOperand(int32_t val) noexcept : value(val) {}
+    int64_t value;
+    constexpr explicit ImmOperand(int64_t val) noexcept : value(val) {}
 };
 
 struct RegOperand {
@@ -141,8 +148,8 @@ struct LabelOperand {
 
 struct MemOperand {
     PhysReg base;
-    int32_t offset;
-    constexpr MemOperand(PhysReg b, int32_t off) noexcept : base(b), offset(off)
+    int64_t offset;
+    constexpr MemOperand(PhysReg b, int64_t off) noexcept : base(b), offset(off)
     {
     }
 };
@@ -246,7 +253,7 @@ inline MachineInstr make_add(VirtReg dst, VirtReg src1, VirtReg src2)
         .add_use(src2);
 }
 
-inline MachineInstr make_addi(VirtReg dst, VirtReg src, int32_t imm)
+inline MachineInstr make_addi(VirtReg dst, VirtReg src, int64_t imm)
 {
     return MachineInstr(MachineOpcode::ADDI)
         .add_def(dst)
@@ -254,7 +261,7 @@ inline MachineInstr make_addi(VirtReg dst, VirtReg src, int32_t imm)
         .add_operand(ImmOperand(imm));
 }
 
-inline MachineInstr make_li(VirtReg dst, int32_t imm)
+inline MachineInstr make_li(VirtReg dst, int64_t imm)
 {
     return MachineInstr(MachineOpcode::LI)
         .add_def(dst)
@@ -279,7 +286,7 @@ inline MachineInstr make_mv(VirtReg dst, VirtReg src)
         .add_operand(VRegOperand(src));
 }
 
-inline MachineInstr make_lw(VirtReg dst, PhysReg base, int32_t offset)
+inline MachineInstr make_lw(VirtReg dst, PhysReg base, int64_t offset)
 {
     return MachineInstr(MachineOpcode::LW)
         .add_def(dst)
@@ -287,9 +294,25 @@ inline MachineInstr make_lw(VirtReg dst, PhysReg base, int32_t offset)
         .add_operand(MemOperand(base, offset));
 }
 
-inline MachineInstr make_sw(VirtReg src, PhysReg base, int32_t offset)
+inline MachineInstr make_ld(VirtReg dst, PhysReg base, int64_t offset)
+{
+    return MachineInstr(MachineOpcode::LD)
+        .add_def(dst)
+        .add_operand(VRegOperand(dst))
+        .add_operand(MemOperand(base, offset));
+}
+
+inline MachineInstr make_sw(VirtReg src, PhysReg base, int64_t offset)
 {
     return MachineInstr(MachineOpcode::SW)
+        .add_use(src)
+        .add_operand(VRegOperand(src))
+        .add_operand(MemOperand(base, offset));
+}
+
+inline MachineInstr make_sd(VirtReg src, PhysReg base, int64_t offset)
+{
+    return MachineInstr(MachineOpcode::SD)
         .add_use(src)
         .add_operand(VRegOperand(src))
         .add_operand(MemOperand(base, offset));
@@ -310,47 +333,47 @@ inline MachineInstr make_ret()
     return MachineInstr(MachineOpcode::RET);
 }
 
-inline MachineInstr make_flw(VirtReg dst, PhysReg base, int32_t offset)
+inline MachineInstr make_fld(VirtReg dst, PhysReg base, int64_t offset)
 {
-    return MachineInstr(MachineOpcode::FLW)
+    return MachineInstr(MachineOpcode::FLD)
         .add_def(dst)
         .add_operand(MemOperand(base, offset));
 }
 
-inline MachineInstr make_fsw(VirtReg src, PhysReg base, int32_t offset)
+inline MachineInstr make_fsd(VirtReg src, PhysReg base, int64_t offset)
 {
-    return MachineInstr(MachineOpcode::FSW)
+    return MachineInstr(MachineOpcode::FSD)
         .add_use(src)
         .add_operand(MemOperand(base, offset));
 }
 
-inline MachineInstr make_fadd_s(VirtReg dst, VirtReg src1, VirtReg src2)
+inline MachineInstr make_fadd_d(VirtReg dst, VirtReg src1, VirtReg src2)
 {
-    return MachineInstr(MachineOpcode::FADD_S)
+    return MachineInstr(MachineOpcode::FADD_D)
         .add_def(dst)
         .add_use(src1)
         .add_use(src2);
 }
 
-inline MachineInstr make_fsub_s(VirtReg dst, VirtReg src1, VirtReg src2)
+inline MachineInstr make_fsub_d(VirtReg dst, VirtReg src1, VirtReg src2)
 {
-    return MachineInstr(MachineOpcode::FSUB_S)
+    return MachineInstr(MachineOpcode::FSUB_D)
         .add_def(dst)
         .add_use(src1)
         .add_use(src2);
 }
 
-inline MachineInstr make_fmul_s(VirtReg dst, VirtReg src1, VirtReg src2)
+inline MachineInstr make_fmul_d(VirtReg dst, VirtReg src1, VirtReg src2)
 {
-    return MachineInstr(MachineOpcode::FMUL_S)
+    return MachineInstr(MachineOpcode::FMUL_D)
         .add_def(dst)
         .add_use(src1)
         .add_use(src2);
 }
 
-inline MachineInstr make_fdiv_s(VirtReg dst, VirtReg src1, VirtReg src2)
+inline MachineInstr make_fdiv_d(VirtReg dst, VirtReg src1, VirtReg src2)
 {
-    return MachineInstr(MachineOpcode::FDIV_S)
+    return MachineInstr(MachineOpcode::FDIV_D)
         .add_def(dst)
         .add_use(src1)
         .add_use(src2);

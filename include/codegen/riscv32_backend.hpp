@@ -170,7 +170,7 @@ class RiscV32Backend {
     /// Emit complete assembly to output stream
     void emit(std::ostream &os);
 
-    std::string add_float_constant(float value);
+    std::string add_float_constant(double value);
 
   private:
     /// Emit assembly preamble (.option, etc.)
@@ -210,8 +210,7 @@ class RiscV32Backend {
     // Machine functions (post instruction selection + regalloc)
     std::vector<std::unique_ptr<MachineFunction>> machine_functions_;
 
-    // Float constant pool: value -> label
-    std::unordered_map<uint32_t, std::string> float_constants_;
+    std::unordered_map<uint64_t, std::string> float_constants_;
     uint32_t next_float_constant_id_ = 0;
 };
 

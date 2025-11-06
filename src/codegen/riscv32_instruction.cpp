@@ -136,61 +136,75 @@ const char *opcode_to_string(MachineOpcode opc)
         return "lh";
     case MachineOpcode::LW:
         return "lw";
+    case MachineOpcode::LD:
+        return "ld";
     case MachineOpcode::LBU:
         return "lbu";
     case MachineOpcode::LHU:
         return "lhu";
+    case MachineOpcode::LWU:
+        return "lwu";
     case MachineOpcode::SB:
         return "sb";
     case MachineOpcode::SH:
         return "sh";
     case MachineOpcode::SW:
         return "sw";
-    // Floating-point instructions
-    case MachineOpcode::FLW:
-        return "flw";
-    case MachineOpcode::FSW:
-        return "fsw";
-    case MachineOpcode::FADD_S:
-        return "fadd.s";
-    case MachineOpcode::FSUB_S:
-        return "fsub.s";
-    case MachineOpcode::FMUL_S:
-        return "fmul.s";
-    case MachineOpcode::FDIV_S:
-        return "fdiv.s";
-    case MachineOpcode::FSQRT_S:
-        return "fsqrt.s";
-    case MachineOpcode::FMIN_S:
-        return "fmin.s";
-    case MachineOpcode::FMAX_S:
-        return "fmax.s";
-    case MachineOpcode::FEQ_S:
-        return "feq.s";
-    case MachineOpcode::FLT_S:
-        return "flt.s";
-    case MachineOpcode::FLE_S:
-        return "fle.s";
-    case MachineOpcode::FCVT_W_S:
-        return "fcvt.w.s";
-    case MachineOpcode::FCVT_WU_S:
-        return "fcvt.wu.s";
-    case MachineOpcode::FCVT_S_W:
-        return "fcvt.s.w";
-    case MachineOpcode::FCVT_S_WU:
-        return "fcvt.s.wu";
-    case MachineOpcode::FMV_X_W:
-        return "fmv.x.w";
-    case MachineOpcode::FMV_W_X:
-        return "fmv.w.x";
-    case MachineOpcode::FMV_S:
-        return "fmv.s";
-    case MachineOpcode::FSGNJ_S:
-        return "fsgnj.s";
-    case MachineOpcode::FSGNJN_S:
-        return "fsgnjn.s";
-    case MachineOpcode::FSGNJX_S:
-        return "fsgnjx.s";
+    case MachineOpcode::SD:
+        return "sd";
+    // Floating-point instructions (double-precision)
+    case MachineOpcode::FLD:
+        return "fld";
+    case MachineOpcode::FSD:
+        return "fsd";
+    case MachineOpcode::FADD_D:
+        return "fadd.d";
+    case MachineOpcode::FSUB_D:
+        return "fsub.d";
+    case MachineOpcode::FMUL_D:
+        return "fmul.d";
+    case MachineOpcode::FDIV_D:
+        return "fdiv.d";
+    case MachineOpcode::FSQRT_D:
+        return "fsqrt.d";
+    case MachineOpcode::FMIN_D:
+        return "fmin.d";
+    case MachineOpcode::FMAX_D:
+        return "fmax.d";
+    case MachineOpcode::FEQ_D:
+        return "feq.d";
+    case MachineOpcode::FLT_D:
+        return "flt.d";
+    case MachineOpcode::FLE_D:
+        return "fle.d";
+    case MachineOpcode::FCVT_W_D:
+        return "fcvt.w.d";
+    case MachineOpcode::FCVT_WU_D:
+        return "fcvt.wu.d";
+    case MachineOpcode::FCVT_L_D:
+        return "fcvt.l.d";
+    case MachineOpcode::FCVT_LU_D:
+        return "fcvt.lu.d";
+    case MachineOpcode::FCVT_D_W:
+        return "fcvt.d.w";
+    case MachineOpcode::FCVT_D_WU:
+        return "fcvt.d.wu";
+    case MachineOpcode::FCVT_D_L:
+        return "fcvt.d.l";
+    case MachineOpcode::FCVT_D_LU:
+        return "fcvt.d.lu";
+    case MachineOpcode::FMV_X_D:
+        return "fmv.x.d";
+    case MachineOpcode::FMV_D_X:
+        return "fmv.d.x";
+    case MachineOpcode::FMV_D:
+        return "fmv.d";
+    case MachineOpcode::FSGNJ_D:
+        return "fsgnj.d";
+    case MachineOpcode::FSGNJN_D:
+        return "fsgnjn.d";
+    case MachineOpcode::FSGNJX_D:
+        return "fsgnjx.d";
     default:
         return "UNKNOWN";
     }
@@ -198,17 +212,19 @@ const char *opcode_to_string(MachineOpcode opc)
 
 bool is_float_opcode(MachineOpcode opc)
 {
-    return opc == MachineOpcode::FLW || opc == MachineOpcode::FSW ||
-           opc == MachineOpcode::FADD_S || opc == MachineOpcode::FSUB_S ||
-           opc == MachineOpcode::FMUL_S || opc == MachineOpcode::FDIV_S ||
-           opc == MachineOpcode::FSQRT_S || opc == MachineOpcode::FMIN_S ||
-           opc == MachineOpcode::FMAX_S || opc == MachineOpcode::FEQ_S ||
-           opc == MachineOpcode::FLT_S || opc == MachineOpcode::FLE_S ||
-           opc == MachineOpcode::FCVT_W_S || opc == MachineOpcode::FCVT_WU_S ||
-           opc == MachineOpcode::FCVT_S_W || opc == MachineOpcode::FCVT_S_WU ||
-           opc == MachineOpcode::FMV_X_W || opc == MachineOpcode::FMV_W_X ||
-           opc == MachineOpcode::FMV_S || opc == MachineOpcode::FSGNJ_S ||
-           opc == MachineOpcode::FSGNJN_S || opc == MachineOpcode::FSGNJX_S;
+    return opc == MachineOpcode::FLD || opc == MachineOpcode::FSD ||
+           opc == MachineOpcode::FADD_D || opc == MachineOpcode::FSUB_D ||
+           opc == MachineOpcode::FMUL_D || opc == MachineOpcode::FDIV_D ||
+           opc == MachineOpcode::FSQRT_D || opc == MachineOpcode::FMIN_D ||
+           opc == MachineOpcode::FMAX_D || opc == MachineOpcode::FEQ_D ||
+           opc == MachineOpcode::FLT_D || opc == MachineOpcode::FLE_D ||
+           opc == MachineOpcode::FCVT_W_D || opc == MachineOpcode::FCVT_WU_D ||
+           opc == MachineOpcode::FCVT_L_D || opc == MachineOpcode::FCVT_LU_D ||
+           opc == MachineOpcode::FCVT_D_W || opc == MachineOpcode::FCVT_D_WU ||
+           opc == MachineOpcode::FCVT_D_L || opc == MachineOpcode::FCVT_D_LU ||
+           opc == MachineOpcode::FMV_X_D || opc == MachineOpcode::FMV_D_X ||
+           opc == MachineOpcode::FMV_D || opc == MachineOpcode::FSGNJ_D ||
+           opc == MachineOpcode::FSGNJN_D || opc == MachineOpcode::FSGNJX_D;
 }
 
 void emit_operand(std::ostream &os, const MachineOperand &op, bool use_fp_regs)
@@ -243,22 +259,24 @@ void MachineInstr::emit(std::ostream &os) const
 
     os << "    " << opcode_to_string(opcode_);
 
-    if (opcode_ == MachineOpcode::FLW || opcode_ == MachineOpcode::FSW ||
-        opcode_ == MachineOpcode::LW || opcode_ == MachineOpcode::LH ||
-        opcode_ == MachineOpcode::LB || opcode_ == MachineOpcode::LHU ||
-        opcode_ == MachineOpcode::LBU || opcode_ == MachineOpcode::SW ||
-        opcode_ == MachineOpcode::SH || opcode_ == MachineOpcode::SB) {
+    if (opcode_ == MachineOpcode::FLD || opcode_ == MachineOpcode::FSD ||
+        opcode_ == MachineOpcode::LD || opcode_ == MachineOpcode::LW ||
+        opcode_ == MachineOpcode::LH || opcode_ == MachineOpcode::LB ||
+        opcode_ == MachineOpcode::LHU || opcode_ == MachineOpcode::LBU ||
+        opcode_ == MachineOpcode::LWU || opcode_ == MachineOpcode::SD ||
+        opcode_ == MachineOpcode::SW || opcode_ == MachineOpcode::SH ||
+        opcode_ == MachineOpcode::SB) {
         if (operands_.size() == 2 &&
             std::holds_alternative<MemOperand>(operands_[1])) {
             os << " ";
-            bool dest_is_fp = (opcode_ == MachineOpcode::FLW ||
-                               opcode_ == MachineOpcode::FSW);
+            bool dest_is_fp = (opcode_ == MachineOpcode::FLD ||
+                               opcode_ == MachineOpcode::FSD);
             emit_operand(os, operands_[0], dest_is_fp);
             os << ", ";
             emit_operand(os, operands_[1], false);
         } else if (operands_.size() >= 3) {
             os << " ";
-            bool dest_is_fp = (opcode_ == MachineOpcode::FLW);
+            bool dest_is_fp = (opcode_ == MachineOpcode::FLD);
             emit_operand(os, operands_[0], dest_is_fp);
             os << ", ";
             emit_operand(os, operands_[2], false);
@@ -267,9 +285,9 @@ void MachineInstr::emit(std::ostream &os) const
             os << ")";
         }
     } else {
-        bool dest_is_int_for_fcmp = (opcode_ == MachineOpcode::FLT_S ||
-                                     opcode_ == MachineOpcode::FLE_S ||
-                                     opcode_ == MachineOpcode::FEQ_S);
+        bool dest_is_int_for_fcmp = (opcode_ == MachineOpcode::FLT_D ||
+                                     opcode_ == MachineOpcode::FLE_D ||
+                                     opcode_ == MachineOpcode::FEQ_D);
 
         bool use_fp = is_float_opcode(opcode_);
         bool first = true;

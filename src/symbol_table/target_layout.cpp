@@ -2,9 +2,9 @@
 
 TargetLayout::TargetLayout()
 {
-    // RISC-V 32-bit configuration
-    pointer_size = 4;
-    pointer_alignment = 4;
+    // RISC-V 64-bit configuration
+    pointer_size = 8;
+    pointer_alignment = 8;
 
     // void: special case, size 1 for incomplete types
     void_layout = {1, 1};
@@ -13,11 +13,11 @@ TargetLayout::TargetLayout()
 
     char_layout = {1, 1};
 
-    int_layout = {4, 4};
+    int_layout = {8, 8};
 
-    unsigned_layout = {4, 4};
+    unsigned_layout = {8, 8};
 
-    float_layout = {4, 4};
+    float_layout = {8, 8};
 }
 
 TypeLayout TargetLayout::get_builtin_layout(BuiltinTypeKind kind) const
