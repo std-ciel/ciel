@@ -4,9 +4,9 @@
 
 Result<bool, std::vector<LayoutPassErrorInfo>> LayoutPass::run()
 {
-    auto custom_types = type_factory.get_custom_types();
+    auto all_types = type_factory.get_all_types();
 
-    for (const auto &[id, type] : custom_types) {
+    for (const auto &[id, type] : all_types) {
         auto result = compute_type_layout(type);
         if (result.is_err()) {
             errors.push_back(result.error());
