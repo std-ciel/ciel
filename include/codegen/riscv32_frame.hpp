@@ -31,6 +31,14 @@ struct StackSlot {
 ///     [local variables/spills]
 ///     [outgoing args > 8]
 ///     [padding for alignment] <- sp points here
+// RV64: RA and FP are 8 bytes each
+
+constexpr int32_t FIXED_OVERHEAD = 16;
+// RV64: Each callee-saved register is 8 bytes, max 12 regs (s1-s11 + FP
+// already counted)
+constexpr int32_t MAX_CALLEE_SAVES = 96;
+constexpr int32_t RESERVED_SPACE = FIXED_OVERHEAD + MAX_CALLEE_SAVES;
+
 class FrameLayout {
   public:
     explicit FrameLayout(const std::string &fn_name)

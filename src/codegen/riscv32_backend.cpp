@@ -47,17 +47,15 @@ void MachineFunction::build_cfg()
     // Blocks end at: (1) terminator, (2) instruction before label,
     // (3) last instruction
     std::vector<bool> is_block_start(instructions_.size(), false);
-    is_block_start[0] = true; // Entry point
+    is_block_start[0] = true;
 
     for (size_t pos = 0; pos < instructions_.size(); ++pos) {
         const auto &instr = instructions_[pos];
 
-        // Labels start new blocks
         if (instr.get_opcode() == MachineOpcode::LABEL) {
             is_block_start[pos] = true;
         }
 
-        // Instruction after terminator starts new block
         if (is_terminator(instr.get_opcode()) &&
             pos + 1 < instructions_.size()) {
             is_block_start[pos + 1] = true;
@@ -74,14 +72,12 @@ void MachineFunction::build_cfg()
             block_start = pos;
         }
 
-        // Record label positions for successor computation
         if (instructions_[pos].get_opcode() == MachineOpcode::LABEL) {
             label_to_block[instructions_[pos].get_label()] =
                 basic_blocks_.size();
         }
     }
 
-    // Add final block
     if (block_start < instructions_.size()) {
         basic_blocks_.emplace_back(block_start, instructions_.size() - 1);
     }
@@ -93,7 +89,6 @@ void MachineFunction::build_cfg()
         const auto opcode = last_instr.get_opcode();
 
         if (is_terminator(opcode)) {
-            // Handle explicit branch target
             if (auto target = get_branch_target(last_instr)) {
                 if (auto it = label_to_block.find(*target);
                     it != label_to_block.end()) {
@@ -102,7 +97,6 @@ void MachineFunction::build_cfg()
                 }
             }
 
-            // Conditional branches also fall through
             const bool is_conditional =
                 (opcode == MachineOpcode::BEQ || opcode == MachineOpcode::BNE ||
                  opcode == MachineOpcode::BLT || opcode == MachineOpcode::BGE ||
@@ -1042,6 +1036,42 @@ InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
     mfn_.get_frame().allocate_temp(temp_name, 4);
 
     return vreg;
+}
+
+int32_t InstructionSelector::allocate_local_variable(SymbolPtr sym)
+{
+
+    std::string unique_key =
+        std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
+
+    auto it = local_var_offsets_.find(unique_key);
+    if (it != local_var_offsets_.end()) {
+        return it->second;
+    }
+
+    uint32_t size = get_type_size(sym->get_type().type);
+    uint32_t alignment = std::min(size, 4u);
+
+    int32_t offset = mfn_.get_frame().allocate_slot(size, alignment);
+    local_var_offsets_[unique_key] = offset;
+
+    sym->set_stack_offset(offset);
+
+    return offset;
+}
+
+int32_t InstructionSelector::get_local_variable_offset(SymbolPtr sym)
+{
+
+    std::string unique_key =
+        std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
+
+    auto it = local_var_offsets_.find(unique_key);
+    if (it != local_var_offsets_.end()) {
+        return it->second;
+    }
+
+    return allocate_local_variable(sym);
 }
 
 RiscV32Backend::RiscV32Backend(const TACProgram &program,

@@ -15,8 +15,7 @@ int32_t FrameLayout::allocate_slot(uint32_t size, uint32_t alignment)
     // Allocate from top of locals area (growing downward)
     locals_size_ += size;
 
-    // Return negative offset from frame pointer
-    return -static_cast<int32_t>(locals_size_);
+    return -(RESERVED_SPACE + locals_size_);
 }
 
 int32_t FrameLayout::allocate_temp(const std::string &temp_name, uint32_t size)
@@ -28,7 +27,7 @@ int32_t FrameLayout::allocate_temp(const std::string &temp_name, uint32_t size)
     }
 
     // Allocate new slot
-    int32_t offset = allocate_slot(size, std::min(size, 4u));
+    int32_t offset = allocate_slot(size, std::min(size, 8u));
     temp_slots_.emplace(temp_name, StackSlot(offset, size));
 
     return offset;
@@ -50,7 +49,7 @@ int32_t FrameLayout::allocate_spill_slot(VirtReg vreg, uint32_t size)
         return it->second.offset;
     }
 
-    int32_t offset = allocate_slot(size, 4);
+    int32_t offset = allocate_slot(size, 8);
     spill_slots_.emplace(vreg, StackSlot(offset, size));
 
     return offset;
@@ -88,36 +87,41 @@ void FrameLayout::finalize()
 {
     // Layout (from high to low address):
     // [caller's frame]
-    // [saved RA]          offset = -4
-    // [saved FP/s0]       offset = -8
-    // [saved callee regs] offset = -12, -16, ...
-    // [locals/spills]     offset = -(12 + 4*n_callee + locals_size)
-    // [outgoing args]     offset = -(12 + 4*n_callee + locals_size + arg_area)
+    // [saved RA]          offset = -8 (64-bit)
+    // [saved FP/s0]       offset = -16 (64-bit)
+    // [saved callee regs] offset = -24, -32, ... (8 bytes each)
+    // [locals/spills]     offset = -(16 + 8*n_callee + locals_size)
+    // [outgoing args]     offset = -(16 + 8*n_callee + locals_size + arg_area)
     // [alignment padding]
 
     int32_t current_offset = 0;
 
-    // Reserve space for RA (4 bytes)
-    current_offset -= 4;
+    // Reserve space for RA (8 bytes in RV64)
+    current_offset -= 8;
     ra_offset_ = current_offset;
 
-    // Reserve space for FP/s0 (4 bytes)
-    current_offset -= 4;
+    // Reserve space for FP/s0 (8 bytes in RV64)
+    current_offset -= 8;
     fp_offset_ = current_offset;
 
-    // Reserve space for callee-saved registers
+    // Reserve space for callee-saved registers (8 bytes each in RV64)
     for (auto reg : used_callee_regs_) {
-        current_offset -= 4;
+        current_offset -= 8;
         callee_save_offsets_[reg] = current_offset;
     }
 
-    // Add locals/spills area
-    current_offset -= locals_size_;
+    // RV64: RESERVED_SPACE = 16 (RA+FP) + 96 (max callee-saves)
+    int32_t most_negative_offset = -(RESERVED_SPACE + locals_size_);
+
+    if (current_offset > most_negative_offset) {
+        current_offset = most_negative_offset;
+    }
 
     // Add outgoing argument area (for args beyond a0-a7)
+    // Each argument is 8 bytes in RV64
     if (max_call_args_ > 8) {
         uint32_t stack_args = max_call_args_ - 8;
-        current_offset -= static_cast<int32_t>(stack_args * 4);
+        current_offset -= static_cast<int32_t>(stack_args * 8);
     }
 
     // Align to 16 bytes (ABI requirement)

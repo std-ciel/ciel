@@ -143,11 +143,18 @@ class InstructionSelector {
 
     VirtReg get_or_create_vreg_for_temp(const std::string &temp_name);
 
+    int32_t allocate_local_variable(SymbolPtr sym);
+
+    int32_t get_local_variable_offset(SymbolPtr sym);
+
     MachineFunction &mfn_;
     TypeFactory &types_;
     RiscV32Backend &backend_;
 
     std::unordered_map<std::string, VirtReg> temp_to_vreg_;
+
+    // Map from symbol name to stack offset for local variables
+    std::unordered_map<std::string, int32_t> local_var_offsets_;
 
     // Parameter symbols -> argument register mapping (a0-a7)
     std::unordered_map<std::string, PhysReg> param_to_reg_;
