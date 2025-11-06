@@ -98,6 +98,16 @@ class Symbol {
         function_meta = std::move(fm);
     }
 
+    std::optional<int32_t> get_stack_offset() const
+    {
+        return stack_offset;
+    }
+
+    void set_stack_offset(int32_t offset)
+    {
+        stack_offset = offset;
+    }
+
   private:
     std::string name;
     QualifiedType type;
@@ -105,6 +115,7 @@ class Symbol {
     ScopeID scope_id;
     ScopeID parent_scope;
     std::optional<FunctionMeta> function_meta;
+    std::optional<int32_t> stack_offset; // Stack offset for local variables
 };
 
 using SymbolPtr = std::shared_ptr<Symbol>;
