@@ -1707,7 +1707,7 @@ static void check_array_bounds(const TypePtr &array_type,
       if (arg_type && arg_type->kind == TypeKind::POINTER) {
         auto void_type = require_builtin("void", yy::location(), "conversion");
         if (void_type) {
-          auto void_ptr_result = type_factory.make<PointerType>(QualifiedType{void_type, Qualifier::NONE});
+          auto void_ptr_result = type_factory.get_pointer(QualifiedType{void_type, Qualifier::NONE});
           if (void_ptr_result.is_ok()) {
             current_types.push_back(QualifiedType{void_ptr_result.value(), arg_types[idx].qualifier});
             result = try_all_combinations(idx + 1, current_types);
