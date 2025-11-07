@@ -2360,8 +2360,9 @@ open_brace
 
         add_pending_parameters_to_scope(@1);
 
+        current_function_parameters.clear();
+        
         if (!pending_names.empty()) {
-          current_function_parameters.clear();
           for (const auto& param_name : pending_names) {
             if (!param_name.empty()) {
               auto param_sym = symbol_table.lookup_symbol(param_name);
