@@ -773,6 +773,7 @@ void InstructionSelector::select_param(const TACInstruction &instr)
 void InstructionSelector::select_call(const TACInstruction &instr)
 {
     std::vector<QualifiedType> expected_param_types;
+    bool is_variadic = false;
 
     if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
@@ -783,6 +784,7 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             auto func_type =
                 std::static_pointer_cast<FunctionType>(func_qual_type.type);
             expected_param_types = func_type->param_types;
+            is_variadic = func_type->is_variadic;
         }
     }
 
@@ -796,6 +798,7 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 
         bool is_float = float_vregs_.contains(param_vreg);
         bool is_float_expected = false;
+        bool is_vararg = (i >= expected_param_types.size()) && is_variadic;
 
         if (i < expected_param_types.size()) {
             is_float_expected = expected_param_types[i].type &&
@@ -806,7 +809,17 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 
         VirtReg converted_vreg = param_vreg;
 
-        if (is_float && !is_float_expected) {
+        // For variadic arguments, floats must be passed in integer registers
+        if (is_vararg && is_float) {
+            // Convert float to integer register using FMV.X.D
+            converted_vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_X_D)
+                                     .add_def(converted_vreg)
+                                     .add_use(param_vreg)
+                                     .add_operand(VRegOperand(converted_vreg))
+                                     .add_operand(VRegOperand(param_vreg)));
+            is_float_expected = false; // Treat as integer now
+        } else if (is_float && !is_float_expected) {
             converted_vreg = mfn_.get_next_vreg();
             mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_L_D)
                                      .add_def(converted_vreg)
