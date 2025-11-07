@@ -287,6 +287,14 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
         select_cast(instr);
         break;
 
+    case TACOpcode::LOAD_MEMBER:
+        select_load_member(instr);
+        break;
+
+    case TACOpcode::STORE_MEMBER:
+        select_store_member(instr);
+        break;
+
     default:
         break;
     }
@@ -1010,6 +1018,168 @@ void InstructionSelector::select_cast(const TACInstruction &instr)
     store_result(dst, instr.result);
 }
 
+void InstructionSelector::select_load_member(const TACInstruction &instr)
+{
+    // LOAD_MEMBER: result = base.member_offset
+
+    if (instr.operand1.kind != TACOperand::Kind::TEMPORARY &&
+        instr.operand1.kind != TACOperand::Kind::SYMBOL) {
+        return;
+    }
+
+    size_t offset = instr.operand1.member_offset;
+    VirtReg member_addr = mfn_.get_next_vreg();
+
+    if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
+        SymbolPtr sym = std::get<SymbolPtr>(instr.operand1.value);
+        if (sym->get_storage_class() == StorageClass::AUTO) {
+            // Local struct: compute address as FP + local_offset +
+            // member_offset
+            int32_t local_offset = get_local_variable_offset(sym);
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::ADDI)
+                    .add_def(member_addr)
+                    .add_operand(VRegOperand(member_addr))
+                    .add_operand(RegOperand(PhysReg::S0_FP))
+                    .add_operand(ImmOperand(local_offset + offset)));
+        } else {
+            // Global struct - load address then add offset
+            VirtReg global_addr = mfn_.get_next_vreg();
+            mfn_.add_instruction(make_la(global_addr, sym->get_name()));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(member_addr)
+                                     .add_use(global_addr)
+                                     .add_operand(VRegOperand(member_addr))
+                                     .add_operand(VRegOperand(global_addr))
+                                     .add_operand(ImmOperand(offset)));
+        }
+    } else {
+        // TEMPORARY: pointer to struct (e.g., returned from a function)
+        // TODO: test this path
+        std::string temp_str = std::get<std::string>(instr.operand1.value);
+        VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
+
+        if (offset == 0) {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                     .add_def(member_addr)
+                                     .add_use(temp_addr)
+                                     .add_operand(VRegOperand(member_addr))
+                                     .add_operand(VRegOperand(temp_addr)));
+        } else {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(member_addr)
+                                     .add_use(temp_addr)
+                                     .add_operand(VRegOperand(member_addr))
+                                     .add_operand(VRegOperand(temp_addr))
+                                     .add_operand(ImmOperand(offset)));
+        }
+    }
+
+    VirtReg result = mfn_.get_next_vreg();
+    bool is_float = instr.result.type && is_float_type(instr.result.type);
+
+    if (is_float) {
+        float_vregs_.insert(result);
+        mfn_.add_instruction(MachineInstr(MachineOpcode::FLD)
+                                 .add_def(result)
+                                 .add_use(member_addr)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(VRegOperand(member_addr))
+                                 .add_operand(ImmOperand(0)));
+    } else {
+        mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
+                                 .add_def(result)
+                                 .add_use(member_addr)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(VRegOperand(member_addr))
+                                 .add_operand(ImmOperand(0)));
+    }
+
+    store_result(result, instr.result);
+}
+
+void InstructionSelector::select_store_member(const TACInstruction &instr)
+{
+    // STORE_MEMBER: base.member_offset = value
+    if (instr.result.kind != TACOperand::Kind::TEMPORARY &&
+        instr.result.kind != TACOperand::Kind::SYMBOL) {
+        return;
+    }
+
+    VirtReg value = load_operand(instr.operand1);
+
+    size_t offset = instr.result.member_offset;
+    VirtReg member_addr = mfn_.get_next_vreg();
+
+    if (instr.result.kind == TACOperand::Kind::SYMBOL) {
+        SymbolPtr sym = std::get<SymbolPtr>(instr.result.value);
+        if (sym->get_storage_class() == StorageClass::AUTO) {
+            // Local struct: compute address as FP + local_offset +
+            // member_offset
+            int32_t local_offset = get_local_variable_offset(sym);
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::ADDI)
+                    .add_def(member_addr)
+                    .add_operand(VRegOperand(member_addr))
+                    .add_operand(RegOperand(PhysReg::S0_FP))
+                    .add_operand(ImmOperand(local_offset + offset)));
+        } else {
+            // Global struct - load address then add offset
+            VirtReg global_addr = mfn_.get_next_vreg();
+            mfn_.add_instruction(make_la(global_addr, sym->get_name()));
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(member_addr)
+                                     .add_use(global_addr)
+                                     .add_operand(VRegOperand(member_addr))
+                                     .add_operand(VRegOperand(global_addr))
+                                     .add_operand(ImmOperand(offset)));
+        }
+    } else {
+        // TEMPORARY: pointer to struct (e.g., returned from a function)
+        std::string temp_str = std::get<std::string>(instr.result.value);
+        VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
+
+        if (offset == 0) {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                     .add_def(member_addr)
+                                     .add_use(temp_addr)
+                                     .add_operand(VRegOperand(member_addr))
+                                     .add_operand(VRegOperand(temp_addr)));
+        } else {
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(member_addr)
+                                     .add_use(temp_addr)
+                                     .add_operand(VRegOperand(member_addr))
+                                     .add_operand(VRegOperand(temp_addr))
+                                     .add_operand(ImmOperand(offset)));
+        }
+    }
+
+    bool is_float = float_vregs_.contains(value);
+    if (!is_float && instr.operand1.type) {
+        is_float = is_float_type(instr.operand1.type);
+        if (is_float) {
+            float_vregs_.insert(value);
+        }
+    }
+
+    if (is_float) {
+        mfn_.add_instruction(MachineInstr(MachineOpcode::FSD)
+                                 .add_use(value)
+                                 .add_use(member_addr)
+                                 .add_operand(VRegOperand(value))
+                                 .add_operand(VRegOperand(member_addr))
+                                 .add_operand(ImmOperand(0)));
+    } else {
+        mfn_.add_instruction(MachineInstr(MachineOpcode::SD)
+                                 .add_use(value)
+                                 .add_use(member_addr)
+                                 .add_operand(VRegOperand(value))
+                                 .add_operand(VRegOperand(member_addr))
+                                 .add_operand(ImmOperand(0)));
+    }
+}
+
 VirtReg InstructionSelector::load_operand(const TACOperand &operand)
 {
     switch (operand.kind) {
@@ -1061,8 +1231,9 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             // All local variables and parameters are on the stack
             auto qual_type = sym->get_type();
 
-            if (qual_type.type && qual_type.type->kind == TypeKind::ARRAY) {
-
+            if (qual_type.type && (qual_type.type->kind == TypeKind::ARRAY ||
+                                   qual_type.type->kind == TypeKind::RECORD)) {
+                // For arrays and structs, return the address
                 int32_t offset = get_local_variable_offset(sym);
                 VirtReg vreg = mfn_.get_next_vreg();
 
@@ -1074,7 +1245,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                         .add_operand(ImmOperand(offset)));
                 return vreg;
             } else {
-
+                // For scalar types, load the value
                 int32_t offset = get_local_variable_offset(sym);
                 VirtReg vreg = mfn_.get_next_vreg();
 
@@ -1098,13 +1269,14 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             // It's a global symbol (STATIC storage class)
             auto qual_type = sym->get_type();
 
-            if (qual_type.type && qual_type.type->kind == TypeKind::ARRAY) {
-                // For arrays, return the address
+            if (qual_type.type && (qual_type.type->kind == TypeKind::ARRAY ||
+                                   qual_type.type->kind == TypeKind::RECORD)) {
+                // For arrays and structs, return the address
                 VirtReg vreg = mfn_.get_next_vreg();
                 mfn_.add_instruction(make_la(vreg, sym_name));
                 return vreg;
             } else {
-                // For non-array types, load the address then dereference
+                // For scalar types, load the address then dereference
                 VirtReg addr_vreg = mfn_.get_next_vreg();
                 mfn_.add_instruction(make_la(addr_vreg, sym_name));
 

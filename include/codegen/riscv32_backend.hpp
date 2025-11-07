@@ -131,6 +131,8 @@ class InstructionSelector {
     void select_load(const TACInstruction &instr);
     void select_store(const TACInstruction &instr);
     void select_cast(const TACInstruction &instr);
+    void select_load_member(const TACInstruction &instr);
+    void select_store_member(const TACInstruction &instr);
 
     VirtReg load_operand(const TACOperand &operand);
 
