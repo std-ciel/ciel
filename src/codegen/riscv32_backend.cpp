@@ -1130,23 +1130,10 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
     }
     case TACOperand::Kind::TEMPORARY: {
         std::string temp_name = std::get<std::string>(operand.value);
-
-        StackSlot slot = mfn_.get_frame().get_temp_slot(temp_name);
-        VirtReg vreg = mfn_.get_next_vreg();
+        VirtReg vreg = get_or_create_vreg_for_temp(temp_name);
 
         if (operand.type && is_float_type(operand.type)) {
             float_vregs_.insert(vreg);
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::FLD)
-                    .add_def(vreg)
-                    .add_operand(VRegOperand(vreg))
-                    .add_operand(MemOperand(PhysReg::S0_FP, slot.offset)));
-        } else {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::LD)
-                    .add_def(vreg)
-                    .add_operand(VRegOperand(vreg))
-                    .add_operand(MemOperand(PhysReg::S0_FP, slot.offset)));
         }
 
         return vreg;
@@ -1160,23 +1147,7 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
 {
     if (dest.kind == TACOperand::Kind::TEMPORARY) {
         std::string temp_name = std::get<std::string>(dest.value);
-
-        int32_t offset = mfn_.get_frame().allocate_temp(temp_name, 8);
-        bool is_float = float_vregs_.contains(vreg);
-
-        if (is_float) {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::FSD)
-                    .add_use(vreg)
-                    .add_operand(VRegOperand(vreg))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-        } else {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::SD)
-                    .add_use(vreg)
-                    .add_operand(VRegOperand(vreg))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-        }
+        temp_to_vreg_[temp_name] = vreg;
     } else if (dest.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr sym = std::get<SymbolPtr>(dest.value);
         if (sym->get_storage_class() == StorageClass::AUTO) {
@@ -1270,11 +1241,11 @@ InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
         return it->second;
     }
 
-    // Temp not yet defined - this should only happen for loads before stores
-    // (e.g., loading a parameter or pre-existing symbol)
+    // Create a new vreg for this TAC temporary
+    // Register allocator will assign it to a physical register or spill if
+    // needed
     VirtReg vreg = mfn_.get_next_vreg();
     temp_to_vreg_[temp_name] = vreg;
-    mfn_.get_frame().allocate_temp(temp_name, 4);
 
     return vreg;
 }

@@ -444,7 +444,7 @@ void LinearScanAllocator::handle_call_sites()
                 is_caller_saved(interval.assigned_reg)) {
                 interval.spilled = true;
                 interval.spill_slot =
-                    mfn_.get_frame().allocate_spill_slot(interval.vreg, 4);
+                    mfn_.get_frame().allocate_spill_slot(interval.vreg, 8);
                 location_map_[interval.vreg] =
                     LocationInfo::on_stack(interval.spill_slot);
             }
@@ -464,14 +464,26 @@ void LinearScanAllocator::rewrite_instructions()
     for (auto &instr : instructions) {
         const auto original_uses = instr.get_uses();
         const auto original_defs = instr.get_defs();
-        std::unordered_map<VirtReg, PhysReg> spilled_to_temp;
+
+        std::unordered_map<VirtReg, PhysReg> use_spill_temp;
+        std::unordered_map<VirtReg, PhysReg> def_spill_temp;
 
         size_t next_int_temp = 0;
         size_t next_fp_temp = 0;
 
-        // Insert loads for spilled uses before instruction
-        // Cycle through reserved temps (T0-T2, FT0-FT2) to handle multiple
-        // spills
+        auto choose_temp = [&](RegClass rc) -> PhysReg {
+            if (rc == RegClass::INTEGER) {
+                auto pr = int_temps[next_int_temp % int_temps.size()];
+                next_int_temp++;
+                return pr;
+            } else {
+                auto pr = fp_temps[next_fp_temp % fp_temps.size()];
+                next_fp_temp++;
+                return pr;
+            }
+        };
+
+        // 1) Insert loads for spilled uses BEFORE the instruction
         for (const auto vreg : original_uses) {
             if (vreg == INVALID_VREG)
                 continue;
@@ -479,12 +491,11 @@ void LinearScanAllocator::rewrite_instructions()
             if (const auto it = vreg_to_interval_idx_.find(vreg);
                 it != vreg_to_interval_idx_.end()) {
                 const auto &interval = intervals_[it->second];
-
-                if (interval.spilled && !spilled_to_temp.contains(vreg)) {
+                if (interval.spilled && !use_spill_temp.contains(vreg)) {
                     const PhysReg temp =
                         (interval.reg_class == RegClass::INTEGER)
-                            ? int_temps[next_int_temp++ % int_temps.size()]
-                            : fp_temps[next_fp_temp++ % fp_temps.size()];
+                            ? choose_temp(RegClass::INTEGER)
+                            : choose_temp(RegClass::FLOAT);
 
                     const auto opcode =
                         (interval.reg_class == RegClass::INTEGER)
@@ -496,27 +507,29 @@ void LinearScanAllocator::rewrite_instructions()
                         .add_operand(
                             MemOperand(PhysReg::S0_FP, interval.spill_slot));
 
-                    spilled_to_temp[vreg] = temp;
+                    use_spill_temp[vreg] = temp;
                 }
             }
         }
 
-        // Replace vregs with allocated physical registers
+        // 2) Replace vregs appearing in the instruction
+        //    - non-spilled: replace with assigned phys reg
+        //    - spilled uses: replace with their loaded temp
+        //    - spilled defs: pick a temp now and replace defs with it
         for (const auto &interval : intervals_) {
+            if (interval.vreg == INVALID_VREG)
+                continue;
+
             if (!interval.spilled &&
                 interval.assigned_reg != PhysReg::INVALID) {
                 instr.replace_vreg(interval.vreg, interval.assigned_reg);
             }
         }
 
-        // Replace spilled vregs with their temp registers
-        for (const auto &[vreg, temp] : spilled_to_temp) {
+        for (const auto &[vreg, temp] : use_spill_temp) {
             instr.replace_vreg(vreg, temp);
         }
 
-        new_instructions.push_back(std::move(instr));
-
-        // Insert stores for spilled defs after instruction
         for (const auto vreg : original_defs) {
             if (vreg == INVALID_VREG)
                 continue;
@@ -524,12 +537,38 @@ void LinearScanAllocator::rewrite_instructions()
             if (const auto it = vreg_to_interval_idx_.find(vreg);
                 it != vreg_to_interval_idx_.end()) {
                 const auto &interval = intervals_[it->second];
+                if (interval.spilled) {
+                    PhysReg temp = PhysReg::INVALID;
+                    if (use_spill_temp.contains(vreg)) {
+                        temp = use_spill_temp[vreg];
+                    } else {
+                        temp = (interval.reg_class == RegClass::INTEGER)
+                                   ? choose_temp(RegClass::INTEGER)
+                                   : choose_temp(RegClass::FLOAT);
+                    }
+                    def_spill_temp[vreg] = temp;
+                    // Replace the def in the instruction with the temp phys reg
+                    instr.replace_vreg(vreg, temp);
+                }
+            }
+        }
 
+        // 3) Emit the (now rewritten) original instruction
+        new_instructions.push_back(std::move(instr));
+
+        // 4) Insert stores for spilled defs AFTER the instruction
+        for (const auto vreg : original_defs) {
+            if (vreg == INVALID_VREG)
+                continue;
+
+            if (const auto it = vreg_to_interval_idx_.find(vreg);
+                it != vreg_to_interval_idx_.end()) {
+                const auto &interval = intervals_[it->second];
                 if (interval.spilled) {
                     const PhysReg temp =
-                        spilled_to_temp.contains(vreg)
-                            ? spilled_to_temp[vreg]
-                            : (interval.reg_class == RegClass::INTEGER
+                        def_spill_temp.contains(vreg)
+                            ? def_spill_temp[vreg]
+                            : ((interval.reg_class == RegClass::INTEGER)
                                    ? int_temps[0]
                                    : fp_temps[0]);
 

@@ -18,30 +18,6 @@ int32_t FrameLayout::allocate_slot(uint32_t size, uint32_t alignment)
     return -(RESERVED_SPACE + locals_size_);
 }
 
-int32_t FrameLayout::allocate_temp(const std::string &temp_name, uint32_t size)
-{
-    // Check if already allocated
-    auto it = temp_slots_.find(temp_name);
-    if (it != temp_slots_.end()) {
-        return it->second.offset;
-    }
-
-    // Allocate new slot
-    int32_t offset = allocate_slot(size, std::min(size, 8u));
-    temp_slots_.emplace(temp_name, StackSlot(offset, size));
-
-    return offset;
-}
-
-StackSlot FrameLayout::get_temp_slot(const std::string &temp_name) const
-{
-    auto it = temp_slots_.find(temp_name);
-    if (it == temp_slots_.end()) {
-        throw std::runtime_error("Temporary not found: " + temp_name);
-    }
-    return it->second;
-}
-
 int32_t FrameLayout::allocate_spill_slot(VirtReg vreg, uint32_t size)
 {
     auto it = spill_slots_.find(vreg);

@@ -51,12 +51,6 @@ class FrameLayout {
     /// Returns the offset from frame pointer (negative)
     int32_t allocate_slot(uint32_t size, uint32_t alignment = 4);
 
-    /// Allocate a specific slot for a named temporary (from TAC)
-    int32_t allocate_temp(const std::string &temp_name, uint32_t size);
-
-    /// Get the stack slot for a TAC temporary name
-    StackSlot get_temp_slot(const std::string &temp_name) const;
-
     /// Allocate spill slot for a virtual register
     int32_t allocate_spill_slot(VirtReg vreg, uint32_t size);
 
@@ -106,9 +100,6 @@ class FrameLayout {
     int32_t ra_offset_;      // Offset to saved RA
     int32_t fp_offset_;      // Offset to saved FP (s0)
     uint32_t max_call_args_; // Max args in any call (for outgoing area)
-
-    // Mapping from TAC temporary names to stack slots
-    std::unordered_map<std::string, StackSlot> temp_slots_;
 
     // Mapping from virtual registers to spill slots
     std::unordered_map<VirtReg, StackSlot> spill_slots_;
