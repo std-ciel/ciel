@@ -179,6 +179,8 @@ class RiscV32Backend {
 
     std::string add_float_constant(double value);
 
+    std::string add_jump_table(const std::vector<std::string> &labels);
+
   private:
     /// Emit assembly preamble (.option, etc.)
     void emit_preamble(std::ostream &os) const;
@@ -219,6 +221,10 @@ class RiscV32Backend {
 
     std::unordered_map<uint64_t, std::string> float_constants_;
     uint32_t next_float_constant_id_ = 0;
+
+    // Jump tables: label -> list of case labels
+    std::vector<std::pair<std::string, std::vector<std::string>>> jump_tables_;
+    uint32_t next_jump_table_id_ = 0;
 };
 
 } // namespace riscv32

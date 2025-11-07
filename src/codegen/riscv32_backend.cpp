@@ -721,22 +721,49 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 
 void InstructionSelector::select_jump_table(const TACInstruction &instr)
 {
-    VirtReg index = load_operand(instr.result);
+    VirtReg index = load_operand(instr.operand1);
 
-    // Simplified jump table: just emit a sequence of compares and branches
-    // A full implementation would use a proper jump table in rodata
-    for (size_t i = 0; i < instr.jump_table_labels.size(); ++i) {
-        VirtReg tmp = mfn_.get_next_vreg();
-        mfn_.add_instruction(make_li(tmp, static_cast<int32_t>(i)));
+    std::string table_label = backend_.add_jump_table(instr.jump_table_labels);
 
-        mfn_.add_instruction(
-            MachineInstr(MachineOpcode::BEQ)
-                .add_use(index)
-                .add_use(tmp)
-                .add_operand(VRegOperand(index))
-                .add_operand(VRegOperand(tmp))
-                .add_operand(LabelOperand(instr.jump_table_labels[i])));
-    }
+    VirtReg table_addr = mfn_.get_next_vreg();
+    mfn_.add_instruction(MachineInstr(MachineOpcode::LA)
+                             .add_def(table_addr)
+                             .add_operand(VRegOperand(table_addr))
+                             .add_operand(LabelOperand(table_label)));
+
+    // Scale index by 8 (size of address pointer on rv64)
+    VirtReg scale = mfn_.get_next_vreg();
+    mfn_.add_instruction(make_li(scale, 8));
+
+    VirtReg scaled_index = mfn_.get_next_vreg();
+    mfn_.add_instruction(MachineInstr(MachineOpcode::MUL)
+                             .add_def(scaled_index)
+                             .add_use(index)
+                             .add_use(scale)
+                             .add_operand(VRegOperand(scaled_index))
+                             .add_operand(VRegOperand(index))
+                             .add_operand(VRegOperand(scale)));
+
+    VirtReg entry_addr = mfn_.get_next_vreg();
+    mfn_.add_instruction(MachineInstr(MachineOpcode::ADD)
+                             .add_def(entry_addr)
+                             .add_use(table_addr)
+                             .add_use(scaled_index)
+                             .add_operand(VRegOperand(entry_addr))
+                             .add_operand(VRegOperand(table_addr))
+                             .add_operand(VRegOperand(scaled_index)));
+
+    VirtReg target_addr = mfn_.get_next_vreg();
+    mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
+                             .add_def(target_addr)
+                             .add_use(entry_addr)
+                             .add_operand(VRegOperand(target_addr))
+                             .add_operand(VRegOperand(entry_addr))
+                             .add_operand(ImmOperand(0)));
+
+    mfn_.add_instruction(MachineInstr(MachineOpcode::JR)
+                             .add_use(target_addr)
+                             .add_operand(VRegOperand(target_addr)));
 }
 
 void InstructionSelector::select_load(const TACInstruction &instr)
@@ -1146,6 +1173,15 @@ std::string RiscV32Backend::add_float_constant(double value)
     return label;
 }
 
+std::string
+RiscV32Backend::add_jump_table(const std::vector<std::string> &labels)
+{
+    std::string table_label =
+        ".LJUMPTABLE" + std::to_string(next_jump_table_id_++);
+    jump_tables_.emplace_back(table_label, labels);
+    return table_label;
+}
+
 void RiscV32Backend::lower_functions()
 {
     for (const auto &tac_fn : program_.functions) {
@@ -1186,8 +1222,8 @@ void RiscV32Backend::emit_preamble(std::ostream &os) const
 
 void RiscV32Backend::emit_rodata(std::ostream &os) const
 {
-    bool has_data =
-        !program_.string_literals.empty() || !float_constants_.empty();
+    bool has_data = !program_.string_literals.empty() ||
+                    !float_constants_.empty() || !jump_tables_.empty();
     if (!has_data) {
         return;
     }
@@ -1241,6 +1277,14 @@ void RiscV32Backend::emit_rodata(std::ostream &os) const
         os << "    .balign 8\n";
         os << label << ":\n";
         os << "    .dword   0x" << std::hex << bits << std::dec << "\n";
+    }
+
+    for (const auto &[table_label, case_labels] : jump_tables_) {
+        os << "    .balign 8\n";
+        os << table_label << ":\n";
+        for (const auto &label : case_labels) {
+            os << "    .dword " << label << "\n";
+        }
     }
 }
 
