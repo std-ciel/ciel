@@ -910,10 +910,37 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                 return vreg;
             }
         } else {
-            // It's a global symbol (STATIC storage class) - load its address
-            VirtReg vreg = mfn_.get_next_vreg();
-            mfn_.add_instruction(make_la(vreg, sym_name));
-            return vreg;
+            // It's a global symbol (STATIC storage class)
+            auto qual_type = sym->get_type();
+
+            if (qual_type.type && qual_type.type->kind == TypeKind::ARRAY) {
+                // For arrays, return the address
+                VirtReg vreg = mfn_.get_next_vreg();
+                mfn_.add_instruction(make_la(vreg, sym_name));
+                return vreg;
+            } else {
+                // For non-array types, load the address then dereference
+                VirtReg addr_vreg = mfn_.get_next_vreg();
+                mfn_.add_instruction(make_la(addr_vreg, sym_name));
+
+                VirtReg vreg = mfn_.get_next_vreg();
+                MachineInstr load{};
+                if (qual_type.type && is_float_type(qual_type.type)) {
+                    float_vregs_.insert(vreg);
+                    load = MachineInstr(MachineOpcode::FLD);
+
+                } else {
+                    load = MachineInstr(MachineOpcode::LD);
+                }
+
+                load.add_def(vreg);
+                load.add_use(addr_vreg);
+                load.add_operand(VRegOperand(vreg));
+                load.add_operand(VRegOperand(addr_vreg));
+                load.add_operand(ImmOperand(0));
+                mfn_.add_instruction(std::move(load));
+                return vreg;
+            }
         }
     }
     case TACOperand::Kind::TEMPORARY: {
@@ -977,6 +1004,26 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
                         .add_operand(VRegOperand(vreg))
                         .add_operand(MemOperand(PhysReg::S0_FP, offset)));
             }
+        } else {
+            // Global variable (STATIC storage class)
+            VirtReg addr_vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(make_la(addr_vreg, sym->get_name()));
+
+            bool is_float = float_vregs_.contains(vreg);
+
+            MachineInstr store{};
+            if (is_float) {
+                store = MachineInstr(MachineOpcode::FSD);
+            } else {
+                store = MachineInstr(MachineOpcode::SD);
+            }
+
+            store.add_use(vreg);
+            store.add_use(addr_vreg);
+            store.add_operand(VRegOperand(vreg));
+            store.add_operand(VRegOperand(addr_vreg));
+            store.add_operand(ImmOperand(0));
+            mfn_.add_instruction(std::move(store));
         }
     }
 }
@@ -1203,16 +1250,102 @@ void RiscV32Backend::emit_globals(std::ostream &os) const
         return;
     }
 
-    os << "\n    .section .bss\n";
-    for (const auto &global : program_.global_variables) {
-        auto type = global->get_type().type;
-        size_t size = type->has_layout() ? type->layout.size : 4;
-        size_t align = type->has_layout() ? type->layout.alignment : 4;
+    auto is_zero_initializer =
+        [](const Symbol::InitializerValue &init_value) -> bool {
+        if (std::holds_alternative<int64_t>(init_value)) {
+            return std::get<int64_t>(init_value) == 0;
+        } else if (std::holds_alternative<double>(init_value)) {
+            return std::get<double>(init_value) == 0.0;
+        } else if (std::holds_alternative<std::string>(init_value)) {
+            return false; // String initializers are never zero
+        }
+        return false; // std::monostate
+    };
 
-        os << "    .balign " << align << "\n";
-        os << "    .globl " << global->get_name() << "\n";
-        os << global->get_name() << ":\n";
-        os << "    .zero " << size << "\n";
+    // Separate globals into .data (initialized with non-zero) and .bss
+    // (uninitialized or zero)
+    std::vector<SymbolPtr> data_section_globals;
+    std::vector<SymbolPtr> bss_section_globals;
+
+    for (const auto &global : program_.global_variables) {
+        if (global->has_initializer() &&
+            !is_zero_initializer(global->get_initializer())) {
+            // Non-zero initialized -> .data
+            data_section_globals.push_back(global);
+        } else {
+            // Uninitialized or zero-initialized -> .bss
+            bss_section_globals.push_back(global);
+        }
+    }
+
+    // Emit .data section for initialized globals
+    if (!data_section_globals.empty()) {
+        os << "\n    .section .data\n";
+        for (const auto &global : data_section_globals) {
+            auto type = global->get_type().type;
+            size_t size = type->has_layout() ? type->layout.size : 4;
+            size_t align = type->has_layout() ? type->layout.alignment : 4;
+
+            os << "    .balign " << align << "\n";
+            os << "    .globl " << global->get_name() << "\n";
+            os << global->get_name() << ":\n";
+
+            // Emit the initializer value
+            const auto &init_value = global->get_initializer();
+            if (std::holds_alternative<int64_t>(init_value)) {
+                int64_t value = std::get<int64_t>(init_value);
+                if (size == 1) {
+                    os << "    .byte " << (value & 0xFF) << "\n";
+                } else if (size == 2) {
+                    os << "    .half " << (value & 0xFFFF) << "\n";
+                } else if (size == 4) {
+                    os << "    .word " << value << "\n";
+                } else if (size == 8) {
+                    os << "    .dword " << value << "\n";
+                }
+            } else if (std::holds_alternative<double>(init_value)) {
+                double value = std::get<double>(init_value);
+
+                uint64_t bits;
+                std::memcpy(&bits, &value, sizeof(double));
+
+                os << "    .dword 0x" << std::hex << bits << std::dec << "\n";
+            } else if (std::holds_alternative<std::string>(init_value)) {
+                std::string str_value = std::get<std::string>(init_value);
+                std::string str_label;
+                bool found = false;
+
+                for (const auto &str_lit : program_.string_literals) {
+                    if (str_lit.value == str_value) {
+                        str_label = str_lit.label;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    str_label = ".str_init_" +
+                                std::to_string(data_section_globals.size());
+                }
+                // Emit as 64-bit pointer on RISC-V 64
+                os << "    .dword " << str_label << "\n";
+            }
+        }
+    }
+
+    // Emit .bss section for uninitialized/zero-initialized globals
+    if (!bss_section_globals.empty()) {
+        os << "\n    .section .bss\n";
+        for (const auto &global : bss_section_globals) {
+            auto type = global->get_type().type;
+            size_t size = type->has_layout() ? type->layout.size : 4;
+            size_t align = type->has_layout() ? type->layout.alignment : 4;
+
+            os << "    .balign " << align << "\n";
+            os << "    .globl " << global->get_name() << "\n";
+            os << global->get_name() << ":\n";
+            os << "    .zero " << size << "\n";
+        }
     }
 }
 
