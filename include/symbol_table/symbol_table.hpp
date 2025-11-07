@@ -74,6 +74,8 @@ class SymbolTable {
 
     Result<SymbolPtr, SymbolTableError> remove_symbol(SymbolPtr symbol);
 
+    const std::unordered_map<std::string, SymbolPtr>& get_symbols_in_scope(ScopeID scope_id) const;
+
     void print_symbols() const;
 
   private:

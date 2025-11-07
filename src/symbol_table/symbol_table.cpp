@@ -162,6 +162,20 @@ Result<SymbolPtr, SymbolTableError> SymbolTable::remove_symbol(SymbolPtr symbol)
         return SymbolTableError::SYMBOL_NOT_FOUND;
     }
 }
+
+const std::unordered_map<std::string, SymbolPtr>&
+SymbolTable::get_symbols_in_scope(ScopeID scope_id) const
+{
+    static const std::unordered_map<std::string, SymbolPtr> empty_map;
+    
+    auto scope_iter = scopes.find(scope_id);
+    if (scope_iter == scopes.end()) {
+        return empty_map;
+    }
+    
+    return scope_iter->second.symbols;
+}
+
 void SymbolTable::print_symbols() const
 {
     // Compute column widths
