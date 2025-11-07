@@ -1613,7 +1613,7 @@ static void check_array_bounds(const TypePtr &array_type,
       return nullptr;
     };
 
-    // Try exact match (no decay)
+    // Try exact match (no decay, no conversion)
     func_symbol = try_match(arg_types, false);
     if (func_symbol) return func_symbol;
 
@@ -1621,10 +1621,13 @@ static void check_array_bounds(const TypePtr &array_type,
     func_symbol = try_match(arg_types, true);
     if (func_symbol) return func_symbol;
 
-    // Try with selective array decay
-    // Generate all combinations where each array parameter can be decayed or not
-    std::function<SymbolPtr(size_t, std::vector<QualifiedType>&)> try_decay_combinations;
-    try_decay_combinations = [&](size_t idx, std::vector<QualifiedType>& current_types) -> SymbolPtr {
+    // Try with both array decay AND implicit conversions
+    // Generate all combinations where each argument can be:
+    // 1. Used as-is
+    // 2. Array-decayed (if array)
+    // 3. Implicitly converted (if integral type)
+    std::function<SymbolPtr(size_t, std::vector<QualifiedType>&)> try_all_combinations;
+    try_all_combinations = [&](size_t idx, std::vector<QualifiedType>& current_types) -> SymbolPtr {
       if (idx == arg_types.size()) {
         // Try non-variadic
         SymbolPtr result = try_match(current_types, false);
@@ -1633,27 +1636,92 @@ static void check_array_bounds(const TypePtr &array_type,
         return try_match(current_types, true);
       }
 
-      // Try without decay for this parameter
+      // Try without any transformation for this parameter
       current_types.push_back(arg_types[idx]);
-      SymbolPtr result = try_decay_combinations(idx + 1, current_types);
+      SymbolPtr result = try_all_combinations(idx + 1, current_types);
       if (result) return result;
       current_types.pop_back();
 
-      // Try with decay for this parameter (if it's an array)
       TypePtr arg_type = strip_typedefs(arg_types[idx].type);
+
+      // Try with array decay (if it's an array)
       if (arg_type && arg_type->kind == TypeKind::ARRAY) {
         QualifiedType decayed = apply_array_decay(arg_types[idx]);
         current_types.push_back(decayed);
-        result = try_decay_combinations(idx + 1, current_types);
+        result = try_all_combinations(idx + 1, current_types);
         if (result) return result;
         current_types.pop_back();
+
+        // Also try converting the decayed pointer to void*
+        TypePtr decayed_type = strip_typedefs(decayed.type);
+        if (decayed_type && decayed_type->kind == TypeKind::POINTER) {
+          auto void_type = require_builtin("void", yy::location(), "conversion");
+          if (void_type) {
+            auto void_ptr_result = type_factory.make<PointerType>(QualifiedType{void_type, Qualifier::NONE});
+            if (void_ptr_result.is_ok()) {
+              current_types.push_back(QualifiedType{void_ptr_result.value(), decayed.qualifier});
+              result = try_all_combinations(idx + 1, current_types);
+              if (result) return result;
+              current_types.pop_back();
+            }
+          }
+        }
+      }
+
+      // Try with implicit conversions (if it's a builtin type)
+      if (arg_type && arg_type->kind == TypeKind::BUILTIN) {
+        auto builtin = std::static_pointer_cast<BuiltinType>(arg_type);
+
+        // int -> unsigned conversion
+        if (builtin->builtin_kind == BuiltinTypeKind::INT) {
+          auto unsigned_type = require_builtin("unsigned", yy::location(), "conversion");
+          if (unsigned_type) {
+            current_types.push_back(QualifiedType{unsigned_type, arg_types[idx].qualifier});
+            result = try_all_combinations(idx + 1, current_types);
+            if (result) return result;
+            current_types.pop_back();
+          }
+        }
+
+        // char -> int or unsigned conversion
+        if (builtin->builtin_kind == BuiltinTypeKind::CHAR) {
+          auto int_type = require_builtin("int", yy::location(), "conversion");
+          if (int_type) {
+            current_types.push_back(QualifiedType{int_type, arg_types[idx].qualifier});
+            result = try_all_combinations(idx + 1, current_types);
+            if (result) return result;
+            current_types.pop_back();
+          }
+
+          auto unsigned_type = require_builtin("unsigned", yy::location(), "conversion");
+          if (unsigned_type) {
+            current_types.push_back(QualifiedType{unsigned_type, arg_types[idx].qualifier});
+            result = try_all_combinations(idx + 1, current_types);
+            if (result) return result;
+            current_types.pop_back();
+          }
+        }
+      }
+
+      // Try with pointer conversion (T* -> void*)
+      if (arg_type && arg_type->kind == TypeKind::POINTER) {
+        auto void_type = require_builtin("void", yy::location(), "conversion");
+        if (void_type) {
+          auto void_ptr_result = type_factory.make<PointerType>(QualifiedType{void_type, Qualifier::NONE});
+          if (void_ptr_result.is_ok()) {
+            current_types.push_back(QualifiedType{void_ptr_result.value(), arg_types[idx].qualifier});
+            result = try_all_combinations(idx + 1, current_types);
+            if (result) return result;
+            current_types.pop_back();
+          }
+        }
       }
 
       return nullptr;
     };
 
     std::vector<QualifiedType> combination;
-    func_symbol = try_decay_combinations(0, combination);
+    func_symbol = try_all_combinations(0, combination);
     if (func_symbol) return func_symbol;
 
     // Try decreasing parameters from right, looking for variadic functions
@@ -2361,7 +2429,7 @@ open_brace
         add_pending_parameters_to_scope(@1);
 
         current_function_parameters.clear();
-        
+
         if (!pending_names.empty()) {
           for (const auto& param_name : pending_names) {
             if (!param_name.empty()) {
