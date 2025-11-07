@@ -164,6 +164,8 @@ class MachineInstr {
     {
     }
 
+    constexpr MachineInstr() = default;
+
     [[nodiscard]] constexpr MachineOpcode get_opcode() const noexcept
     {
         return opcode_;
