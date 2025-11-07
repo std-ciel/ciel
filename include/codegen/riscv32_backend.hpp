@@ -130,6 +130,7 @@ class InstructionSelector {
     void select_jump_table(const TACInstruction &instr);
     void select_load(const TACInstruction &instr);
     void select_store(const TACInstruction &instr);
+    void select_cast(const TACInstruction &instr);
 
     VirtReg load_operand(const TACOperand &operand);
 
@@ -159,8 +160,8 @@ class InstructionSelector {
     // Parameter symbols -> argument register mapping (a0-a7)
     std::unordered_map<std::string, PhysReg> param_to_reg_;
 
-    // Pending parameters for next CALL
-    std::vector<VirtReg> pending_params_;
+    // Pending parameters for next CALL (vreg + type info)
+    std::vector<std::pair<VirtReg, TACOperand>> pending_params_;
 
     // Track whether each vreg holds a float value
     std::unordered_set<VirtReg> float_vregs_;

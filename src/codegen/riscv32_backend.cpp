@@ -125,13 +125,59 @@ InstructionSelector::InstructionSelector(MachineFunction &mfn,
 
 void InstructionSelector::select(const TACFunction &tac_fn)
 {
+    param_to_reg_.clear();
+
+    size_t int_param_idx = 0;
+    size_t float_param_idx = 0;
+
+    // First pass: assign parameter registers and immediately spill them to
+    // stack
     for (size_t i = 0; i < tac_fn.parameters.size() && i < 8; ++i) {
         const auto &param = tac_fn.parameters[i];
         if (param.kind == TACOperand::Kind::SYMBOL) {
             SymbolPtr sym = std::get<SymbolPtr>(param.value);
-            PhysReg arg_reg =
-                static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) + i);
-            param_to_reg_[sym->get_name()] = arg_reg;
+            bool is_float_param = param.type && is_float_type(param.type);
+
+            PhysReg arg_reg;
+            if (is_float_param && float_param_idx < 8) {
+                arg_reg = static_cast<PhysReg>(
+                    static_cast<uint8_t>(PhysReg::FA0) + float_param_idx++);
+            } else if (!is_float_param && int_param_idx < 8) {
+                arg_reg = static_cast<PhysReg>(
+                    static_cast<uint8_t>(PhysReg::A0) + int_param_idx++);
+            } else {
+                continue;
+            }
+
+            // Spill parameter from register to stack immediately
+            std::string unique_key =
+                std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
+            int32_t offset = get_local_variable_offset(sym);
+
+            if (is_float_param) {
+                VirtReg tmp = mfn_.get_next_vreg();
+                float_vregs_.insert(tmp);
+                mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
+                                         .add_def(tmp)
+                                         .add_operand(VRegOperand(tmp))
+                                         .add_operand(RegOperand(arg_reg)));
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::FSD)
+                        .add_use(tmp)
+                        .add_operand(VRegOperand(tmp))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            } else {
+                VirtReg tmp = mfn_.get_next_vreg();
+                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                         .add_def(tmp)
+                                         .add_operand(VRegOperand(tmp))
+                                         .add_operand(RegOperand(arg_reg)));
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::SD)
+                        .add_use(tmp)
+                        .add_operand(VRegOperand(tmp))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            }
         }
     }
 
@@ -235,6 +281,10 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
 
     case TACOpcode::STORE:
         select_store(instr);
+        break;
+
+    case TACOpcode::CAST:
+        select_cast(instr);
         break;
 
     default:
@@ -381,6 +431,32 @@ void InstructionSelector::select_binary_op(const TACInstruction &instr)
 
     if (is_float) {
         float_vregs_.insert(dst);
+
+        bool op1_is_float = float_vregs_.contains(op1);
+        bool op2_is_float = float_vregs_.contains(op2);
+
+        if (!op1_is_float) {
+            VirtReg converted = mfn_.get_next_vreg();
+            float_vregs_.insert(converted);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+                                     .add_def(converted)
+                                     .add_use(op1)
+                                     .add_operand(VRegOperand(converted))
+                                     .add_operand(VRegOperand(op1)));
+            op1 = converted;
+        }
+
+        if (!op2_is_float) {
+            VirtReg converted = mfn_.get_next_vreg();
+            float_vregs_.insert(converted);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+                                     .add_def(converted)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(converted))
+                                     .add_operand(VRegOperand(op2)));
+            op2 = converted;
+        }
+
         switch (instr.opcode) {
         case TACOpcode::ADD:
             opc = MachineOpcode::FADD_D;
@@ -457,6 +533,31 @@ void InstructionSelector::select_comparison(const TACInstruction &instr)
     bool is_signed = is_signed_type(instr.operand1.type);
 
     if (is_float) {
+        bool op1_is_float = float_vregs_.contains(op1);
+        bool op2_is_float = float_vregs_.contains(op2);
+
+        if (!op1_is_float) {
+            VirtReg converted = mfn_.get_next_vreg();
+            float_vregs_.insert(converted);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+                                     .add_def(converted)
+                                     .add_use(op1)
+                                     .add_operand(VRegOperand(converted))
+                                     .add_operand(VRegOperand(op1)));
+            op1 = converted;
+        }
+
+        if (!op2_is_float) {
+            VirtReg converted = mfn_.get_next_vreg();
+            float_vregs_.insert(converted);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+                                     .add_def(converted)
+                                     .add_use(op2)
+                                     .add_operand(VRegOperand(converted))
+                                     .add_operand(VRegOperand(op2)));
+            op2 = converted;
+        }
+
         switch (instr.opcode) {
         case TACOpcode::EQ:
             mfn_.add_instruction(MachineInstr(MachineOpcode::FEQ_D)
@@ -658,28 +759,76 @@ void InstructionSelector::select_if_branch(const TACInstruction &instr)
 void InstructionSelector::select_param(const TACInstruction &instr)
 {
     VirtReg param = load_operand(instr.operand1);
-    pending_params_.push_back(param);
+    pending_params_.push_back({param, instr.operand1});
 }
 
 void InstructionSelector::select_call(const TACInstruction &instr)
 {
-    for (size_t i = 0, f_idx = 0, i_idx = 0;
-         i < pending_params_.size() && i < 8;
-         ++i) {
-        if (float_vregs_.contains(pending_params_[i])) {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::FMV_D)
-                    .add_use(pending_params_[i])
-                    .add_operand(RegOperand(static_cast<PhysReg>(
-                        static_cast<uint8_t>(PhysReg::FA0) + f_idx++)))
-                    .add_operand(VRegOperand(pending_params_[i])));
+    std::vector<QualifiedType> expected_param_types;
+
+    if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
+        SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
+        auto func_qual_type = func_sym->get_type();
+
+        if (func_qual_type.type &&
+            func_qual_type.type->kind == TypeKind::FUNCTION) {
+            auto func_type =
+                std::static_pointer_cast<FunctionType>(func_qual_type.type);
+            expected_param_types = func_type->param_types;
+        }
+    }
+
+    std::reverse(pending_params_.begin(), pending_params_.end());
+
+    size_t int_reg_idx = 0;
+    size_t float_reg_idx = 0;
+
+    for (size_t i = 0; i < pending_params_.size() && i < 8; ++i) {
+        VirtReg param_vreg = pending_params_[i].first;
+
+        bool is_float = float_vregs_.contains(param_vreg);
+        bool is_float_expected = false;
+
+        if (i < expected_param_types.size()) {
+            is_float_expected = expected_param_types[i].type &&
+                                is_float_type(expected_param_types[i].type);
         } else {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::MV)
-                    .add_use(pending_params_[i])
-                    .add_operand(RegOperand(static_cast<PhysReg>(
-                        static_cast<uint8_t>(PhysReg::A0) + i_idx++)))
-                    .add_operand(VRegOperand(pending_params_[i])));
+            is_float_expected = is_float;
+        }
+
+        VirtReg converted_vreg = param_vreg;
+
+        if (is_float && !is_float_expected) {
+            converted_vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_L_D)
+                                     .add_def(converted_vreg)
+                                     .add_use(param_vreg)
+                                     .add_operand(VRegOperand(converted_vreg))
+                                     .add_operand(VRegOperand(param_vreg)));
+        } else if (!is_float && is_float_expected) {
+            converted_vreg = mfn_.get_next_vreg();
+            float_vregs_.insert(converted_vreg);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+                                     .add_def(converted_vreg)
+                                     .add_use(param_vreg)
+                                     .add_operand(VRegOperand(converted_vreg))
+                                     .add_operand(VRegOperand(param_vreg)));
+        }
+
+        if (is_float_expected && float_reg_idx < 8) {
+            PhysReg target_reg = static_cast<PhysReg>(
+                static_cast<uint8_t>(PhysReg::FA0) + float_reg_idx++);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
+                                     .add_use(converted_vreg)
+                                     .add_operand(RegOperand(target_reg))
+                                     .add_operand(VRegOperand(converted_vreg)));
+        } else if (!is_float_expected && int_reg_idx < 8) {
+            PhysReg target_reg = static_cast<PhysReg>(
+                static_cast<uint8_t>(PhysReg::A0) + int_reg_idx++);
+            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                     .add_use(converted_vreg)
+                                     .add_operand(RegOperand(target_reg))
+                                     .add_operand(VRegOperand(converted_vreg)));
         }
     }
 
@@ -688,19 +837,15 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             static_cast<uint32_t>(pending_params_.size()));
     }
 
-    TypePtr ret_type = instr.result.type;
     if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
         mfn_.add_instruction(make_call(func_sym->get_name()));
     }
-    // else if (instr.operand1.kind == TACOperand::Kind::LABEL) {
-    //     std::string func_name = std::get<std::string>(instr.operand1.value);
-    //     mfn_.add_instruction(make_call(func_name));
-    // }
 
     if (instr.result.is_valid()) {
         VirtReg result = mfn_.get_next_vreg();
-        // TODO: handle this better for complex return types
+        TypePtr ret_type = instr.result.type;
+
         if (ret_type && is_float_type(ret_type)) {
             float_vregs_.insert(result);
             mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
@@ -831,6 +976,38 @@ void InstructionSelector::select_store(const TACInstruction &instr)
         store.add_operand(ImmOperand(0));
         mfn_.add_instruction(std::move(store));
     }
+}
+
+void InstructionSelector::select_cast(const TACInstruction &instr)
+{
+    VirtReg src = load_operand(instr.operand1);
+    VirtReg dst = mfn_.get_next_vreg();
+
+    bool src_is_float = float_vregs_.contains(src);
+    bool dst_is_float = instr.result.type && is_float_type(instr.result.type);
+
+    if (src_is_float && !dst_is_float) {
+        mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_L_D)
+                                 .add_def(dst)
+                                 .add_use(src)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(VRegOperand(src)));
+    } else if (!src_is_float && dst_is_float) {
+        float_vregs_.insert(dst);
+        mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+                                 .add_def(dst)
+                                 .add_use(src)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(VRegOperand(src)));
+    } else {
+        mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                 .add_def(dst)
+                                 .add_use(src)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(VRegOperand(src)));
+    }
+
+    store_result(dst, instr.result);
 }
 
 VirtReg InstructionSelector::load_operand(const TACOperand &operand)
