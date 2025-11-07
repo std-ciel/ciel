@@ -56,8 +56,8 @@ TACOperand TACOperand::member_access(const TACOperand &base,
                                      TypePtr member_type)
 {
     TACOperand op;
-    op.kind = Kind::TEMPORARY; // Member access results in a temporary
-    op.value = base.to_string() + "." + member;
+    op.kind = base.kind; // Preserve the base kind (SYMBOL or TEMPORARY)
+    op.value = base.value; // Preserve the base value (SymbolPtr or string)
     op.type = member_type;
     op.member_name = member;
     op.member_offset = offset;
