@@ -1376,6 +1376,7 @@ void RiscV32Backend::lower_functions()
 void RiscV32Backend::emit(std::ostream &os)
 {
     emit_preamble(os);
+    emit_libc_aliases(os);
     emit_rodata(os);
     emit_globals(os);
     emit_text(os);
@@ -1385,6 +1386,83 @@ void RiscV32Backend::emit_preamble(std::ostream &os) const
 {
     os << "    .option nopic\n";
     os << "    .attribute arch, \"rv64imfd\"\n";
+}
+
+void RiscV32Backend::emit_libc_aliases(std::ostream &os) const
+{
+    // Emit .set directives to alias mangled function names to unmangled C names
+    // This allows linking with the C runtime library (libc)
+    //
+    // Mangling scheme: _Z<name-length><name><params>
+    // Types: v=void, i=int, j=unsigned, c=char, b=bool, f=float
+    //        P<type>=pointer, z=variadic
+    //
+
+    // Signature reference:
+    // int printf(char* fmt, ...);          -> _Z6printfPcz
+    // int scanf(char* fmt, ...);           -> _Z5scanfPcz
+    // void* malloc(unsigned size);         -> _Z6mallocj
+    // void free(void* ptr);                -> _Z4freePv
+    // void* calloc(unsigned nmemb, unsigned size); -> _Z6callocjj
+    // void* realloc(void* ptr, unsigned size); -> _Z7reallocPvj
+    // int open(char* path, int flags, ...) -> _Z4openPciz
+    // int read(int fd, void* buf, int count) -> _Z4readiPvi
+    // int write(int fd, void* buf, int count) -> _Z5writeiPvi
+    // int close(int fd);                   -> _Z5closei
+    // int strlen(char* str);               -> _Z6strlenPc
+    // char* strcpy(char* dst, char* src);  -> _Z6strcpyPcPc
+    // char* strcat(char* dst, char* src);  -> _Z6strcatPcPc
+    // int strcmp(char* s1, char* s2);      -> _Z6strcmpPcPc
+    // void* memcpy(void* dst, void* src, int n); -> _Z6memcpyPvPvi
+    // void* memset(void* s, int c, int n); -> _Z6memsetPvii
+    // int memcmp(void* s1, void* s2, int n); -> _Z6memcmpPvPvi
+    // void exit(int status);               -> _Z4exiti
+    // int putchar(int c);                  -> _Z7putchari
+    // int getchar();                       -> _Z7getcharv
+    // int puts(char* s);                   -> _Z4putsPc
+    // char* gets(char* s);                 -> _Z4getsPc
+    // int atoi(char* str);                 -> _Z4atoiPc
+    // float atof(char* str);               -> _Z4atofPc
+
+    os << "\n# Libc function aliases (mangled -> unmangled)\n";
+
+    // I/O functions
+    os << "    .set _Z6printfPcz, printf\n";
+    os << "    .set _Z5scanfPcz, scanf\n";
+    os << "    .set _Z7putchari, putchar\n";
+    os << "    .set _Z7getcharv, getchar\n";
+    os << "    .set _Z4putsPc, puts\n";
+    os << "    .set _Z4getsPc, gets\n";
+
+    // Memory allocation
+    os << "    .set _Z6mallocj, malloc\n";
+    os << "    .set _Z4freePv, free\n";
+    os << "    .set _Z6callocjj, calloc\n";
+    os << "    .set _Z7reallocPvj, realloc\n";
+
+    // String functions
+    os << "    .set _Z6strlenPc, strlen\n";
+    os << "    .set _Z6strcpyPcPc, strcpy\n";
+    os << "    .set _Z6strcatPcPc, strcat\n";
+    os << "    .set _Z6strcmpPcPc, strcmp\n";
+
+    // Memory functions
+    os << "    .set _Z6memcpyPvPvi, memcpy\n";
+    os << "    .set _Z6memsetPvii, memset\n";
+    os << "    .set _Z6memcmpPvPvi, memcmp\n";
+
+    // File operations
+    os << "    .set _Z4openPciz, open\n";
+    os << "    .set _Z4readiPvi, read\n";
+    os << "    .set _Z5writeiPvi, write\n";
+    os << "    .set _Z5closei, close\n";
+
+    // Conversion functions
+    os << "    .set _Z4atoiPc, atoi\n";
+    os << "    .set _Z4atofPc, atof\n";
+
+    // System functions
+    os << "    .set _Z4exiti, exit\n";
 }
 
 void RiscV32Backend::emit_rodata(std::ostream &os) const

@@ -186,6 +186,9 @@ class RiscV32Backend {
     /// Emit assembly preamble (.option, etc.)
     void emit_preamble(std::ostream &os) const;
 
+    /// Emit libc function aliases (mangled -> unmangled)
+    void emit_libc_aliases(std::ostream &os) const;
+
     /// Emit .rodata section (string literals)
     void emit_rodata(std::ostream &os) const;
 
