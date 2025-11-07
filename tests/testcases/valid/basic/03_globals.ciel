@@ -1,10 +1,16 @@
 // Test global variable declarations and initializations
 int global_x = 10;
 int global_y = 20;
+
 float global_pi = 3.14;
 bool global_flag = true;
+char *x = "Hello, World!";
 
 int main() {
     int local_z = global_x + global_y;
-    return local_z;
+    if(local_z == 30 && global_flag && global_pi > 3.0) {
+        return 0;
+    } else {
+        return 1;
+    }
 }
