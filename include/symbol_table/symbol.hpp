@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 
 using ScopeID = size_t;
 
@@ -108,6 +109,25 @@ class Symbol {
         stack_offset = offset;
     }
 
+    // Initializer value for global variables
+    using InitializerValue =
+        std::variant<std::monostate, int64_t, double, std::string>;
+
+    bool has_initializer() const
+    {
+        return !std::holds_alternative<std::monostate>(initializer_value);
+    }
+
+    const InitializerValue &get_initializer() const
+    {
+        return initializer_value;
+    }
+
+    void set_initializer(InitializerValue value)
+    {
+        initializer_value = std::move(value);
+    }
+
   private:
     std::string name;
     QualifiedType type;
@@ -116,6 +136,7 @@ class Symbol {
     ScopeID parent_scope;
     std::optional<FunctionMeta> function_meta;
     std::optional<int32_t> stack_offset; // Stack offset for local variables
+    InitializerValue initializer_value;
 };
 
 using SymbolPtr = std::shared_ptr<Symbol>;
