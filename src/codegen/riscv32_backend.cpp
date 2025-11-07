@@ -1054,30 +1054,11 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
     case TACOperand::Kind::SYMBOL: {
         SymbolPtr sym = std::get<SymbolPtr>(operand.value);
         std::string sym_name = sym->get_name();
-        // Create unique key: scope_id + name to handle shadowed variables
         std::string unique_key =
             std::to_string(sym->get_scope_id()) + "_" + sym_name;
 
-        // Check if this symbol is a function parameter
-        auto param_it = param_to_reg_.find(sym_name);
-        if (param_it != param_to_reg_.end()) {
-            // It's a parameter - copy from its argument register
-            VirtReg vreg = mfn_.get_next_vreg();
-            PhysReg param_reg = param_it->second;
-            if (is_float_type(sym->get_type().type)) {
-                float_vregs_.insert(vreg);
-                mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
-                                         .add_def(vreg)
-                                         .add_operand(VRegOperand(vreg))
-                                         .add_operand(RegOperand(param_reg)));
-            } else {
-                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                         .add_def(vreg)
-                                         .add_operand(VRegOperand(vreg))
-                                         .add_operand(RegOperand(param_reg)));
-            }
-            return vreg;
-        } else if (sym->get_storage_class() == StorageClass::AUTO) {
+        if (sym->get_storage_class() == StorageClass::AUTO) {
+            // All local variables and parameters are on the stack
             auto qual_type = sym->get_type();
 
             if (qual_type.type && qual_type.type->kind == TypeKind::ARRAY) {
@@ -1149,10 +1130,25 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
     }
     case TACOperand::Kind::TEMPORARY: {
         std::string temp_name = std::get<std::string>(operand.value);
-        VirtReg vreg = get_or_create_vreg_for_temp(temp_name);
+
+        StackSlot slot = mfn_.get_frame().get_temp_slot(temp_name);
+        VirtReg vreg = mfn_.get_next_vreg();
+
         if (operand.type && is_float_type(operand.type)) {
             float_vregs_.insert(vreg);
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::FLD)
+                    .add_def(vreg)
+                    .add_operand(VRegOperand(vreg))
+                    .add_operand(MemOperand(PhysReg::S0_FP, slot.offset)));
+        } else {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::LD)
+                    .add_def(vreg)
+                    .add_operand(VRegOperand(vreg))
+                    .add_operand(MemOperand(PhysReg::S0_FP, slot.offset)));
         }
+
         return vreg;
     }
     default:
@@ -1165,27 +1161,21 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
     if (dest.kind == TACOperand::Kind::TEMPORARY) {
         std::string temp_name = std::get<std::string>(dest.value);
 
-        auto it = temp_to_vreg_.find(temp_name);
-        if (it != temp_to_vreg_.end()) {
-            // Temporary already has a vreg (redefinition) - emit move
-            VirtReg dest_vreg = it->second;
-            if (dest_vreg != vreg) {
-                bool is_float = float_vregs_.contains(vreg);
-                if (is_float) {
-                    float_vregs_.insert(dest_vreg);
-                    auto fmv = MachineInstr(MachineOpcode::FMV_D)
-                                   .add_def(dest_vreg)
-                                   .add_use(vreg)
-                                   .add_operand(VRegOperand(dest_vreg))
-                                   .add_operand(VRegOperand(vreg));
-                    mfn_.add_instruction(std::move(fmv));
-                } else {
-                    mfn_.add_instruction(make_mv(dest_vreg, vreg));
-                }
-            }
-        } else {
+        int32_t offset = mfn_.get_frame().allocate_temp(temp_name, 8);
+        bool is_float = float_vregs_.contains(vreg);
 
-            temp_to_vreg_[temp_name] = vreg;
+        if (is_float) {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::FSD)
+                    .add_use(vreg)
+                    .add_operand(VRegOperand(vreg))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+        } else {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::SD)
+                    .add_use(vreg)
+                    .add_operand(VRegOperand(vreg))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
         }
     } else if (dest.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr sym = std::get<SymbolPtr>(dest.value);
