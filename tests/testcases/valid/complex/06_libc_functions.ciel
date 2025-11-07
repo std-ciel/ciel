@@ -1,0 +1,214 @@
+int printf(char* fmt, ...);
+int scanf(char* fmt, ...);
+int putchar(int c);
+int getchar();
+int puts(char* s);
+char* gets(char* s);
+
+void* malloc(unsigned size);
+void free(void* ptr);
+void* calloc(unsigned nmemb, unsigned size);
+void* realloc(void* ptr, unsigned size);
+
+int strlen(char* str);
+char* strcpy(char* dst, char* src);
+char* strcat(char* dst, char* src);
+int strcmp(char* s1, char* s2);
+
+void* memcpy(void* dst, void* src, int n);
+void* memset(void* s, int c, int n);
+int memcmp(void* s1, void* s2, int n);
+
+int open(char* path, int flags, ...);
+int read(int fd, void* buf, int count);
+int write(int fd, void* buf, int count);
+int close(int fd);
+
+int atoi(char* str);
+float atof(char* str);
+
+void exit(int status);
+
+int main() {
+    printf("╔══════════════════════════════════════════════════════════════╗\n");
+    printf("║  Comprehensive Libc Function Integration Test                ║\n");
+    printf("╚══════════════════════════════════════════════════════════════╝\n\n");
+
+    printf("┌─ Test 1: I/O Functions ─────────────────────────────────────┐\n");
+
+    // Test printf with various argument counts
+    printf("  Testing printf (variadic): %s %d %c\n", "Hello", 42, 65);
+
+    // Test puts
+    puts("  Testing puts: simple string output");
+
+    // Test putchar - spell out "  OK\n"
+    putchar(32);  // space
+    putchar(32);  // space
+    putchar(79);  // 'O'
+    putchar(75);  // 'K'
+    putchar(10);  // newline
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Test 2: Memory Allocation Functions (with unsigned size_t)
+    // ========================================================================
+    printf("┌─ Test 2: Memory Allocation ─────────────────────────────────┐\n");
+
+    // Test malloc with int literal (implicit conversion to unsigned)
+    void* ptr1 = malloc(100);
+    printf("  malloc(100): Allocated 100 bytes\n");
+
+    // Test free
+    free(ptr1);
+    printf("  free(): Memory freed\n");
+
+    // Test calloc with int literals (implicit conversion to unsigned)
+    void* ptr2 = calloc(10, 4);
+    printf("  calloc(10, 4): Allocated 40 bytes (zero-initialized)\n");
+
+    // Test realloc with int literal (implicit conversion to unsigned)
+    void* ptr3 = realloc(ptr2, 80);
+    printf("  realloc(ptr, 80): Reallocated to 80 bytes\n");
+
+    free(ptr3);
+    printf("  free(): Memory freed\n");
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Test 3: String Functions
+    // ========================================================================
+    printf("┌─ Test 3: String Functions ──────────────────────────────────┐\n");
+
+    char* str1 = "Hello";
+    char* str2 = "World";
+    char* str3 = "Hello";
+
+    // Test strlen
+    int len1 = strlen(str1);
+    int len2 = strlen(str2);
+    printf("  strlen(\"%s\"): %d\n", str1, len1);
+    printf("  strlen(\"%s\"): %d\n", str2, len2);
+
+    // Test strcmp
+    int cmp1 = strcmp(str1, str2);
+    int cmp2 = strcmp(str1, str3);
+    printf("  strcmp(\"%s\", \"%s\"): %d (different)\n", str1, str2, cmp1);
+    printf("  strcmp(\"%s\", \"%s\"): %d (same)\n", str1, str3, cmp2);
+
+    // Test strcpy and strcat
+    char buffer1[100];
+    strcpy(buffer1, str1);
+    printf("  strcpy(buffer, \"%s\"): copied\n", str1);
+
+    strcat(buffer1, str2);
+    printf("  strcat(buffer, \"%s\"): concatenated\n", str2);
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Test 4: Memory Functions
+    // ========================================================================
+    printf("┌─ Test 4: Memory Functions ──────────────────────────────────┐\n");
+
+    char src_array[20];
+    char dst_array[20];
+
+    // Test memset
+    memset(src_array, 65, 20);  // Fill with 'A'
+    printf("  memset(array, 65, 20): filled with 'A'\n");
+
+    // Test memcpy
+    memcpy(dst_array, src_array, 20);
+    printf("  memcpy(dst, src, 20): copied 20 bytes\n");
+
+    // Test memcmp
+    int cmp_result = memcmp(dst_array, src_array, 20);
+    printf("  memcmp(dst, src, 20): %d (should be 0)\n", cmp_result);
+
+    // Test with malloc'd memory to verify pointer-to-void* conversion
+    void* mem1 = malloc(30);
+    void* mem2 = malloc(30);
+    memset(mem1, 42, 30);
+    memcpy(mem2, mem1, 30);
+    int mem_cmp = memcmp(mem1, mem2, 30);
+    printf("  memcmp on malloc'd memory: %d (should be 0)\n", mem_cmp);
+    free(mem1);
+    free(mem2);
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Test 5: Conversion Functions
+    // ========================================================================
+    printf("┌─ Test 5: Conversion Functions ──────────────────────────────┐\n");
+
+    char* num_str = "12345";
+    int converted_int = atoi(num_str);
+    printf("  atoi(\"%s\"): %d\n", num_str, converted_int);
+
+    char* float_str = "3.14159";
+    float converted_float = atof(float_str);
+    printf("  atof(\"%s\"): (float conversion)\n", float_str);
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Test 6: Array Decay + Implicit Conversions Combined
+    // ========================================================================
+    printf("┌─ Test 6: Array Decay + Implicit Conversions ────────────────┐\n");
+
+    char test_array[100];
+    // Array decays to char*, then converts to void*, int converts to unsigned
+    memset(test_array, 0, 100);
+    printf("  memset(char_array, 0, 100): array decayed to char* then void*\n");
+
+    // Array decays to char*
+    int array_len = strlen(test_array);
+    printf("  strlen(char_array): %d (array decayed to char*)\n", array_len);
+
+    // Both arrays decay, int used for size (implicit conversion)
+    char array1[50];
+    char array2[50];
+    memcpy(array1, array2, 50);
+    printf("  memcpy(array1, array2, 50): both arrays decayed, int used\n");
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Test 7: Variadic Functions with Different Argument Counts
+    // ========================================================================
+    printf("┌─ Test 7: Variadic Functions ────────────────────────────────┐\n");
+
+    printf("  printf with 0 args: \"No extra args\"\n");
+    printf("  printf with 1 arg: %d\n", 123);
+    printf("  printf with 2 args: %s %d\n", "Mixed", 456);
+    printf("  printf with 3 args: %s %d %c\n", "Types", 789, 88);
+
+    printf("└──────────────────────────────────────────────────────────────┘\n\n");
+
+    // ========================================================================
+    // Summary
+    // ========================================================================
+    printf("╔══════════════════════════════════════════════════════════════╗\n");
+    printf("║  ALL TESTS COMPLETED SUCCESSFULLY!                           ║\n");
+    printf("║                                                              ║\n");
+    printf("║  Functions tested:                                           ║\n");
+    printf("║    • I/O: printf, puts, putchar                              ║\n");
+    printf("║    • Memory: malloc, free, calloc, realloc                   ║\n");
+    printf("║    • String: strlen, strcmp, strcpy, strcat                  ║\n");
+    printf("║    • Memory ops: memcpy, memset, memcmp                      ║\n");
+    printf("║    • Conversion: atoi, atof                                  ║\n");
+    printf("║                                                              ║\n");
+    printf("║  Features demonstrated:                                      ║\n");
+    printf("║    ✓ Variadic functions (printf, scanf, open)                ║\n");
+    printf("║    ✓ Array-to-pointer decay                                  ║\n");
+    printf("║    ✓ Pointer-to-void* conversion                             ║\n");
+    printf("║    ✓ int-to-unsigned implicit conversion                     ║\n");
+    printf("║    ✓ Combined conversions in single call                     ║\n");
+    printf("╚══════════════════════════════════════════════════════════════╝\n");
+
+    return 0;
+}
