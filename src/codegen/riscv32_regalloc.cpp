@@ -1,6 +1,7 @@
 #include "codegen/riscv32_regalloc.hpp"
 #include "codegen/riscv32_backend.hpp"
 #include <algorithm>
+#include <iostream>
 #include <ranges>
 #include <stdexcept>
 
@@ -287,10 +288,41 @@ void LinearScanAllocator::build_live_intervals()
     for (size_t i = 0; i < intervals_.size(); ++i) {
         vreg_to_interval_idx_[intervals_[i].vreg] = i;
     }
+
+    if (debug_mode_) {
+        std::cerr << "\n=== LIVE INTERVALS ===\n";
+        for (const auto &interval : intervals_) {
+            std::cerr << "vreg" << interval.vreg << ": [" << interval.start
+                      << ", " << interval.end << "]";
+            std::cerr << " uses={";
+            bool first = true;
+            for (auto pos : interval.use_positions) {
+                if (!first)
+                    std::cerr << ",";
+                std::cerr << pos;
+                first = false;
+            }
+            std::cerr << "} defs={";
+            first = true;
+            for (auto pos : interval.def_positions) {
+                if (!first)
+                    std::cerr << ",";
+                std::cerr << pos;
+                first = false;
+            }
+            std::cerr << "}\n";
+        }
+        std::cerr << "Total instructions: " << instructions.size() << "\n";
+        std::cerr << "======================\n\n";
+    }
 }
 
 void LinearScanAllocator::allocate_registers()
 {
+    if (debug_mode_) {
+        std::cerr << "\n=== REGISTER ALLOCATION ===\n";
+    }
+
     for (size_t idx = 0; idx < intervals_.size(); ++idx) {
         auto &interval = intervals_[idx];
 
@@ -309,8 +341,18 @@ void LinearScanAllocator::allocate_registers()
                 }
 
                 active_int_.push_back(idx);
+
+                if (debug_mode_) {
+                    std::cerr << "vreg" << interval.vreg << " -> "
+                              << get_reg_name(reg.value()) << "\n";
+                }
             } else {
                 spill_interval(interval);
+                if (debug_mode_) {
+                    std::cerr << "vreg" << interval.vreg
+                              << " -> SPILL (slot=" << interval.spill_slot
+                              << ")\n";
+                }
             }
         } else {
             expire_old_intervals(interval, active_fp_, free_fp_regs_);
@@ -327,10 +369,24 @@ void LinearScanAllocator::allocate_registers()
                 }
 
                 active_fp_.push_back(idx);
+
+                if (debug_mode_) {
+                    std::cerr << "vreg" << interval.vreg << " -> "
+                              << get_reg_name(reg.value()) << "\n";
+                }
             } else {
                 spill_interval(interval);
+                if (debug_mode_) {
+                    std::cerr << "vreg" << interval.vreg
+                              << " -> SPILL (slot=" << interval.spill_slot
+                              << ")\n";
+                }
             }
         }
+    }
+
+    if (debug_mode_) {
+        std::cerr << "===========================\n\n";
     }
 }
 

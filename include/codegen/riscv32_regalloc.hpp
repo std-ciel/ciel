@@ -99,6 +99,11 @@ class LinearScanAllocator {
     explicit LinearScanAllocator(MachineFunction &mfn);
 
     void run();
+
+    static void set_debug_mode(bool debug)
+    {
+        debug_mode_ = debug;
+    }
     [[nodiscard]] std::optional<PhysReg> get_allocation(VirtReg vreg) const;
     [[nodiscard]] bool is_spilled(VirtReg vreg) const;
     [[nodiscard]] int32_t get_spill_slot(VirtReg vreg) const;
@@ -129,6 +134,8 @@ class LinearScanAllocator {
     std::unordered_map<VirtReg, LocationInfo> location_map_;
     std::vector<PhysReg> free_int_regs_;
     std::vector<PhysReg> free_fp_regs_;
+
+    static inline bool debug_mode_ = false;
 };
 
 } // namespace riscv32

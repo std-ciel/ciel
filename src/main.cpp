@@ -5,6 +5,7 @@
 #include <iostream>
 
 #include "codegen/riscv32_codegen.hpp"
+#include "codegen/riscv32_regalloc.hpp"
 #include "common/error_printer.hpp"
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
@@ -271,6 +272,9 @@ int main(int argc, char *argv[])
             std::cout << "\n┌─────────────────────────┐\n";
             std::cout << "│ RISC-V CODE GENERATION  │\n";
             std::cout << "└─────────────────────────┘\n";
+
+            ciel::codegen::riscv32::LinearScanAllocator::set_debug_mode(
+                debug_mode);
 
             ciel::codegen::riscv32::RiscV32Codegen codegen(
                 tac_gen.get_program(),
