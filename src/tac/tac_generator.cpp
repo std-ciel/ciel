@@ -900,9 +900,6 @@ void TACGenerator::generate_aggregate_copy(const TACOperand &target,
         return record_error("Cannot copy: invalid aggregate type");
 
     const auto kind = type->kind;
-    const auto is_aggregate = [](TypeKind k) {
-        return k == TypeKind::RECORD || k == TypeKind::CLASS;
-    };
 
     if (kind == TypeKind::RECORD) {
         const auto record = std::static_pointer_cast<RecordType>(type);
@@ -1388,46 +1385,68 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
         if (block->statements.empty())
             return;
 
-        // Check if we need to create the global initialization function
-        // We create it once when we encounter the first global initialization
-        bool need_to_create_init_func =
-            !current_function || current_function->name != "__ciel_global_init";
-
-        if (need_to_create_init_func) {
-            // Create the global initialization function
-            auto void_type_opt = type_factory.get_builtin_type("void");
-            TypePtr void_type =
-                void_type_opt.has_value() ? void_type_opt.value() : nullptr;
-
-            current_function =
-                std::make_shared<TACFunction>("__ciel_global_init",
-                                              "__ciel_global_init",
-                                              void_type,
-                                              0,
-                                              get_symbol_table());
-
-            current_function->entry_block = std::make_shared<TACBasicBlock>("");
-            current_block = current_function->entry_block;
-            current_function->add_block(current_function->entry_block);
-
-            // Emit ENTER instruction
-            emit(std::make_shared<TACInstruction>(TACOpcode::ENTER));
-        }
-
-        // Generate TAC for each initialization statement
+        // Process each global variable initialization
         for (const auto &stmt : block->statements) {
             if (stmt && stmt->type == ASTNodeType::ASSIGNMENT_EXPR) {
-                // Generate the assignment (this will emit the TAC)
-                generate_expression(stmt);
+                auto assign = std::static_pointer_cast<AssignmentExpr>(stmt);
+
+                if (assign->target &&
+                    assign->target->type == ASTNodeType::IDENTIFIER_EXPR) {
+                    auto id_expr = std::static_pointer_cast<IdentifierExpr>(
+                        assign->target);
+                    auto symbol = id_expr->symbol;
+
+                    program.add_global(symbol);
+
+                    if (assign->value) {
+                        // Extract constant value from the initializer
+                        if (assign->value->type == ASTNodeType::LITERAL_EXPR) {
+                            auto lit = std::static_pointer_cast<LiteralExpr>(
+                                assign->value);
+
+                            // Convert LiteralValue to Symbol::InitializerValue
+                            if (std::holds_alternative<int64_t>(lit->value)) {
+                                symbol->set_initializer(
+                                    std::get<int64_t>(lit->value));
+                            } else if (std::holds_alternative<uint64_t>(
+                                           lit->value)) {
+                                symbol->set_initializer(static_cast<int64_t>(
+                                    std::get<uint64_t>(lit->value)));
+                            } else if (std::holds_alternative<double>(
+                                           lit->value)) {
+                                symbol->set_initializer(
+                                    std::get<double>(lit->value));
+                            } else if (std::holds_alternative<char>(
+                                           lit->value)) {
+                                symbol->set_initializer(static_cast<int64_t>(
+                                    std::get<char>(lit->value)));
+                            } else if (std::holds_alternative<bool>(
+                                           lit->value)) {
+                                symbol->set_initializer(static_cast<int64_t>(
+                                    std::get<bool>(lit->value) ? 1 : 0));
+                            } else if (std::holds_alternative<std::string>(
+                                           lit->value)) {
+                                std::string str_value =
+                                    std::get<std::string>(lit->value);
+
+                                std::string str_label =
+                                    ".str" +
+                                    std::to_string(string_literal_counter++);
+                                program.add_string_literal(str_label,
+                                                           str_value);
+                                // Store the label in the symbol's initializer
+                                symbol->set_initializer(str_value);
+                            }
+                        }
+
+                        // TODO: Handle more complex initializers
+                    }
+                }
             }
         }
     }
-
-    // Note: Plain declarations without initializers (like "int x;") come as
-    // nullptr from the parser, so there's nothing to generate for them
 }
 
-// NEW: Generate TAC for entire translation unit
 Result<bool, std::vector<TACErrorInfo>>
 TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
 {
@@ -1444,27 +1463,24 @@ TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
         }
     }
 
-    // Finalize global initialization function if it was created
-    if (current_function && current_function->name == "__ciel_global_init") {
-
-        bool has_return = false;
-        if (current_block && !current_block->instructions.empty()) {
-            auto last_instr = current_block->instructions.back();
-            if (last_instr && last_instr->opcode == TACOpcode::RETURN) {
-                has_return = true;
+    // Collect all global variables from the symbol table
+    // This includes both initialized and uninitialized globals
+    auto global_symbols = symbol_table.get_symbols_in_scope(GLOBAL_SCOPE_ID);
+    for (const auto &[name, symbol] : global_symbols) {
+        if (symbol->get_type().type->kind != TypeKind::FUNCTION) {
+            // Check if already added (to avoid duplicates from initialized
+            // globals)
+            bool already_added = false;
+            for (const auto &existing : program.global_variables) {
+                if (existing->get_name() == symbol->get_name()) {
+                    already_added = true;
+                    break;
+                }
+            }
+            if (!already_added) {
+                program.add_global(symbol);
             }
         }
-
-        // If no return, add implicit return (global init is always void)
-        if (!has_return) {
-            emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
-        }
-
-        // Add the function to the program
-        program.add_function(current_function);
-
-        current_function = nullptr;
-        current_block = nullptr;
     }
 
     // Second pass: process all functions in global scope
