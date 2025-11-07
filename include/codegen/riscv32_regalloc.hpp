@@ -107,6 +107,7 @@ class LinearScanAllocator {
   private:
     void compute_liveness();
     void build_live_intervals();
+    void split_intervals_with_holes();
     void allocate_registers();
     void expire_old_intervals(const LiveInterval &current,
                               std::vector<size_t> &active,

@@ -39,6 +39,8 @@ void LinearScanAllocator::run()
 
     compute_liveness();
     build_live_intervals();
+    // split_intervals_with_holes();  // Disabled: first def to last use is
+    // sufficient
     allocate_registers();
     handle_call_sites();
     rewrite_instructions();
@@ -96,55 +98,166 @@ void LinearScanAllocator::compute_liveness()
     }
 }
 
+void LinearScanAllocator::split_intervals_with_holes()
+{
+    std::vector<LiveInterval> new_intervals;
+
+    for (auto &interval : intervals_) {
+        // Find holes: gaps where vreg is not used or defined
+        std::vector<size_t> all_positions;
+        for (auto pos : interval.use_positions)
+            all_positions.push_back(pos);
+        for (auto pos : interval.def_positions)
+            all_positions.push_back(pos);
+        std::ranges::sort(all_positions);
+        all_positions.erase(
+            std::unique(all_positions.begin(), all_positions.end()),
+            all_positions.end());
+
+        if (all_positions.empty())
+            continue;
+
+        // Detect holes: gaps > 1 instruction between consecutive uses/defs
+        std::vector<std::pair<size_t, size_t>> segments;
+        size_t segment_start = all_positions[0];
+        size_t segment_end = all_positions[0];
+
+        for (size_t i = 1; i < all_positions.size(); ++i) {
+            if (all_positions[i] <= segment_end + 1) {
+                // Consecutive or adjacent - extend current segment
+                segment_end = all_positions[i];
+            } else {
+                // Gap found - close current segment and start new one
+                segments.emplace_back(segment_start, segment_end);
+                segment_start = all_positions[i];
+                segment_end = all_positions[i];
+            }
+        }
+        segments.emplace_back(segment_start, segment_end);
+
+        if (segments.size() > 1) {
+            // Split into multiple intervals
+            std::cerr << "Splitting vreg" << interval.vreg << " into "
+                      << segments.size() << " segments\n";
+            for (const auto &[seg_start, seg_end] : segments) {
+                auto &new_int = new_intervals.emplace_back(interval.vreg,
+                                                           interval.reg_class,
+                                                           seg_start,
+                                                           seg_end);
+
+                // Copy relevant use/def positions
+                for (auto pos : interval.use_positions) {
+                    if (pos >= seg_start && pos <= seg_end) {
+                        new_int.use_positions.insert(pos);
+                    }
+                }
+                for (auto pos : interval.def_positions) {
+                    if (pos >= seg_start && pos <= seg_end) {
+                        new_int.def_positions.insert(pos);
+                    }
+                }
+            }
+        }
+    }
+
+    // Replace split intervals
+    if (!new_intervals.empty()) {
+        // Remove intervals that were split
+        std::unordered_set<VirtReg> split_vregs;
+        for (const auto &interval : new_intervals) {
+            split_vregs.insert(interval.vreg);
+        }
+
+        intervals_.erase(
+            std::remove_if(intervals_.begin(),
+                           intervals_.end(),
+                           [&](const LiveInterval &iv) {
+                               return split_vregs.contains(iv.vreg) &&
+                                      std::ranges::any_of(
+                                          new_intervals,
+                                          [&](const LiveInterval &new_iv) {
+                                              return new_iv.vreg == iv.vreg &&
+                                                     (new_iv.start !=
+                                                          iv.start ||
+                                                      new_iv.end != iv.end);
+                                          });
+                           }),
+            intervals_.end());
+
+        // Add new split intervals
+        intervals_.insert(intervals_.end(),
+                          new_intervals.begin(),
+                          new_intervals.end());
+    }
+}
+
 void LinearScanAllocator::build_live_intervals()
 {
-    // Very conservative approach, may over-approximate live ranges
     const auto &instructions = mfn_.get_instructions();
-    std::unordered_map<VirtReg, std::pair<size_t, size_t>> ranges;
 
-    // Compute live ranges from liveness info and explicit uses/defs
+    // Use optional to avoid sentinel ambiguity
+    std::unordered_map<VirtReg, std::optional<std::pair<size_t, size_t>>>
+        ranges; // First pass: compute precise live ranges from uses/defs
+    for (size_t pos = 0; pos < instructions.size(); ++pos) {
+        const auto &instr = instructions[pos];
+
+        for (const auto vreg : instr.get_uses()) {
+            if (vreg == INVALID_VREG)
+                continue;
+            auto &range_opt = ranges[vreg];
+            if (!range_opt.has_value()) {
+                range_opt = std::make_pair(pos, pos);
+            } else {
+                auto &[start, end] = *range_opt;
+                start = std::min(start, pos);
+                end = std::max(end, pos);
+            }
+        }
+
+        for (const auto vreg : instr.get_defs()) {
+            if (vreg == INVALID_VREG)
+                continue;
+            auto &range_opt = ranges[vreg];
+            if (!range_opt.has_value()) {
+                range_opt = std::make_pair(pos, pos);
+            } else {
+                auto &[start, end] = *range_opt;
+                start = std::min(start, pos);
+                end = std::max(end, pos);
+            }
+        }
+    }
+
+    // Second pass: extend ranges for live-in/live-out to block boundaries
+    // ONLY if the vreg is actually live at those points
     for (const auto &block : basic_blocks_) {
+        // For live_in: extend START to block start (vreg must be live from
+        // entry)
         for (const auto vreg : block.live_in) {
-            auto &[start, end] = ranges[vreg];
-            if (start == 0 && end == 0)
-                start = block.start_pos;
-            end = std::max(end, block.end_pos);
-        }
-
-        for (size_t pos = block.start_pos; pos <= block.end_pos; ++pos) {
-            const auto &instr = instructions[pos];
-
-            for (const auto vreg : instr.get_uses()) {
-                if (vreg == INVALID_VREG)
-                    continue;
-                auto &[start, end] = ranges[vreg];
-                if (start == 0 && end == 0)
-                    start = pos;
-                end = std::max(end, pos);
-            }
-
-            for (const auto vreg : instr.get_defs()) {
-                if (vreg == INVALID_VREG)
-                    continue;
-                auto &[start, end] = ranges[vreg];
-                if (start == 0 && end == 0)
-                    start = pos;
-                end = std::max(end, pos);
+            auto &range_opt = ranges[vreg];
+            if (range_opt.has_value()) {
+                auto &[start, end] = *range_opt;
+                start = std::min(start, static_cast<size_t>(block.start_pos));
             }
         }
 
+        // For live_out: extend END to block end (vreg must be live until exit)
         for (const auto vreg : block.live_out) {
-            auto &[start, end] = ranges[vreg];
-            if (start == 0 && end == 0)
-                start = block.start_pos;
-            end = std::max(end, block.end_pos);
+            auto &range_opt = ranges[vreg];
+            if (range_opt.has_value()) {
+                auto &[start, end] = *range_opt;
+                end = std::max(end, static_cast<size_t>(block.end_pos));
+            }
         }
     }
 
     // Create intervals and track use/def positions for each vreg
     intervals_.reserve(ranges.size());
-    for (const auto &[vreg, range] : ranges) {
-        const auto [start, end] = range;
+    for (const auto &[vreg, range_opt] : ranges) {
+        if (!range_opt.has_value())
+            continue;
+
+        const auto &[start, end] = *range_opt;
         auto &interval = intervals_.emplace_back(vreg,
                                                  determine_reg_class(vreg),
                                                  start,
@@ -162,6 +275,10 @@ void LinearScanAllocator::build_live_intervals()
             }
         }
     }
+
+    // Detect and split intervals with holes (dead zones)
+    // split_intervals_with_holes();  // Disabled: first def to last use is
+    // sufficient
 
     // Sort by start position for linear scan
     std::ranges::sort(intervals_, {}, &LiveInterval::start);
