@@ -42,6 +42,7 @@
     std::vector<std::string> param_names;
     bool is_variadic = false;
     ASTNodePtr initializer = nullptr;  // Added to store initializer expression
+    bool pointer_parenthesized = false;  // True for (*p)[N], false for *p[N]
   };
 
   struct ParamDeclInfo {
@@ -2147,16 +2148,11 @@ static void check_array_bounds(const TypePtr &array_type,
                          op_name + ": incompatible types for compound assignment");
         return nullptr;
       }
-    } else {
-      if(is_pointer_type(lhs_type) && is_integral_type(rhs_type))
-      {
-        return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type);
-      } else if (!are_types_equal(lhs_type, rhs_type)) {
+    } else if (!are_types_equal(lhs_type, rhs_type)) {
         parser_add_error(op_loc.begin.line,
                          op_loc.begin.column,
                          op_name + ": incompatible types for assignment ('" + lhs_type->debug_name() + "' and '" + rhs_type->debug_name() + "')");
         return nullptr;
-      }
     }
 
     return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type, is_static_assignment);
@@ -3544,6 +3540,22 @@ additive_expression
       }
       else
       {
+        // Apply array-to-pointer decay for operands
+        if (is_array_type(left_type)) {
+          left_type = std::static_pointer_cast<ArrayType>(left_type)->element_type.type;
+          auto ptr_result = type_factory.pointer_from(left_type);
+          if (ptr_result.is_ok()) {
+            left_type = ptr_result.value();
+          }
+        }
+        if (is_array_type(right_type)) {
+          right_type = std::static_pointer_cast<ArrayType>(right_type)->element_type.type;
+          auto ptr_result = type_factory.pointer_from(right_type);
+          if (ptr_result.is_ok()) {
+            right_type = ptr_result.value();
+          }
+        }
+
         if(is_class_type(left_type)){
           std::vector<QualifiedType> param_types = {QualifiedType(right_type, Qualifier::NONE)};
           SymbolPtr overload = get_operator_overload(left_type, "+", param_types);
@@ -3589,6 +3601,22 @@ additive_expression
       }
       else
       {
+        // Apply array-to-pointer decay for operands
+        if (is_array_type(left_type)) {
+          left_type = std::static_pointer_cast<ArrayType>(left_type)->element_type.type;
+          auto ptr_result = type_factory.pointer_from(left_type);
+          if (ptr_result.is_ok()) {
+            left_type = ptr_result.value();
+          }
+        }
+        if (is_array_type(right_type)) {
+          right_type = std::static_pointer_cast<ArrayType>(right_type)->element_type.type;
+          auto ptr_result = type_factory.pointer_from(right_type);
+          if (ptr_result.is_ok()) {
+            right_type = ptr_result.value();
+          }
+        }
+
         if(is_class_type(left_type)){
           std::vector<QualifiedType> param_types = {QualifiedType(right_type, Qualifier::NONE)};
           SymbolPtr overload = get_operator_overload(left_type, "-", param_types);
@@ -4096,25 +4124,42 @@ init_declarator
             // Strip typedefs from the base type before using it
             QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
-            // Apply pointer levels first if present
-            if(di.pointer_levels > 0){
-              final_t = apply_pointer_levels_or_error(final_t,
-                                                     di.pointer_levels,
-                                                     "initializer pointer declarator",
-                                                     @1.begin.line,
-                                                     @1.begin.column);
-            }
-
-            // Then apply array dimensions if present
-            if(!di.array_dims.empty()){
-              final_t = apply_array_dimensions_or_error(final_t,
-                                                       di.array_dims,
-                                                       "initializer array declarator",
+            // The order of applying pointer and array depends on declarator syntax:
+            
+            if(di.pointer_parenthesized) {
+              // Case: int (*p)[3] - apply arrays first, then pointers
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "initializer array declarator",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
+              if(di.pointer_levels > 0){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "initializer pointer declarator",
                                                        @1.begin.line,
                                                        @1.begin.column);
+              }
+            } else {
+              // Case: int *p[3] - apply pointers first, then arrays
+              if(di.pointer_levels > 0){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "initializer pointer declarator",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
+              }
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "initializer array declarator",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
             }
 
-            // Check completeness for non-array types
             if(di.pointer_levels == 0 && di.array_dims.empty()) {
               check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
@@ -4209,22 +4254,42 @@ init_declarator
             // Strip typedefs from the base type before using it
             QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
-            // Apply pointer levels first if present
-            if(di.pointer_levels > 0){
-              final_t = apply_pointer_levels_or_error(final_t,
-                                                     di.pointer_levels,
-                                                     "declarator pointer",
-                                                     @1.begin.line,
-                                                     @1.begin.column);
-            }
-
-            // Then apply array dimensions if present
-            if(!di.array_dims.empty()){
-              final_t = apply_array_dimensions_or_error(final_t,
-                                                       di.array_dims,
-                                                       "declarator array",
+            // The order of applying pointer and array depends on declarator syntax:
+            // - int *p[3]: Apply pointers first, then arrays
+            // - int (*p)[3]: Apply arrays first, then pointers
+            
+            if(di.pointer_parenthesized) {
+              // Case: int (*p)[3] - apply arrays first, then pointers
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "declarator array",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
+              if(di.pointer_levels > 0){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "declarator pointer",
                                                        @1.begin.line,
                                                        @1.begin.column);
+              }
+            } else {
+              // Case: int *p[3] - apply pointers first, then arrays
+              if(di.pointer_levels > 0){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "declarator pointer",
+                                                       @1.begin.line,
+                                                       @1.begin.column);
+              }
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "declarator array",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
             }
 
             // Check completeness for non-array types
@@ -4591,22 +4656,37 @@ struct_declaration
             if (!di.name.empty()) {
               QualifiedType final_t = base;
 
-              // Apply pointer levels first if present
-              if(di.pointer_levels){
-                final_t = apply_pointer_levels_or_error(final_t,
-                                                       di.pointer_levels,
-                                                       "struct field pointer",
-                                                       @1.begin.line,
-                                                       @1.begin.column);
-              }
-
-              // Then apply array dimensions if present
-              if(!di.array_dims.empty()){
-                final_t = apply_array_dimensions_or_error(final_t,
-                                                         di.array_dims,
-                                                         "struct field array",
+               
+              if(di.pointer_parenthesized) {
+                if(!di.array_dims.empty()){
+                  final_t = apply_array_dimensions_or_error(final_t,
+                                                           di.array_dims,
+                                                           "struct field array",
+                                                           @1.begin.line,
+                                                           @1.begin.column);
+                }
+                if(di.pointer_levels){
+                  final_t = apply_pointer_levels_or_error(final_t,
+                                                         di.pointer_levels,
+                                                         "struct field pointer",
                                                          @1.begin.line,
                                                          @1.begin.column);
+                }
+              } else {
+                if(di.pointer_levels){
+                  final_t = apply_pointer_levels_or_error(final_t,
+                                                         di.pointer_levels,
+                                                         "struct field pointer",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+                }
+                if(!di.array_dims.empty()){
+                  final_t = apply_array_dimensions_or_error(final_t,
+                                                           di.array_dims,
+                                                           "struct field array",
+                                                           @1.begin.line,
+                                                           @1.begin.column);
+                }
               }
 
               // Check completeness for non-array types
@@ -4927,6 +5007,10 @@ direct_declarator
     | OPEN_PAREN_OP declarator CLOSE_PAREN_OP
       {
         $$ = $2;
+        // This is crucial for distinguishing int (*p)[3] from int *p[3]
+        if($2.pointer_levels > 0) {
+          $$.pointer_parenthesized = true;
+        }
       }
   	| direct_declarator OPEN_BRACKET_OP CLOSE_BRACKET_OP
       {
@@ -5036,24 +5120,42 @@ parameter_declaration
         if (base.type) {
           // Strip typedefs from the base type before using it
           QualifiedType stripped_base = QualifiedType{strip_typedefs(base.type), base.qualifier};
-          QualifiedType t;
+          QualifiedType t = stripped_base;
 
-          if($2.pointer_levels){
-            t = apply_pointer_levels_or_error(stripped_base,
-                                              $2.pointer_levels,
-                                              "parameter pointer",
-                                              @1.begin.line,
-                                              @2.begin.column);
-          }
-          else if(!$2.array_dims.empty()){
-            t = apply_array_dimensions_or_error(stripped_base,
-                                                $2.array_dims,
-                                                "parameter array",
+          if($2.pointer_parenthesized) {
+            if(!$2.array_dims.empty()){
+              t = apply_array_dimensions_or_error(t,
+                                                  $2.array_dims,
+                                                  "parameter array",
+                                                  @1.begin.line,
+                                                  @2.begin.column);
+            }
+            if($2.pointer_levels){
+              t = apply_pointer_levels_or_error(t,
+                                                $2.pointer_levels,
+                                                "parameter pointer",
                                                 @1.begin.line,
                                                 @2.begin.column);
+            }
+          } else {
+            if($2.pointer_levels){
+              t = apply_pointer_levels_or_error(t,
+                                                $2.pointer_levels,
+                                                "parameter pointer",
+                                                @1.begin.line,
+                                                @2.begin.column);
+            }
+            if(!$2.array_dims.empty()){
+              t = apply_array_dimensions_or_error(t,
+                                                  $2.array_dims,
+                                                  "parameter array",
+                                                  @1.begin.line,
+                                                  @2.begin.column);
+            }
           }
-          else {
-            t = stripped_base;
+
+          // Check completeness for non-pointer, non-array types
+          if($2.pointer_levels == 0 && $2.array_dims.empty()) {
             check_complete_type(t.type, @1, TypeUsageContext::FUNCTION_PARAMETER);
           }
 
@@ -6086,22 +6188,36 @@ function_declaration_or_definition
           } else {
             QualifiedType final_t = ret;
 
-            // Apply pointer levels first if present
-            if(di.pointer_levels){
-              final_t = apply_pointer_levels_or_error(final_t,
-                                                     di.pointer_levels,
-                                                     "member pointer declarator",
-                                                     @1.begin.line,
-                                                     @2.begin.column);
-            }
-
-            // Then apply array dimensions if present
-            if(!di.array_dims.empty()){
-              final_t = apply_array_dimensions_or_error(final_t,
-                                                       di.array_dims,
-                                                       "member array declarator",
+            if(di.pointer_parenthesized) {
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "member array declarator",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
+              if(di.pointer_levels){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "member pointer declarator",
                                                        @1.begin.line,
-                                                       @1.begin.column);
+                                                       @2.begin.column);
+              }
+            } else {
+              if(di.pointer_levels){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "member pointer declarator",
+                                                       @1.begin.line,
+                                                       @2.begin.column);
+              }
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "member array declarator",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
             }
 
             // Check completeness for non-array types
@@ -6209,22 +6325,37 @@ function_declaration_or_definition
           } else {
             QualifiedType final_t = ret;
 
-            // Apply pointer levels first if present
-            if(di.pointer_levels){
-              final_t = apply_pointer_levels_or_error(final_t,
-                                                     di.pointer_levels,
-                                                     "member pointer definition",
-                                                     @1.begin.line,
-                                                     @2.begin.column);
-            }
-
-            // Then apply array dimensions if present
-            if(!di.array_dims.empty()){
-              final_t = apply_array_dimensions_or_error(final_t,
-                                                       di.array_dims,
-                                                       "member array definition",
+  
+            if(di.pointer_parenthesized) {
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "member array definition",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
+              if(di.pointer_levels){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "member pointer definition",
                                                        @1.begin.line,
-                                                       @1.begin.column);
+                                                       @2.begin.column);
+              }
+            } else {
+              if(di.pointer_levels){
+                final_t = apply_pointer_levels_or_error(final_t,
+                                                       di.pointer_levels,
+                                                       "member pointer definition",
+                                                       @1.begin.line,
+                                                       @2.begin.column);
+              }
+              if(!di.array_dims.empty()){
+                final_t = apply_array_dimensions_or_error(final_t,
+                                                         di.array_dims,
+                                                         "member array definition",
+                                                         @1.begin.line,
+                                                         @1.begin.column);
+              }
             }
 
             // TODO error handling

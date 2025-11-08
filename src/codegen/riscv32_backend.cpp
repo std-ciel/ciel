@@ -364,6 +364,19 @@ void InstructionSelector::select_deref(const TACInstruction &instr)
     VirtReg addr = load_operand(instr.operand1);
     VirtReg result = mfn_.get_next_vreg();
 
+    // Dereferencing a pointer-to-array yields an array.
+    if (instr.result.type && instr.result.type->kind == TypeKind::ARRAY) {
+        // Just move the address to the result (array decay semantics)
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                 .add_def(result)
+                                 .add_use(addr)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(VRegOperand(addr))
+                                 .add_operand(ImmOperand(0)));
+        store_result(result, instr.result);
+        return;
+    }
+
     bool is_float = false;
     if (instr.result.type) {
         is_float = is_float_type(instr.result.type);
@@ -804,7 +817,10 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             is_float_expected = expected_param_types[i].type &&
                                 is_float_type(expected_param_types[i].type);
         } else {
-            is_float_expected = is_float;
+            // For varargs parameters (beyond known parameter types),
+            // floats must be passed in INTEGER registers per RISC-V calling
+            // convention
+            is_float_expected = false;
         }
 
         VirtReg converted_vreg = param_vreg;
@@ -821,15 +837,16 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             is_float_expected = false; // Treat as integer now
         } else if (is_float && !is_float_expected) {
             converted_vreg = mfn_.get_next_vreg();
-            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_L_D)
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_X_D)
                                      .add_def(converted_vreg)
                                      .add_use(param_vreg)
                                      .add_operand(VRegOperand(converted_vreg))
                                      .add_operand(VRegOperand(param_vreg)));
         } else if (!is_float && is_float_expected) {
+            // Using FMV_D_X to move bits without conversion
             converted_vreg = mfn_.get_next_vreg();
             float_vregs_.insert(converted_vreg);
-            mfn_.add_instruction(MachineInstr(MachineOpcode::FCVT_D_L)
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D_X)
                                      .add_def(converted_vreg)
                                      .add_use(param_vreg)
                                      .add_operand(VRegOperand(converted_vreg))
@@ -1575,20 +1592,12 @@ void RiscV32Backend::emit_libc_aliases(std::ostream &os) const
     // void exit(int status);               -> _Z4exiti
     // int putchar(int c);                  -> _Z7putchari
     // int getchar();                       -> _Z7getcharv
-    // int puts(char* s);                   -> _Z4putsPc
-    // char* gets(char* s);                 -> _Z4getsPc
-    // int atoi(char* str);                 -> _Z4atoiPc
-    // float atof(char* str);               -> _Z4atofPc
-
-    os << "\n# Libc function aliases (mangled -> unmangled)\n";
 
     // I/O functions
     os << "    .set _Z6printfPcz, printf\n";
     os << "    .set _Z5scanfPcz, scanf\n";
     os << "    .set _Z7putchari, putchar\n";
     os << "    .set _Z7getcharv, getchar\n";
-    os << "    .set _Z4putsPc, puts\n";
-    os << "    .set _Z4getsPc, gets\n";
 
     // Memory allocation
     os << "    .set _Z6mallocj, malloc\n";
@@ -1612,10 +1621,6 @@ void RiscV32Backend::emit_libc_aliases(std::ostream &os) const
     os << "    .set _Z4readiPvi, read\n";
     os << "    .set _Z5writeiPvi, write\n";
     os << "    .set _Z5closei, close\n";
-
-    // Conversion functions
-    os << "    .set _Z4atoiPc, atoi\n";
-    os << "    .set _Z4atofPc, atof\n";
 
     // System functions
     os << "    .set _Z4exiti, exit\n";

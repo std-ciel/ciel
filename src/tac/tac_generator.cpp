@@ -1,5 +1,6 @@
 #include "tac/tac_generator.hpp"
 #include "parser/parser_helper.hpp"
+#include "symbol_table/type.hpp"
 #include <algorithm>
 
 TACGenerator::TACGenerator()
@@ -562,6 +563,87 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
     auto result = TACOperand::temporary(result_temp, expr->expr_type);
 
     auto opcode = operator_to_tac_opcode(expr->op);
+
+    if (opcode == TACOpcode::ADD || opcode == TACOpcode::SUB) {
+        auto left_type_result = get_expression_type(expr->left);
+        auto right_type_result = get_expression_type(expr->right);
+
+        if (left_type_result.is_ok() && right_type_result.is_ok()) {
+            TypePtr left_type = strip_typedefs(left_type_result.value());
+            TypePtr right_type = strip_typedefs(right_type_result.value());
+
+            // For array type, we treat it as pointer to element type
+            bool left_is_array =
+                (left_type && left_type->kind == TypeKind::ARRAY);
+            bool right_is_array =
+                (right_type && right_type->kind == TypeKind::ARRAY);
+
+            TypePtr left_effective_type = left_type;
+            TypePtr right_effective_type = right_type;
+            size_t left_element_size = 0;
+            size_t right_element_size = 0;
+
+            if (left_is_array) {
+                auto array_type =
+                    std::static_pointer_cast<ArrayType>(left_type);
+                left_element_size =
+                    compute_type_size(array_type->element_type.type);
+            } else if (left_type && left_type->kind == TypeKind::POINTER) {
+                auto ptr_type =
+                    std::static_pointer_cast<PointerType>(left_type);
+                left_element_size = compute_type_size(ptr_type->pointee.type);
+            }
+
+            if (right_is_array) {
+                auto array_type =
+                    std::static_pointer_cast<ArrayType>(right_type);
+                right_element_size =
+                    compute_type_size(array_type->element_type.type);
+            } else if (right_type && right_type->kind == TypeKind::POINTER) {
+                auto ptr_type =
+                    std::static_pointer_cast<PointerType>(right_type);
+                right_element_size = compute_type_size(ptr_type->pointee.type);
+            }
+
+            bool left_is_pointer_like =
+                (left_is_array ||
+                 (left_type && left_type->kind == TypeKind::POINTER));
+            bool right_is_pointer_like =
+                (right_is_array ||
+                 (right_type && right_type->kind == TypeKind::POINTER));
+            bool left_is_integral = is_integral_type(left_type);
+            bool right_is_integral = is_integral_type(right_type);
+
+            // Pointer/array arithmetic: scale the integer operand by element
+            // size
+            if (left_is_pointer_like && right_is_integral &&
+                left_element_size > 1) {
+                auto size_operand =
+                    TACOperand::constant_int(left_element_size, nullptr);
+                auto scaled_temp = new_temp(nullptr);
+                auto scaled = TACOperand::temporary(scaled_temp, nullptr);
+
+                emit(std::make_shared<TACInstruction>(TACOpcode::MUL,
+                                                      scaled,
+                                                      right,
+                                                      size_operand));
+                right = scaled;
+            } else if (opcode == TACOpcode::ADD && left_is_integral &&
+                       right_is_pointer_like && right_element_size > 1) {
+                auto size_operand =
+                    TACOperand::constant_int(right_element_size, nullptr);
+                auto scaled_temp = new_temp(nullptr);
+                auto scaled = TACOperand::temporary(scaled_temp, nullptr);
+
+                emit(std::make_shared<TACInstruction>(TACOpcode::MUL,
+                                                      scaled,
+                                                      left,
+                                                      size_operand));
+                left = scaled;
+            }
+        }
+    }
+
     auto instr = std::make_shared<TACInstruction>(opcode, result, left, right);
     emit(instr);
 
