@@ -61,10 +61,73 @@ void LocalStaticPass::process_function(ASTNodePtr func_def)
     current_function_mangled_name = func_meta->mangled_name;
     current_function_scope_id = func_meta->body_scope_id;
 
+    // Process the function body to transform initialization expressions (for
+    // variables with initializers)
     if (func->body) {
         process_statement(func->body,
                           current_function_mangled_name,
                           current_function_scope_id);
+    }
+
+    // Move remaining static variables (those without initializers) to global
+    // scope
+    move_static_variables_to_global(current_function_mangled_name,
+                                    current_function_scope_id);
+}
+
+void LocalStaticPass::move_static_variables_to_global(
+    const std::string &func_mangled_name,
+    ScopeID func_scope_id)
+{
+    // Get all symbols in the function's body scope
+    const auto &symbols = symbol_table.get_symbols_in_scope(func_scope_id);
+
+    // Collect static variables that haven't been moved yet
+    // (variables with AST-level initializers will have been moved by
+    // transform_local_static in the first pass)
+    std::vector<SymbolPtr> static_vars_to_move;
+    for (const auto &[name, symbol] : symbols) {
+        if (symbol->get_storage_class() == StorageClass::STATIC &&
+            symbol->get_scope_id() != GLOBAL_SCOPE_ID &&
+            moved_symbols.find(symbol) == moved_symbols.end()) {
+            static_vars_to_move.push_back(symbol);
+        }
+    }
+
+    // Move each static variable to global scope
+    for (const auto &symbol : static_vars_to_move) {
+
+        moved_symbols.insert(symbol);
+
+        std::string original_name = symbol->get_name();
+        std::string mangled_name = mangle_local_static_name(func_mangled_name,
+                                                            func_scope_id,
+                                                            original_name);
+
+        // Remove from local scope
+        ScopeID original_scope = symbol->get_scope_id();
+        auto remove_result = symbol_table.remove_symbol(symbol);
+        if (remove_result.is_err()) {
+            errors.push_back(LocalStaticPassErrorInfo(
+                LocalStaticPassError::SYMBOL_REMOVAL_FAILED,
+                original_name,
+                "from scope " + std::to_string(original_scope)));
+            continue;
+        }
+
+        symbol->set_name(mangled_name);
+        symbol->set_scope_id(GLOBAL_SCOPE_ID);
+        symbol->set_parent_scope(GLOBAL_SCOPE_ID);
+
+        auto add_result = symbol_table.add_symbol_in_scope(mangled_name,
+                                                           symbol,
+                                                           GLOBAL_SCOPE_ID);
+
+        if (add_result.is_err()) {
+            errors.push_back(LocalStaticPassErrorInfo(
+                LocalStaticPassError::SYMBOL_ADDITION_FAILED,
+                mangled_name));
+        }
     }
 }
 

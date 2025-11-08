@@ -49,6 +49,10 @@ class LocalStaticPass {
                            const std::string &func_mangled_name,
                            ScopeID func_scope_id);
 
+    // Move all static variables in a scope to global scope
+    void move_static_variables_to_global(const std::string &func_mangled_name,
+                                         ScopeID func_scope_id);
+
     // Helper: Create guard-protected initialization and move symbol to global
     ASTNodePtr transform_local_static(SymbolPtr symbol,
                                       ASTNodePtr initializer,
