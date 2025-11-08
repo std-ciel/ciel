@@ -129,32 +129,38 @@ void InstructionSelector::select(const TACFunction &tac_fn)
 
     size_t int_param_idx = 0;
     size_t float_param_idx = 0;
+    size_t stack_param_idx = 0;
 
-    // First pass: assign parameter registers and immediately spill them to
-    // stack
-    for (size_t i = 0; i < tac_fn.parameters.size() && i < 8; ++i) {
+    for (size_t i = 0; i < tac_fn.parameters.size(); ++i) {
         const auto &param = tac_fn.parameters[i];
         if (param.kind == TACOperand::Kind::SYMBOL) {
             SymbolPtr sym = std::get<SymbolPtr>(param.value);
             bool is_float_param = param.type && is_float_type(param.type);
 
-            PhysReg arg_reg;
-            if (is_float_param && float_param_idx < 8) {
-                arg_reg = static_cast<PhysReg>(
-                    static_cast<uint8_t>(PhysReg::FA0) + float_param_idx++);
-            } else if (!is_float_param && int_param_idx < 8) {
-                arg_reg = static_cast<PhysReg>(
-                    static_cast<uint8_t>(PhysReg::A0) + int_param_idx++);
-            } else {
-                continue;
-            }
-
-            // Spill parameter from register to stack immediately
-            std::string unique_key =
-                std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
             int32_t offset = get_local_variable_offset(sym);
 
-            if (is_float_param) {
+            bool passed_in_int_reg = !is_float_param && int_param_idx < 8;
+            bool passed_in_float_reg = is_float_param && float_param_idx < 8;
+
+            if (passed_in_int_reg) {
+                PhysReg arg_reg = static_cast<PhysReg>(
+                    static_cast<uint8_t>(PhysReg::A0) + int_param_idx++);
+
+                VirtReg tmp = mfn_.get_next_vreg();
+                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                         .add_def(tmp)
+                                         .add_operand(VRegOperand(tmp))
+                                         .add_operand(RegOperand(arg_reg)));
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::SD)
+                        .add_use(tmp)
+                        .add_operand(VRegOperand(tmp))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            } else if (passed_in_float_reg) {
+                // Float parameter in register fa0-fa7
+                PhysReg arg_reg = static_cast<PhysReg>(
+                    static_cast<uint8_t>(PhysReg::FA0) + float_param_idx++);
+
                 VirtReg tmp = mfn_.get_next_vreg();
                 float_vregs_.insert(tmp);
                 mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
@@ -167,16 +173,37 @@ void InstructionSelector::select(const TACFunction &tac_fn)
                         .add_operand(VRegOperand(tmp))
                         .add_operand(MemOperand(PhysReg::S0_FP, offset)));
             } else {
+                // Parameter passed on stack
+                int32_t stack_offset = stack_param_idx * 8;
+                stack_param_idx++;
+
                 VirtReg tmp = mfn_.get_next_vreg();
-                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                         .add_def(tmp)
-                                         .add_operand(VRegOperand(tmp))
-                                         .add_operand(RegOperand(arg_reg)));
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::SD)
-                        .add_use(tmp)
-                        .add_operand(VRegOperand(tmp))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                if (is_float_param) {
+                    float_vregs_.insert(tmp);
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::FLD)
+                            .add_def(tmp)
+                            .add_operand(VRegOperand(tmp))
+                            .add_operand(
+                                MemOperand(PhysReg::S0_FP, stack_offset)));
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::FSD)
+                            .add_use(tmp)
+                            .add_operand(VRegOperand(tmp))
+                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                } else {
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::LD)
+                            .add_def(tmp)
+                            .add_operand(VRegOperand(tmp))
+                            .add_operand(
+                                MemOperand(PhysReg::S0_FP, stack_offset)));
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::SD)
+                            .add_use(tmp)
+                            .add_operand(VRegOperand(tmp))
+                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                }
             }
         }
     }
@@ -779,7 +806,14 @@ void InstructionSelector::select_if_branch(const TACInstruction &instr)
 
 void InstructionSelector::select_param(const TACInstruction &instr)
 {
-    VirtReg param = load_operand(instr.operand1);
+    // For constants (int or float), don't emit load instructions here.
+    // select_call will emit them directly to arg registers for optimization.
+    VirtReg param;
+    if (instr.operand1.kind == TACOperand::Kind::CONSTANT) {
+        param = mfn_.get_next_vreg();
+    } else {
+        param = load_operand(instr.operand1);
+    }
     pending_params_.push_back({param, instr.operand1});
 }
 
@@ -805,9 +839,16 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 
     size_t int_reg_idx = 0;
     size_t float_reg_idx = 0;
+    // vreg, is_float, original_operand (for constant optimization)
+    std::vector<std::tuple<VirtReg, bool, TACOperand>> stack_params;
 
-    for (size_t i = 0; i < pending_params_.size() && i < 8; ++i) {
+    // Store MV instructions to emit them backwards (to avoid parallel move
+    // conflicts)
+    std::vector<MachineInstr> param_moves;
+
+    for (size_t i = 0; i < pending_params_.size(); ++i) {
         VirtReg param_vreg = pending_params_[i].first;
+        const TACOperand &original_operand = pending_params_[i].second;
 
         bool is_float = float_vregs_.contains(param_vreg);
         bool is_float_expected = false;
@@ -853,23 +894,295 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                                      .add_operand(VRegOperand(param_vreg)));
         }
 
+        bool placed_in_register = false;
+
         if (is_float_expected && float_reg_idx < 8) {
             PhysReg target_reg = static_cast<PhysReg>(
                 static_cast<uint8_t>(PhysReg::FA0) + float_reg_idx++);
-            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
-                                     .add_use(converted_vreg)
-                                     .add_operand(RegOperand(target_reg))
-                                     .add_operand(VRegOperand(converted_vreg)));
+
+            // Optimization: if parameter is a float constant, load directly
+            // from constant pool to argument register
+            if (original_operand.kind == TACOperand::Kind::CONSTANT &&
+                std::holds_alternative<double>(original_operand.value)) {
+                double const_val = std::get<double>(original_operand.value);
+                std::string label = backend_.add_float_constant(const_val);
+
+                VirtReg addr_vreg = mfn_.get_next_vreg();
+                param_moves.push_back(make_la(addr_vreg, label));
+
+                param_moves.push_back(MachineInstr(MachineOpcode::FLD)
+                                          .add_use(addr_vreg)
+                                          .add_operand(RegOperand(target_reg))
+                                          .add_operand(VRegOperand(addr_vreg))
+                                          .add_operand(ImmOperand(0)));
+            } else {
+                param_moves.push_back(
+                    MachineInstr(MachineOpcode::FMV_D)
+                        .add_use(converted_vreg)
+                        .add_operand(RegOperand(target_reg))
+                        .add_operand(VRegOperand(converted_vreg)));
+            }
+            placed_in_register = true;
         } else if (!is_float_expected && int_reg_idx < 8) {
             PhysReg target_reg = static_cast<PhysReg>(
                 static_cast<uint8_t>(PhysReg::A0) + int_reg_idx++);
-            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                     .add_use(converted_vreg)
-                                     .add_operand(RegOperand(target_reg))
-                                     .add_operand(VRegOperand(converted_vreg)));
+
+            // Optimization: if parameter is an integer constant, emit li
+            // directly
+            if (original_operand.kind == TACOperand::Kind::CONSTANT &&
+                std::holds_alternative<int64_t>(original_operand.value)) {
+                int64_t const_val = std::get<int64_t>(original_operand.value);
+                param_moves.push_back(MachineInstr(MachineOpcode::LI)
+                                          .add_operand(RegOperand(target_reg))
+                                          .add_operand(ImmOperand(const_val)));
+            } else {
+                param_moves.push_back(
+                    MachineInstr(MachineOpcode::MV)
+                        .add_use(converted_vreg)
+                        .add_operand(RegOperand(target_reg))
+                        .add_operand(VRegOperand(converted_vreg)));
+            }
+            placed_in_register = true;
+        }
+
+        if (!placed_in_register) {
+            stack_params.push_back(
+                {converted_vreg, is_float_expected, original_operand});
         }
     }
 
+    // Store stack parameters FIRST (before register moves)
+    // This is critical: stack param vregs might be allocated to a0-a7,
+    // and we're about to overwrite those registers with register params
+    for (size_t i = 0; i < stack_params.size(); ++i) {
+        VirtReg param_vreg = std::get<0>(stack_params[i]);
+        bool is_float = std::get<1>(stack_params[i]);
+        const TACOperand &original_operand = std::get<2>(stack_params[i]);
+
+        // Stack slot offset: SP + (i * 8)
+        // We're storing relative to SP before the call
+        int32_t stack_offset = i * 8;
+
+        if (original_operand.kind == TACOperand::Kind::CONSTANT) {
+            if (std::holds_alternative<int64_t>(original_operand.value)) {
+                // Integer constant: LI then SD
+                int64_t const_val = std::get<int64_t>(original_operand.value);
+                VirtReg temp_vreg = mfn_.get_next_vreg();
+                mfn_.add_instruction(
+                    make_li(temp_vreg, static_cast<int32_t>(const_val)));
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::SD)
+                        .add_use(temp_vreg)
+                        .add_operand(VRegOperand(temp_vreg))
+                        .add_operand(MemOperand(PhysReg::SP, stack_offset)));
+            } else if (std::holds_alternative<double>(original_operand.value)) {
+                // Float constant: LA + FLD from pool, then FSD to stack
+                double const_val = std::get<double>(original_operand.value);
+                std::string label = backend_.add_float_constant(const_val);
+
+                VirtReg addr_vreg = mfn_.get_next_vreg();
+                mfn_.add_instruction(make_la(addr_vreg, label));
+
+                VirtReg temp_vreg = mfn_.get_next_vreg();
+                float_vregs_.insert(temp_vreg);
+                mfn_.add_instruction(MachineInstr(MachineOpcode::FLD)
+                                         .add_def(temp_vreg)
+                                         .add_use(addr_vreg)
+                                         .add_operand(VRegOperand(temp_vreg))
+                                         .add_operand(VRegOperand(addr_vreg))
+                                         .add_operand(ImmOperand(0)));
+
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::FSD)
+                        .add_use(temp_vreg)
+                        .add_operand(VRegOperand(temp_vreg))
+                        .add_operand(MemOperand(PhysReg::SP, stack_offset)));
+            }
+        } else if (is_float) {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::FSD)
+                    .add_use(param_vreg)
+                    .add_operand(VRegOperand(param_vreg))
+                    .add_operand(MemOperand(PhysReg::SP, stack_offset)));
+        } else {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::SD)
+                    .add_use(param_vreg)
+                    .add_operand(VRegOperand(param_vreg))
+                    .add_operand(MemOperand(PhysReg::SP, stack_offset)));
+        }
+    }
+
+    // Emit parameter moves (to argument registers)
+    // These can safely overwrite a0-a7/fa0-fa7 now that stack params are stored
+    // Solution: Use the stack to break cycles, NOT temp registers (t0-t2 are
+    // reserved for spill handling in the register allocator).
+    //
+    // For moves to argument registers (a0-a7 or fa0-fa7), we use stack slots to
+    // save values that would be overwritten, then restore them after other
+    // moves complete.
+
+    // First pass: separate moves by type and destination
+    std::vector<MachineInstr> int_arg_moves;   // MV to a0-a7
+    std::vector<MachineInstr> float_arg_moves; // FMV_D to fa0-fa7
+    std::vector<MachineInstr> other_moves; // LI or moves to non-arg registers
+
+    for (const auto &move : param_moves) {
+        bool is_to_arg_reg = false;
+
+        if (move.operands().size() >= 1 &&
+            std::holds_alternative<RegOperand>(move.operands()[0])) {
+            PhysReg dest_reg = std::get<RegOperand>(move.operands()[0]).reg;
+
+            // Check if moving to integer argument register
+            if (move.get_opcode() == MachineOpcode::MV &&
+                dest_reg >= PhysReg::A0 && dest_reg <= PhysReg::A7) {
+                int_arg_moves.push_back(move);
+                is_to_arg_reg = true;
+            }
+            // Check if moving to float argument register
+            else if (move.get_opcode() == MachineOpcode::FMV_D &&
+                     dest_reg >= PhysReg::FA0 && dest_reg <= PhysReg::FA7) {
+                float_arg_moves.push_back(move);
+                is_to_arg_reg = true;
+            }
+        }
+
+        if (!is_to_arg_reg) {
+            other_moves.push_back(move);
+        }
+    }
+
+    // PHASE 1: Save all sources to stack (for parallel move resolution)
+
+    bool int_needs_stack_save = false;
+    if (!int_arg_moves.empty()) {
+        for (const auto &move : int_arg_moves) {
+            if (move.operands().size() >= 2 &&
+                std::holds_alternative<VRegOperand>(move.operands()[1])) {
+                int_needs_stack_save = true;
+                break;
+            }
+        }
+
+        if (int_needs_stack_save) {
+            // Save all integer source vregs to stack
+            for (size_t i = 0; i < int_arg_moves.size(); ++i) {
+                const auto &move = int_arg_moves[i];
+                if (move.operands().size() >= 2 &&
+                    std::holds_alternative<VRegOperand>(move.operands()[1])) {
+                    VirtReg src_vreg =
+                        std::get<VRegOperand>(move.operands()[1]).vreg;
+                    int32_t stack_offset = -8 * static_cast<int32_t>(i + 1);
+
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::SD)
+                            .add_use(src_vreg)
+                            .add_operand(VRegOperand(src_vreg))
+                            .add_operand(
+                                MemOperand(PhysReg::SP, stack_offset)));
+                }
+            }
+        }
+    }
+
+    bool float_needs_stack_save = false;
+    if (!float_arg_moves.empty()) {
+        for (const auto &move : float_arg_moves) {
+            if (move.operands().size() >= 2 &&
+                std::holds_alternative<VRegOperand>(move.operands()[1])) {
+                float_needs_stack_save = true;
+                break;
+            }
+        }
+
+        if (float_needs_stack_save) {
+            // Save all float source vregs to stack (using negative offsets
+            // beyond int saves)
+            size_t base_offset = int_arg_moves.size();
+            for (size_t i = 0; i < float_arg_moves.size(); ++i) {
+                const auto &move = float_arg_moves[i];
+                if (move.operands().size() >= 2 &&
+                    std::holds_alternative<VRegOperand>(move.operands()[1])) {
+                    VirtReg src_vreg =
+                        std::get<VRegOperand>(move.operands()[1]).vreg;
+                    int32_t stack_offset =
+                        -8 * static_cast<int32_t>(base_offset + i + 1);
+
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::FSD)
+                            .add_use(src_vreg)
+                            .add_operand(VRegOperand(src_vreg))
+                            .add_operand(
+                                MemOperand(PhysReg::SP, stack_offset)));
+                }
+            }
+        }
+    }
+
+    uint32_t total_spills = 0;
+    if (int_needs_stack_save) {
+        total_spills += static_cast<uint32_t>(int_arg_moves.size());
+    }
+    if (float_needs_stack_save) {
+        total_spills += static_cast<uint32_t>(float_arg_moves.size());
+    }
+    if (total_spills > 0) {
+        mfn_.get_frame().update_max_parallel_move_spills(total_spills);
+    }
+
+    // PHASE 2: Emit other_moves (safe now - all sources saved)
+    for (const auto &move : other_moves) {
+        mfn_.add_instruction(move);
+    }
+
+    // PHASE 3: Load destinations from stack (complete parallel move)
+    if (int_needs_stack_save) {
+        for (size_t i = 0; i < int_arg_moves.size(); ++i) {
+            const auto &move = int_arg_moves[i];
+            if (move.operands().size() >= 2 &&
+                std::holds_alternative<RegOperand>(move.operands()[0]) &&
+                std::holds_alternative<VRegOperand>(move.operands()[1])) {
+                PhysReg dest_reg = std::get<RegOperand>(move.operands()[0]).reg;
+                int32_t stack_offset = -8 * static_cast<int32_t>(i + 1);
+
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::LD)
+                        .add_operand(RegOperand(dest_reg))
+                        .add_operand(MemOperand(PhysReg::SP, stack_offset)));
+            }
+        }
+    } else if (!int_arg_moves.empty()) {
+        // No stack save needed, emit moves directly
+        for (const auto &move : int_arg_moves) {
+            mfn_.add_instruction(move);
+        }
+    }
+
+    if (float_needs_stack_save) {
+        // Load from stack to destination float argument registers
+        size_t base_offset = int_arg_moves.size();
+        for (size_t i = 0; i < float_arg_moves.size(); ++i) {
+            const auto &move = float_arg_moves[i];
+            if (move.operands().size() >= 2 &&
+                std::holds_alternative<RegOperand>(move.operands()[0]) &&
+                std::holds_alternative<VRegOperand>(move.operands()[1])) {
+                PhysReg dest_reg = std::get<RegOperand>(move.operands()[0]).reg;
+                int32_t stack_offset =
+                    -8 * static_cast<int32_t>(base_offset + i + 1);
+
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::FLD)
+                        .add_operand(RegOperand(dest_reg))
+                        .add_operand(MemOperand(PhysReg::SP, stack_offset)));
+            }
+        }
+    } else if (!float_arg_moves.empty()) {
+        // No stack save needed, emit moves directly
+        for (const auto &move : float_arg_moves) {
+            mfn_.add_instruction(move);
+        }
+    } // Update max call args for frame layout
     if (pending_params_.size() > 8) {
         mfn_.get_frame().update_max_call_args(
             static_cast<uint32_t>(pending_params_.size()));
@@ -1814,7 +2127,7 @@ void RiscV32Backend::emit_function(std::ostream &os, MachineFunction &mfn)
         // For the main function, use "main" as the label name instead of the
         // mangled name This is required for linking with the C runtime
         std::string label_name = mfn.get_name();
-        if (label_name == "_Z4mainv") {
+        if (label_name == "_Z4mainv" || label_name == "_Z4mainiPPc") {
             label_name = "main";
         }
 
