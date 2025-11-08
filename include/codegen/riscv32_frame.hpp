@@ -43,7 +43,7 @@ class FrameLayout {
   public:
     explicit FrameLayout(const std::string &fn_name)
         : function_name_(fn_name), frame_size_(0), locals_size_(0),
-          max_call_args_(0)
+          max_call_args_(0), max_parallel_move_spills_(0)
     {
     }
 
@@ -62,6 +62,8 @@ class FrameLayout {
 
     /// Update maximum number of arguments in any call
     void update_max_call_args(uint32_t num_args);
+
+    void update_max_parallel_move_spills(uint32_t num_spills);
 
     /// Finalize frame layout (compute total size, alignment)
     void finalize();
@@ -100,6 +102,7 @@ class FrameLayout {
     int32_t ra_offset_;      // Offset to saved RA
     int32_t fp_offset_;      // Offset to saved FP (s0)
     uint32_t max_call_args_; // Max args in any call (for outgoing area)
+    uint32_t max_parallel_move_spills_; // Max parallel move spills needed
 
     // Mapping from virtual registers to spill slots
     std::unordered_map<VirtReg, StackSlot> spill_slots_;

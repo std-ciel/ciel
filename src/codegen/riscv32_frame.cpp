@@ -59,6 +59,11 @@ void FrameLayout::update_max_call_args(uint32_t num_args)
     max_call_args_ = std::max(max_call_args_, num_args);
 }
 
+void FrameLayout::update_max_parallel_move_spills(uint32_t num_spills)
+{
+    max_parallel_move_spills_ = std::max(max_parallel_move_spills_, num_spills);
+}
+
 void FrameLayout::finalize()
 {
     // Layout (from high to low address):
@@ -98,6 +103,12 @@ void FrameLayout::finalize()
     if (max_call_args_ > 8) {
         uint32_t stack_args = max_call_args_ - 8;
         current_offset -= static_cast<int32_t>(stack_args * 8);
+    }
+
+    // Add space for parallel move spills (used during call setup)
+    // These use negative offsets from SP: -8, -16, -24, etc.
+    if (max_parallel_move_spills_ > 0) {
+        current_offset -= static_cast<int32_t>(max_parallel_move_spills_ * 8);
     }
 
     // Align to 16 bytes (ABI requirement)

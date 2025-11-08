@@ -2424,9 +2424,9 @@ open_brace
 
         add_pending_parameters_to_scope(@1);
 
-        current_function_parameters.clear();
-
         if (!pending_names.empty()) {
+          current_function_parameters.clear();
+
           for (const auto& param_name : pending_names) {
             if (!param_name.empty()) {
               auto param_sym = symbol_table.lookup_symbol(param_name);
@@ -5844,6 +5844,8 @@ function_definition
 
             // Build FunctionDef AST node using captured parameter symbols
             $$ = std::make_shared<FunctionDef>(sym_opt.value_or(nullptr), return_type, current_function_parameters, $4);
+
+            current_function_parameters.clear();
 
             // Check that non-void functions have a return statement
             check_function_returns(return_type, $4, @4);
