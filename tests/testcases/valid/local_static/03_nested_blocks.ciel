@@ -17,5 +17,11 @@ int main() {
     int first = test_nested();   // outer=101, inner=60, return 161
     int second = test_nested();  // outer=102, inner=70, return 172
     int third = test_nested();   // outer=103, inner=80, return 183
-    return third;
+
+    // Check if third call returned expected value
+    if (third == 183) {
+        return 0;
+    } else {
+        return 1;
+    }
 }

@@ -15,5 +15,11 @@ int test_multiple() {
 int main() {
     int first = test_multiple();   // Should be 10+1 + 20+2 + 30+3 = 66
     int second = test_multiple();  // Should be 11+1 + 22+2 + 33+3 = 72
-    return second;
+
+    // Check if second call returned expected value
+    if (second == 72) {
+        return 0;
+    } else {
+        return 1;
+    }
 }
