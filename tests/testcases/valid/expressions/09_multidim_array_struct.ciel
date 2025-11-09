@@ -1,0 +1,26 @@
+int printf(char *fmt, ...);
+
+struct test {
+    int matrix[2][3];
+    int value;
+};
+
+int main() {
+    struct test s;
+
+    // Initialize multi-dimensional array
+    s.matrix[0][0] = 1;
+    s.matrix[0][1] = 2;
+    s.matrix[0][2] = 3;
+    s.matrix[1][0] = 4;
+    s.matrix[1][1] = 5;
+    s.matrix[1][2] = 6;
+    s.value = 100;
+
+    // Print values
+    printf("matrix[0][0]=%ld matrix[0][1]=%ld matrix[0][2]=%ld\n", s.matrix[0][0], s.matrix[0][1], s.matrix[0][2]);
+    printf("matrix[1][0]=%ld matrix[1][1]=%ld matrix[1][2]=%ld\n", s.matrix[1][0], s.matrix[1][1], s.matrix[1][2]);
+    printf("value=%ld\n", s.value);
+
+    return 0;
+}

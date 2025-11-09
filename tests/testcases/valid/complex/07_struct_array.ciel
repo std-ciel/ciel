@@ -1,0 +1,44 @@
+int printf(char *fmt, ...);
+
+struct foo
+{
+    int a;
+    int b;
+    int arr[10];
+};
+
+struct bar
+{
+    int x;
+    struct foo f_array[5];
+};
+
+int main()
+{
+    struct bar barr[3];
+
+    for (int i = 0; i < 3; i++) {
+        barr[i].x = i * 10;
+        for (int j = 0; j < 5; j++) {
+            barr[i].f_array[j].a = i + j;
+            barr[i].f_array[j].b = i - j;
+            for (int k = 0; k < 10; k++) {
+                barr[i].f_array[j].arr[k] = i * j * k;
+            }
+        }
+    }
+
+    for (int i = 0; i < 3; i++) {
+        printf("barr[%d].x = %ld\n", i, barr[i].x);
+        for (int j = 0; j < 5; j++) {
+            printf("  barr[%d].f_array[%d].a = %ld\n", i, j, barr[i].f_array[j].a);
+            printf("  barr[%d].f_array[%d].b = %ld\n", i, j, barr[i].f_array[j].b);
+            for (int k = 0; k < 10; k++) {
+                printf("    barr[%d].f_array[%d].arr[%d] = %ld\n", i, j, k, barr[i].f_array[j].arr[k]);
+            }
+        }
+    }
+
+
+    return 0;
+}
