@@ -126,85 +126,134 @@ InstructionSelector::InstructionSelector(MachineFunction &mfn,
 void InstructionSelector::select(const TACFunction &tac_fn)
 {
     param_to_reg_.clear();
+    aggregate_params_.clear();
+    sret_ptr_vreg_ = INVALID_VREG;
 
-    size_t int_param_idx = 0;
-    size_t float_param_idx = 0;
-    size_t stack_param_idx = 0;
+    constexpr size_t MAX_INT_REGS = 8;
+    constexpr size_t MAX_FLOAT_REGS = 8;
 
-    for (size_t i = 0; i < tac_fn.parameters.size(); ++i) {
-        const auto &param = tac_fn.parameters[i];
-        if (param.kind == TACOperand::Kind::SYMBOL) {
-            SymbolPtr sym = std::get<SymbolPtr>(param.value);
-            bool is_float_param = param.type && is_float_type(param.type);
+    struct ParamAllocator {
+        size_t int_idx = 0;
+        size_t float_idx = 0;
+        size_t stack_idx = 0;
 
-            int32_t offset = get_local_variable_offset(sym);
+        PhysReg next_int_reg()
+        {
+            return static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) +
+                                        int_idx++);
+        }
 
-            bool passed_in_int_reg = !is_float_param && int_param_idx < 8;
-            bool passed_in_float_reg = is_float_param && float_param_idx < 8;
+        PhysReg next_float_reg()
+        {
+            return static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::FA0) +
+                                        float_idx++);
+        }
 
-            if (passed_in_int_reg) {
-                PhysReg arg_reg = static_cast<PhysReg>(
-                    static_cast<uint8_t>(PhysReg::A0) + int_param_idx++);
+        int32_t next_stack_offset()
+        {
+            return static_cast<int32_t>(stack_idx++ * 8);
+        }
+    };
 
-                VirtReg tmp = mfn_.get_next_vreg();
-                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                         .add_def(tmp)
-                                         .add_operand(VRegOperand(tmp))
-                                         .add_operand(RegOperand(arg_reg)));
+    ParamAllocator allocator;
+
+    if (is_aggregate_type(tac_fn.return_type)) {
+        sret_ptr_vreg_ = mfn_.get_next_vreg();
+        mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                 .add_def(sret_ptr_vreg_)
+                                 .add_operand(VRegOperand(sret_ptr_vreg_))
+                                 .add_operand(RegOperand(PhysReg::A0)));
+        allocator.int_idx = 1;
+    }
+
+    for (const auto &param : tac_fn.parameters) {
+        if (param.kind != TACOperand::Kind::SYMBOL)
+            continue;
+
+        const auto sym = std::get<SymbolPtr>(param.value);
+        const auto offset = get_local_variable_offset(sym);
+        const bool is_aggregate = param.type && is_aggregate_type(param.type);
+        const bool is_float = param.type && is_float_type(param.type);
+
+        if (is_aggregate) {
+            aggregate_params_.insert(sym->get_name());
+
+            if (allocator.int_idx < MAX_INT_REGS) {
+                const auto ptr_vreg = mfn_.get_next_vreg();
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::MV)
+                        .add_def(ptr_vreg)
+                        .add_operand(VRegOperand(ptr_vreg))
+                        .add_operand(RegOperand(allocator.next_int_reg())));
                 mfn_.add_instruction(
                     MachineInstr(MachineOpcode::SD)
-                        .add_use(tmp)
-                        .add_operand(VRegOperand(tmp))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-            } else if (passed_in_float_reg) {
-                // Float parameter in register fa0-fa7
-                PhysReg arg_reg = static_cast<PhysReg>(
-                    static_cast<uint8_t>(PhysReg::FA0) + float_param_idx++);
-
-                VirtReg tmp = mfn_.get_next_vreg();
-                float_vregs_.insert(tmp);
-                mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
-                                         .add_def(tmp)
-                                         .add_operand(VRegOperand(tmp))
-                                         .add_operand(RegOperand(arg_reg)));
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::FSD)
-                        .add_use(tmp)
-                        .add_operand(VRegOperand(tmp))
+                        .add_use(ptr_vreg)
+                        .add_operand(VRegOperand(ptr_vreg))
                         .add_operand(MemOperand(PhysReg::S0_FP, offset)));
             } else {
-                // Parameter passed on stack
-                int32_t stack_offset = stack_param_idx * 8;
-                stack_param_idx++;
-
-                VirtReg tmp = mfn_.get_next_vreg();
-                if (is_float_param) {
-                    float_vregs_.insert(tmp);
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::FLD)
-                            .add_def(tmp)
-                            .add_operand(VRegOperand(tmp))
-                            .add_operand(
-                                MemOperand(PhysReg::S0_FP, stack_offset)));
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::FSD)
-                            .add_use(tmp)
-                            .add_operand(VRegOperand(tmp))
-                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-                } else {
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::LD)
-                            .add_def(tmp)
-                            .add_operand(VRegOperand(tmp))
-                            .add_operand(
-                                MemOperand(PhysReg::S0_FP, stack_offset)));
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::SD)
-                            .add_use(tmp)
-                            .add_operand(VRegOperand(tmp))
-                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-                }
+                const auto ptr_vreg = mfn_.get_next_vreg();
+                mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
+                                         .add_def(ptr_vreg)
+                                         .add_operand(VRegOperand(ptr_vreg))
+                                         .add_operand(MemOperand(
+                                             PhysReg::S0_FP,
+                                             allocator.next_stack_offset())));
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::SD)
+                        .add_use(ptr_vreg)
+                        .add_operand(VRegOperand(ptr_vreg))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
             }
+            continue;
+        }
+
+        const bool in_int_reg = !is_float && allocator.int_idx < MAX_INT_REGS;
+        const bool in_float_reg =
+            is_float && allocator.float_idx < MAX_FLOAT_REGS;
+
+        const auto tmp = mfn_.get_next_vreg();
+        if (is_float)
+            float_vregs_.insert(tmp);
+
+        if (in_int_reg) {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::MV)
+                    .add_def(tmp)
+                    .add_operand(VRegOperand(tmp))
+                    .add_operand(RegOperand(allocator.next_int_reg())));
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::SD)
+                    .add_use(tmp)
+                    .add_operand(VRegOperand(tmp))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+        } else if (in_float_reg) {
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::FMV_D)
+                    .add_def(tmp)
+                    .add_operand(VRegOperand(tmp))
+                    .add_operand(RegOperand(allocator.next_float_reg())));
+            mfn_.add_instruction(
+                MachineInstr(MachineOpcode::FSD)
+                    .add_use(tmp)
+                    .add_operand(VRegOperand(tmp))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+        } else {
+            const auto stack_offset = allocator.next_stack_offset();
+            const auto load_op =
+                is_float ? MachineOpcode::FLD : MachineOpcode::LD;
+            const auto store_op =
+                is_float ? MachineOpcode::FSD : MachineOpcode::SD;
+
+            mfn_.add_instruction(
+                MachineInstr(load_op)
+                    .add_def(tmp)
+                    .add_operand(VRegOperand(tmp))
+                    .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
+            mfn_.add_instruction(
+                MachineInstr(store_op)
+                    .add_use(tmp)
+                    .add_operand(VRegOperand(tmp))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
         }
     }
 
@@ -327,25 +376,81 @@ void InstructionSelector::select_instruction(const TACInstruction &instr)
     }
 }
 
+void InstructionSelector::copy_aggregate_words(VirtReg dst_base,
+                                               VirtReg src_base,
+                                               uint32_t size_bytes)
+{
+    constexpr uint32_t WORD_SIZE = 8;
+    const uint32_t num_words = (size_bytes + WORD_SIZE - 1) / WORD_SIZE;
+
+    for (uint32_t word = 0; word < num_words; ++word) {
+        const auto offset = static_cast<int32_t>(word * WORD_SIZE);
+
+        const auto get_address_with_offset = [&](VirtReg base) {
+            if (offset == 0)
+                return base;
+
+            const auto result = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(result)
+                                     .add_use(base)
+                                     .add_operand(VRegOperand(result))
+                                     .add_operand(VRegOperand(base))
+                                     .add_operand(ImmOperand(offset)));
+            return result;
+        };
+
+        const auto src_addr = get_address_with_offset(src_base);
+        const auto dst_addr = get_address_with_offset(dst_base);
+
+        const auto temp = mfn_.get_next_vreg();
+        mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
+                                 .add_def(temp)
+                                 .add_use(src_addr)
+                                 .add_operand(VRegOperand(temp))
+                                 .add_operand(VRegOperand(src_addr))
+                                 .add_operand(ImmOperand(0)));
+
+        mfn_.add_instruction(MachineInstr(MachineOpcode::SD)
+                                 .add_use(temp)
+                                 .add_use(dst_addr)
+                                 .add_operand(VRegOperand(temp))
+                                 .add_operand(VRegOperand(dst_addr))
+                                 .add_operand(ImmOperand(0)));
+    }
+}
+
 void InstructionSelector::select_return(const TACInstruction &instr)
 {
     if (instr.operand1.is_valid()) {
-        VirtReg val = load_operand(instr.operand1);
-        bool is_float = false;
-        if (instr.operand1.type) {
-            is_float = is_float_type(instr.operand1.type);
-        } else {
-            is_float = float_vregs_.contains(val);
-        }
-        if (is_float) {
-            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
-                                     .add_use(val)
-                                     .add_operand(RegOperand(PhysReg::FA0))
-                                     .add_operand(VRegOperand(val)));
-        } else {
+        if (instr.operand1.type && is_aggregate_type(instr.operand1.type)) {
+            if (sret_ptr_vreg_ == INVALID_VREG) {
+                throw std::runtime_error(
+                    "Returning aggregate but no sret pointer available");
+            }
+
+            const auto src_addr = load_operand(instr.operand1);
+            const auto size = get_type_size(instr.operand1.type);
+
+            copy_aggregate_words(sret_ptr_vreg_, src_addr, size);
+
             mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                     .add_use(val)
+                                     .add_use(sret_ptr_vreg_)
                                      .add_operand(RegOperand(PhysReg::A0))
+                                     .add_operand(VRegOperand(sret_ptr_vreg_)));
+        } else {
+            const auto val = load_operand(instr.operand1);
+            const bool is_float = instr.operand1.type
+                                      ? is_float_type(instr.operand1.type)
+                                      : float_vregs_.contains(val);
+
+            const auto return_reg = is_float ? PhysReg::FA0 : PhysReg::A0;
+            const auto move_op =
+                is_float ? MachineOpcode::FMV_D : MachineOpcode::MV;
+
+            mfn_.add_instruction(MachineInstr(move_op)
+                                     .add_use(val)
+                                     .add_operand(RegOperand(return_reg))
                                      .add_operand(VRegOperand(val)));
         }
     }
@@ -821,6 +926,7 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 {
     std::vector<QualifiedType> expected_param_types;
     bool is_variadic = false;
+    TypePtr return_type = nullptr;
 
     if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
@@ -832,15 +938,36 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                 std::static_pointer_cast<FunctionType>(func_qual_type.type);
             expected_param_types = func_type->param_types;
             is_variadic = func_type->is_variadic;
+            return_type = func_type->return_type.type;
         }
     }
 
-    std::reverse(pending_params_.begin(), pending_params_.end());
+    // Check if function returns aggregate - if so, allocate space for it
+    VirtReg sret_slot_ptr = INVALID_VREG;
+    bool returns_aggregate = return_type && is_aggregate_type(return_type);
+    if (returns_aggregate) {
+        // Allocate space on stack for return value
+        uint32_t ret_size = get_type_size(return_type);
+        int32_t sret_offset = mfn_.get_frame().allocate_slot(ret_size, 8);
+
+        // Get address of return slot
+        sret_slot_ptr = mfn_.get_next_vreg();
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                 .add_def(sret_slot_ptr)
+                                 .add_operand(VRegOperand(sret_slot_ptr))
+                                 .add_operand(RegOperand(PhysReg::S0_FP))
+                                 .add_operand(ImmOperand(sret_offset)));
+    }
 
     size_t int_reg_idx = 0;
     size_t float_reg_idx = 0;
     // vreg, is_float, original_operand (for constant optimization)
     std::vector<std::tuple<VirtReg, bool, TACOperand>> stack_params;
+
+    // If returns aggregate, a0 is reserved for sret pointer
+    if (returns_aggregate) {
+        int_reg_idx = 1; // Start from a1 for actual parameters
+    }
 
     // Store MV instructions to emit them backwards (to avoid parallel move
     // conflicts)
@@ -849,6 +976,46 @@ void InstructionSelector::select_call(const TACInstruction &instr)
     for (size_t i = 0; i < pending_params_.size(); ++i) {
         VirtReg param_vreg = pending_params_[i].first;
         const TACOperand &original_operand = pending_params_[i].second;
+
+        bool is_aggregate_param =
+            original_operand.type && is_aggregate_type(original_operand.type);
+
+        if (is_aggregate_param) {
+            // For aggregate parameters: copy to stack, pass pointer
+            uint32_t agg_size = get_type_size(original_operand.type);
+
+            int32_t agg_copy_offset =
+                mfn_.get_frame().allocate_slot(agg_size, 8);
+
+            VirtReg src_addr = param_vreg;
+
+            VirtReg dst_addr = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(dst_addr)
+                                     .add_operand(VRegOperand(dst_addr))
+                                     .add_operand(RegOperand(PhysReg::S0_FP))
+                                     .add_operand(ImmOperand(agg_copy_offset)));
+
+            copy_aggregate_words(dst_addr, src_addr, agg_size);
+
+            // Now pass pointer to the copy
+            param_vreg = dst_addr;
+
+            // Place pointer in register or on stack
+            if (int_reg_idx < 8) {
+                PhysReg target_reg = static_cast<PhysReg>(
+                    static_cast<uint8_t>(PhysReg::A0) + int_reg_idx++);
+                param_moves.push_back(
+                    MachineInstr(MachineOpcode::MV)
+                        .add_use(param_vreg)
+                        .add_operand(RegOperand(target_reg))
+                        .add_operand(VRegOperand(param_vreg)));
+            } else {
+                // Pointer goes on stack
+                stack_params.push_back({param_vreg, false, original_operand});
+            }
+            continue;
+        }
 
         bool is_float = float_vregs_.contains(param_vreg);
         bool is_float_expected = false;
@@ -1188,28 +1355,42 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             static_cast<uint32_t>(pending_params_.size()));
     }
 
+    // If function returns aggregate, pass sret pointer in a0
+    if (returns_aggregate && sret_slot_ptr != INVALID_VREG) {
+        mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                 .add_use(sret_slot_ptr)
+                                 .add_operand(RegOperand(PhysReg::A0))
+                                 .add_operand(VRegOperand(sret_slot_ptr)));
+    }
+
     if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr func_sym = std::get<SymbolPtr>(instr.operand1.value);
         mfn_.add_instruction(make_call(func_sym->get_name()));
     }
 
     if (instr.result.is_valid()) {
-        VirtReg result = mfn_.get_next_vreg();
         TypePtr ret_type = instr.result.type;
 
-        if (ret_type && is_float_type(ret_type)) {
+        if (ret_type && is_aggregate_type(ret_type)) {
+            // For aggregate returns, the value is at sret_slot_ptr location
+            // Store the address of sret_slot_ptr to result
+            store_result(sret_slot_ptr, instr.result);
+        } else if (ret_type && is_float_type(ret_type)) {
+            VirtReg result = mfn_.get_next_vreg();
             float_vregs_.insert(result);
             mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D)
                                      .add_def(result)
                                      .add_operand(VRegOperand(result))
                                      .add_operand(RegOperand(PhysReg::FA0)));
+            store_result(result, instr.result);
         } else {
+            VirtReg result = mfn_.get_next_vreg();
             mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
                                      .add_def(result)
                                      .add_operand(VRegOperand(result))
                                      .add_operand(RegOperand(PhysReg::A0)));
+            store_result(result, instr.result);
         }
-        store_result(result, instr.result);
     }
 
     pending_params_.clear();
@@ -1361,33 +1542,44 @@ void InstructionSelector::select_cast(const TACInstruction &instr)
     store_result(dst, instr.result);
 }
 
-void InstructionSelector::select_load_member(const TACInstruction &instr)
+VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
+                                                    size_t offset)
 {
-    // LOAD_MEMBER: result = base.member_offset
-
-    if (instr.operand1.kind != TACOperand::Kind::TEMPORARY &&
-        instr.operand1.kind != TACOperand::Kind::SYMBOL) {
-        return;
-    }
-
-    size_t offset = instr.operand1.member_offset;
     VirtReg member_addr = mfn_.get_next_vreg();
 
-    if (instr.operand1.kind == TACOperand::Kind::SYMBOL) {
-        SymbolPtr sym = std::get<SymbolPtr>(instr.operand1.value);
+    if (operand.kind == TACOperand::Kind::SYMBOL) {
+        const SymbolPtr sym = std::get<SymbolPtr>(operand.value);
+
         if (sym->get_storage_class() == StorageClass::AUTO) {
-            // Local struct: compute address as FP + local_offset +
-            // member_offset
-            int32_t local_offset = get_local_variable_offset(sym);
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::ADDI)
-                    .add_def(member_addr)
-                    .add_operand(VRegOperand(member_addr))
-                    .add_operand(RegOperand(PhysReg::S0_FP))
-                    .add_operand(ImmOperand(local_offset + offset)));
+            const int32_t local_offset = get_local_variable_offset(sym);
+
+            if (aggregate_params_.contains(sym->get_name())) {
+                const VirtReg ptr = mfn_.get_next_vreg();
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::LD)
+                        .add_def(ptr)
+                        .add_operand(VRegOperand(ptr))
+                        .add_operand(MemOperand(PhysReg::S0_FP, local_offset)));
+
+                if (offset == 0)
+                    return ptr;
+
+                mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                         .add_def(member_addr)
+                                         .add_use(ptr)
+                                         .add_operand(VRegOperand(member_addr))
+                                         .add_operand(VRegOperand(ptr))
+                                         .add_operand(ImmOperand(offset)));
+            } else {
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::ADDI)
+                        .add_def(member_addr)
+                        .add_operand(VRegOperand(member_addr))
+                        .add_operand(RegOperand(PhysReg::S0_FP))
+                        .add_operand(ImmOperand(local_offset + offset)));
+            }
         } else {
-            // Global struct - load address then add offset
-            VirtReg global_addr = mfn_.get_next_vreg();
+            const VirtReg global_addr = mfn_.get_next_vreg();
             mfn_.add_instruction(make_la(global_addr, sym->get_name()));
             mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
                                      .add_def(member_addr)
@@ -1397,10 +1589,8 @@ void InstructionSelector::select_load_member(const TACInstruction &instr)
                                      .add_operand(ImmOperand(offset)));
         }
     } else {
-        // TEMPORARY: pointer to struct (e.g., returned from a function)
-        // TODO: test this path
-        std::string temp_str = std::get<std::string>(instr.operand1.value);
-        VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
+        const std::string temp_str = std::get<std::string>(operand.value);
+        const VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
 
         if (offset == 0) {
             mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
@@ -1418,8 +1608,26 @@ void InstructionSelector::select_load_member(const TACInstruction &instr)
         }
     }
 
-    VirtReg result = mfn_.get_next_vreg();
-    bool is_float = instr.result.type && is_float_type(instr.result.type);
+    return member_addr;
+}
+
+void InstructionSelector::select_load_member(const TACInstruction &instr)
+{
+    if (instr.operand1.kind != TACOperand::Kind::TEMPORARY &&
+        instr.operand1.kind != TACOperand::Kind::SYMBOL) {
+        return;
+    }
+
+    const VirtReg member_addr =
+        compute_member_address(instr.operand1, instr.operand1.member_offset);
+
+    if (instr.result.type && is_aggregate_type(instr.result.type)) {
+        store_result(member_addr, instr.result);
+        return;
+    }
+
+    const VirtReg result = mfn_.get_next_vreg();
+    const bool is_float = instr.result.type && is_float_type(instr.result.type);
 
     if (is_float) {
         float_vregs_.insert(result);
@@ -1443,70 +1651,29 @@ void InstructionSelector::select_load_member(const TACInstruction &instr)
 
 void InstructionSelector::select_store_member(const TACInstruction &instr)
 {
-    // STORE_MEMBER: base.member_offset = value
     if (instr.result.kind != TACOperand::Kind::TEMPORARY &&
         instr.result.kind != TACOperand::Kind::SYMBOL) {
         return;
     }
 
-    VirtReg value = load_operand(instr.operand1);
+    const VirtReg value = load_operand(instr.operand1);
+    const VirtReg member_addr =
+        compute_member_address(instr.result, instr.result.member_offset);
 
-    size_t offset = instr.result.member_offset;
-    VirtReg member_addr = mfn_.get_next_vreg();
-
-    if (instr.result.kind == TACOperand::Kind::SYMBOL) {
-        SymbolPtr sym = std::get<SymbolPtr>(instr.result.value);
-        if (sym->get_storage_class() == StorageClass::AUTO) {
-            // Local struct: compute address as FP + local_offset +
-            // member_offset
-            int32_t local_offset = get_local_variable_offset(sym);
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::ADDI)
-                    .add_def(member_addr)
-                    .add_operand(VRegOperand(member_addr))
-                    .add_operand(RegOperand(PhysReg::S0_FP))
-                    .add_operand(ImmOperand(local_offset + offset)));
-        } else {
-            // Global struct - load address then add offset
-            VirtReg global_addr = mfn_.get_next_vreg();
-            mfn_.add_instruction(make_la(global_addr, sym->get_name()));
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(member_addr)
-                                     .add_use(global_addr)
-                                     .add_operand(VRegOperand(member_addr))
-                                     .add_operand(VRegOperand(global_addr))
-                                     .add_operand(ImmOperand(offset)));
-        }
-    } else {
-        // TEMPORARY: pointer to struct (e.g., returned from a function)
-        std::string temp_str = std::get<std::string>(instr.result.value);
-        VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
-
-        if (offset == 0) {
-            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                     .add_def(member_addr)
-                                     .add_use(temp_addr)
-                                     .add_operand(VRegOperand(member_addr))
-                                     .add_operand(VRegOperand(temp_addr)));
-        } else {
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(member_addr)
-                                     .add_use(temp_addr)
-                                     .add_operand(VRegOperand(member_addr))
-                                     .add_operand(VRegOperand(temp_addr))
-                                     .add_operand(ImmOperand(offset)));
-        }
-    }
-
-    bool is_float = float_vregs_.contains(value);
-    if (!is_float && instr.operand1.type) {
-        is_float = is_float_type(instr.operand1.type);
-        if (is_float) {
+    const bool is_float = [&] {
+        if (float_vregs_.contains(value))
+            return true;
+        if (instr.operand1.type && is_float_type(instr.operand1.type)) {
             float_vregs_.insert(value);
+            return true;
         }
-    }
+        return false;
+    }();
 
-    if (is_float) {
+    if (instr.operand1.type && is_aggregate_type(instr.operand1.type)) {
+        const uint32_t size = get_type_size(instr.operand1.type);
+        copy_aggregate_words(member_addr, value, size);
+    } else if (is_float) {
         mfn_.add_instruction(MachineInstr(MachineOpcode::FSD)
                                  .add_use(value)
                                  .add_use(member_addr)
@@ -1574,19 +1741,32 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             // All local variables and parameters are on the stack
             auto qual_type = sym->get_type();
 
-            if (qual_type.type && (qual_type.type->kind == TypeKind::ARRAY ||
-                                   qual_type.type->kind == TypeKind::RECORD)) {
-                // For arrays and structs, return the address
-                int32_t offset = get_local_variable_offset(sym);
-                VirtReg vreg = mfn_.get_next_vreg();
+            if (qual_type.type && is_aggregate_type(qual_type.type)) {
+                // Check if this is an aggregate parameter (passed by pointer)
+                if (aggregate_params_.contains(sym_name)) {
+                    // This is an aggregate parameter: load the pointer value
+                    int32_t offset = get_local_variable_offset(sym);
+                    VirtReg vreg = mfn_.get_next_vreg();
 
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::ADDI)
-                        .add_def(vreg)
-                        .add_operand(VRegOperand(vreg))
-                        .add_operand(RegOperand(PhysReg::S0_FP))
-                        .add_operand(ImmOperand(offset)));
-                return vreg;
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::LD)
+                            .add_def(vreg)
+                            .add_operand(VRegOperand(vreg))
+                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                    return vreg;
+                } else {
+                    // For local arrays and structs, return the address
+                    int32_t offset = get_local_variable_offset(sym);
+                    VirtReg vreg = mfn_.get_next_vreg();
+
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::ADDI)
+                            .add_def(vreg)
+                            .add_operand(VRegOperand(vreg))
+                            .add_operand(RegOperand(PhysReg::S0_FP))
+                            .add_operand(ImmOperand(offset)));
+                    return vreg;
+                }
             } else {
                 // For scalar types, load the value
                 int32_t offset = get_local_variable_offset(sym);
@@ -1612,8 +1792,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             // It's a global symbol (STATIC storage class)
             auto qual_type = sym->get_type();
 
-            if (qual_type.type && (qual_type.type->kind == TypeKind::ARRAY ||
-                                   qual_type.type->kind == TypeKind::RECORD)) {
+            if (qual_type.type && is_aggregate_type(qual_type.type)) {
                 // For arrays and structs, return the address
                 VirtReg vreg = mfn_.get_next_vreg();
                 mfn_.add_instruction(make_la(vreg, sym_name));
@@ -1746,6 +1925,14 @@ bool InstructionSelector::is_float_type(TypePtr type) const
         return builtin->builtin_kind == BuiltinTypeKind::FLOAT;
     }
     return false;
+}
+
+bool InstructionSelector::is_aggregate_type(TypePtr type) const
+{
+    if (!type)
+        return false;
+
+    return type->kind == TypeKind::RECORD || type->kind == TypeKind::ARRAY;
 }
 
 VirtReg

@@ -134,6 +134,13 @@ class InstructionSelector {
     void select_load_member(const TACInstruction &instr);
     void select_store_member(const TACInstruction &instr);
 
+    VirtReg compute_member_address(const TACOperand &base_operand,
+                                   size_t offset);
+
+    void copy_aggregate_words(VirtReg dst_base,
+                              VirtReg src_base,
+                              uint32_t size_bytes);
+
     VirtReg load_operand(const TACOperand &operand);
 
     void store_result(VirtReg vreg, const TACOperand &dest);
@@ -143,6 +150,8 @@ class InstructionSelector {
     bool is_signed_type(TypePtr type) const;
 
     bool is_float_type(TypePtr type) const;
+
+    bool is_aggregate_type(TypePtr type) const;
 
     VirtReg get_or_create_vreg_for_temp(const std::string &temp_name);
 
@@ -162,11 +171,17 @@ class InstructionSelector {
     // Parameter symbols -> argument register mapping (a0-a7)
     std::unordered_map<std::string, PhysReg> param_to_reg_;
 
+    // Track aggregate parameters (passed by pointer, need indirection)
+    std::unordered_set<std::string> aggregate_params_;
+
     // Pending parameters for next CALL (vreg + type info)
     std::vector<std::pair<VirtReg, TACOperand>> pending_params_;
 
     // Track whether each vreg holds a float value
     std::unordered_set<VirtReg> float_vregs_;
+
+    // Track if current function returns an aggregate (needs sret pointer in a0)
+    VirtReg sret_ptr_vreg_ = INVALID_VREG;
 };
 
 /// RV32 backend: orchestrates instruction selection, register allocation,
