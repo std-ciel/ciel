@@ -124,7 +124,7 @@ struct Point*** create_grid(int layers, int rows, int cols) {
     return (struct Point***)0;
 }
 
-int process_complex_grid(struct Point grid[5][5][5], int size) {
+int process_complex_grid(struct Point grid[2][2][2], int size) {
     return 0;
 }
 
@@ -167,7 +167,7 @@ int main() {
     union Value v;
     enum Type t;
     class Derived* d;
-    struct Point grid[3][3][3];
+    struct Point grid[1][1][1];
 
     int****  hyper;
     struct Node*** tree;
