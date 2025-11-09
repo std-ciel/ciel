@@ -1702,6 +1702,18 @@ static void check_array_bounds(const TypePtr &array_type,
             current_types.pop_back();
           }
         }
+
+        if (builtin->builtin_kind == BuiltinTypeKind::INT ||
+            builtin->builtin_kind == BuiltinTypeKind::UNSIGNED) {
+          auto float_type = require_builtin("float", yy::location(), "conversion");
+          if (float_type) {
+            current_types.push_back(QualifiedType{float_type, arg_types[idx].qualifier});
+            result = try_all_combinations(idx + 1, current_types);
+            if (result) return result;
+            current_types.pop_back();
+          }
+        }
+
       }
 
       // Try with pointer conversion (T* -> void*)
