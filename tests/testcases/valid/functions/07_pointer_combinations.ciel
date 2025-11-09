@@ -31,3 +31,7 @@ void* func_void_ptr_ret() {
 void** func_void_double_ptr_ret() {
     return (void**)0;
 }
+
+int main() {
+    return 0;
+}
