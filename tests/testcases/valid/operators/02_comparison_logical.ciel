@@ -4,7 +4,7 @@ int main() {
     int a = 10;
     int b = 20;
     bool result;
-    
+
     // Comparison operators
     result = a == b;
     result = a != b;
@@ -12,22 +12,50 @@ int main() {
     result = a <= b;
     result = a > b;
     result = a >= b;
-    
+
     // Logical operators
     bool flag1 = true;
     bool flag2 = false;
-    
+
     result = flag1 && flag2;
     result = flag1 || flag2;
     result = !flag1;
-    
+
     // Combined expressions
     result = (a < b) && flag1;
     result = (a == b) || (a > b);
     result = !(a < b);
-    
+
     // Complex conditions
     result = (a < b) && (b < 30) || flag2;
-    
+
+    // Validate comparison results
+    bool test1 = a == b;  // false
+    bool test2 = a != b;  // true
+    bool test3 = a < b;   // true
+    bool test4 = a <= b;  // true
+    bool test5 = a > b;   // false
+    bool test6 = a >= b;  // false
+
+    if (test1) return 1;      // Should be false
+    if (!test2) return 2;     // Should be true
+    if (!test3) return 3;     // Should be true
+    if (!test4) return 4;     // Should be true
+    if (test5) return 5;      // Should be false
+    if (test6) return 6;      // Should be false
+
+    // Validate logical operationsa
+    bool test7 = flag1 && flag2;  // false
+    bool test8 = flag1 || flag2;  // true
+    bool test9 = !flag1;  // false
+    bool test10 = (a < b) && flag1;  // true
+    bool test11 = (a == b) || (a > b);  // false
+
+    if (test7) return 7;      // Should be false
+    if (!test8) return 8;     // Should be true
+    if (test9) return 9;      // Should be false
+    if (!test10) return 10;   // Should be true
+    if (test11) return 11;    // Should be false
+
     return 0;
 }

@@ -36,5 +36,8 @@ int main() {
         }
     }
 
+    // Validate result (c='b', case 'b' sets result=2)
+    if (result != 2) return 1;
+
     return 0;
 }

@@ -101,5 +101,16 @@ int main() {
 
     int diagonal_sum = grid.data[0][0] + grid.data[1][1] + grid.data[2][2];
 
+    // Validate all computed values
+    if (p0x != 10 || p1y != 40) return 1;
+    if (grade0 != 90 || grade4 != 92) return 2;
+    if (gpa != 3.8) return 3;
+    if (val00 != 1 || val55 != 25) return 4;
+    if (pg00x != 0 || pg11y != 10) return 5;
+    if (m00 != 1.0 || m22 != 9.0) return 6;
+    if (line0_start_x != 0 || line0_end_y != 10) return 7;
+    if (sum_grades != 270) return 8;  // 90 + 85 + 95
+    if (student.grades[3] != 175) return 9;  // 90 + 85
+
     return 0;
 }

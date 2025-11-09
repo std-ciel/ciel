@@ -3,34 +3,53 @@
 int main() {
     int x = 10;
     int y = 5;
-    
+
     // Simple assignment
     x = y;
     x = 100;
-    
+
     // Compound assignments
     x += y;
     x -= y;
     x *= y;
     x /= y;
     x %= y;
-    
+
     // Bitwise compound assignments
     x &= y;
     x |= y;
     x ^= y;
     x <<= 2;
     x >>= 1;
-    
+
     // Chain of assignments
     int a;
     int b;
     int c;
     a = b = c = 0;
-    
+
     // With expressions
     x += 5 + 3;
     x *= y + 2;
-    
+
+    // Validate some operations
+    int test_x = 10;
+    int test_y = 5;
+
+    test_x += test_y;  // 15
+    if (test_x != 15) return 1;
+
+    test_x -= 3;  // 12
+    if (test_x != 12) return 2;
+
+    test_x *= 2;  // 24
+    if (test_x != 24) return 3;
+
+    test_x /= 4;  // 6
+    if (test_x != 6) return 4;
+
+    test_x %= 4;  // 2
+    if (test_x != 2) return 5;
+
     return 0;
 }

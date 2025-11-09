@@ -86,5 +86,14 @@ int main() {
     p2.x = p.x;
     p2.y = p.y;
 
+    // Validate all computed values
+    if (px != 10 || py != 20) return 1;
+    if (tl_x != 0 || br_y != 50) return 2;
+    if (rect.width != 100 || rect.height != 50) return 3;
+    if (age != 30 || !emp) return 4;
+    if (node_data != 42) return 5;
+    if (sum_real != 4.0 || sum_imag != 6.0) return 6;
+    if (p2.x != 10 || p2.y != 20) return 7;
+
     return 0;
 }

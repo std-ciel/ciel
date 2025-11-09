@@ -24,5 +24,8 @@ int main() {
         }
     }
 
+    // Validate result
+    if (result != 100) return 1;
+
     return 0;
 }

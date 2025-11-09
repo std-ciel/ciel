@@ -41,5 +41,8 @@ int main() {
         }
     }
 
+    // Validate results
+    if (result != 1) return 1;  // Last switch set result = 1 for 'a'
+
     return 0;
 }

@@ -35,11 +35,14 @@ float func_float() {
 
 int main(){
     func_void();
-    func_int();
-    func_signed();
-    func_char();
-    func_bool();
-    func_float();
+
+    // Validate return values
+    if (func_int() != 42) return 1;
+    if (func_signed() != -10) return 2;
+    if ((int)func_unsigned() != 100) return 3;
+    if (func_char() != 'a') return 4;
+    if (!func_bool()) return 5;
+    if (func_float() != 3.14) return 6;
 
     return 0;
 }

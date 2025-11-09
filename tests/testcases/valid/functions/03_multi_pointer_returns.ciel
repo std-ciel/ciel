@@ -41,6 +41,16 @@ bool*** func_bool_triple_ptr() {
 }
 
 int main(){
-    func_int_quad_ptr();
+    // Validate multi-level pointer returns (all should be null)
+    if (func_int_double_ptr() != (int**)0) return 1;
+    if (func_char_double_ptr() != (char**)0) return 2;
+    if (func_float_double_ptr() != (float**)0) return 3;
+    if (func_void_double_ptr() != (void**)0) return 4;
+    if (func_int_triple_ptr() != (int***)0) return 5;
+    if (func_char_triple_ptr() != (char***)0) return 6;
+    if (func_int_quad_ptr() != (int****)0) return 7;
+    if (func_unsigned_double_ptr() != (unsigned**)0) return 8;
+    if (func_bool_triple_ptr() != (bool***)0) return 9;
+
     return 0;
 }

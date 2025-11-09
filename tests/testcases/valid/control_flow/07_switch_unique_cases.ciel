@@ -35,5 +35,8 @@ int main() {
         }
     }
 
+    // Validate result (x started as 5, case 5 sets it to 50)
+    if (x != 50) return 1;
+
     return 0;
 }

@@ -115,5 +115,44 @@ int main() {
     float vec0_0 = vectors[0].get(0);
     float vec1_1 = vectors[1].get(1);
 
+    // Validate all computed values
+    // Vector v tests - expecting v0=1.5, v1=2.5, v2=3.5
+    if (v0 != 1.5) {
+        return 1;
+    }
+    if (v1 != 2.5) {
+        return 2;
+    }
+    if (v2 != 3.5) {
+        return 3;
+    }
+
+    // Matrix m tests - expecting m00=1, m22=9
+    if (m00 != 1) {
+        return 4;
+    }
+    if (m22 != 9) {
+        return 5;
+    }
+
+    // StudentRecord tests - expecting grade0=90, grade1=85, count=3
+    if (grade0 != 90) {
+        return 6;
+    }
+    if (grade1 != 85) {
+        return 7;
+    }
+    if (count != 3) {
+        return 8;
+    }
+
+    // Array of Vector objects - expecting vec0_0=1.0, vec1_1=2.0
+    if (vec0_0 != 1.0) {
+        return 9;
+    }
+    if (vec1_1 != 2.0) {
+        return 10;
+    }
+
     return 0;
 }

@@ -37,6 +37,15 @@ unsigned* func_unsigned_params(unsigned x, unsigned* ptr) {
 
 int main(){
     bool*** b;
-    func_mixed_params((int**)0,'a',(float*)0,b);
+
+    // Validate function returns
+    if (func_no_params() != 0) return 1;
+    if (func_single_param(5) != (int*)0) return 2;
+    if (func_multi_params(1, 'x', 2.5) != (char*)0) return 3;
+    if (func_pointer_params((int*)0, (char*)0) != (int**)0) return 4;
+    if (func_mixed_params((int**)0,'a',(float*)0,b) != (float***)0) return 5;
+    if (func_many_params(1,2,3,4,5,6) != (void*)0) return 6;
+    if (func_unsigned_params(10, (unsigned*)0) != (unsigned*)0) return 7;
+
     return 0;
 }

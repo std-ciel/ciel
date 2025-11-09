@@ -3,22 +3,22 @@
 int main() {
     int i = 0;
     int count = 10;
-    
+
     // Simple while loop
     while (i != 0) {
         i = i + 1;
     }
-    
+
     // While with condition
     while (count > 0) {
         count = count - 1;
     }
-    
+
     // Until loop
     until (i == 10) {
         i = i + 1;
     }
-    
+
     // Nested while
     int j = 0;
     while (i < 20) {
@@ -27,6 +27,11 @@ int main() {
         }
         i = i + 1;
     }
-    
+
+    // Validate final values
+    if (count != 0) return 1;  // count started at 10, decremented to 0
+    if (i != 20) return 2;     // i went from 10 to 20
+    if (j != 5) return 3;      // j incremented to 5
+
     return 0;
 }

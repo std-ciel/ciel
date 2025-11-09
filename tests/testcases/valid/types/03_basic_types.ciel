@@ -21,5 +21,12 @@ int main() {
     int result1 = i + u;
     float result2 = f + i;
     char message[20] = "Hello, CIEL!";
+
+    // Validate values
+    if (result1 != 0) return 1;  // 0 + 0
+    if (result2 != 1.5) return 2;  // 1.5 + 0
+    if (c != 'x') return 3;
+    if (!b) return 4;  // b should be true
+
     return 0;
 }

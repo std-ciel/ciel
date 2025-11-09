@@ -60,5 +60,8 @@ int main() {
         }
     }
 
+    // Validate results
+    if (result != 200) return 1;  // Last switch set result = 200 for y=2
+
     return 0;
 }

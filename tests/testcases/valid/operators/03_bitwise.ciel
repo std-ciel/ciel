@@ -4,32 +4,57 @@ int main() {
     int a = 12;
     int b = 5;
     int result;
-    
+
     // Bitwise AND, OR, XOR
     result = a & b;
     result = a | b;
     result = a ^ b;
-    
+
     // Bitwise NOT
     result = ~a;
-    
+
     // Shift operators
     result = a << 2;
     result = b >> 1;
-    
+
     // Combined bitwise operations
     result = (a & b) | (a ^ b);
     result = (a << 1) | (b >> 1);
-    
+
     // Unsigned bitwise
     unsigned u1 = 15;
     unsigned u2 = 7;
     unsigned uresult;
-    
+
     uresult = u1 & u2;
     uresult = u1 | u2;
     uresult = u1 ^ u2;
     uresult = ~u1;
-    
+
+    // Validate bitwise operations
+    // a=12 (1100), b=5 (0101)
+    int test1 = a & b;  // 4 (0100)
+    int test2 = a | b;  // 13 (1101)
+    int test3 = a ^ b;  // 9 (1001)
+    int test4 = a << 2;  // 48 (110000)
+    int test5 = b >> 1;  // 2 (10)
+    int test6 = (a & b) | (a ^ b);  // 4 | 9 = 13
+
+    if (test1 != 4) return 1;
+    if (test2 != 13) return 2;
+    if (test3 != 9) return 3;
+    if (test4 != 48) return 4;
+    if (test5 != 2) return 5;
+    if (test6 != 13) return 6;
+
+    // u1=15 (1111), u2=7 (0111)
+    unsigned utest1 = u1 & u2;  // 7
+    unsigned utest2 = u1 | u2;  // 15
+    unsigned utest3 = u1 ^ u2;  // 8
+
+    if ((int)utest1 != 7) return 7;
+    if ((int)utest2 != 15) return 8;
+    if ((int)utest3 != 8) return 9;
+
     return 0;
 }

@@ -4,23 +4,39 @@ int main() {
     int x = 10;
     int y = 20;
     int z;
-    
+
     // Simple assignment
     z = x;
     z = y;
     z = 0;
-    
+
     // Arithmetic expressions
     z = x + y;
     z = x - y;
     z = x * y;
     z = x / y;
     z = x % y;
-    
+
     // Multiple assignments
     int a = 1;
     int b = 2;
     int c = 3;
-    
+
+    // Validate computed values
+    if (z != 10) return 2;  // Last assignment was z = x % y (10 % 20 = 10)
+
+    // Let's recompute for validation
+    int test_add = x + y;  // 30
+    int test_sub = x - y;  // -10
+    int test_mul = x * y;  // 200
+    int test_div = y / x;  // 2
+    int test_mod = y % x;  // 0
+
+    if (test_add != 30) return 3;
+    if (test_sub != -10) return 4;
+    if (test_mul != 200) return 5;
+    if (test_div != 2) return 6;
+    if (test_mod != 0) return 7;
+
     return 0;
 }

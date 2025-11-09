@@ -4,32 +4,58 @@ int main() {
     int a = 10;
     int b = 3;
     int result;
-    
+
     // Basic arithmetic
     result = a + b;
     result = a - b;
     result = a * b;
     result = a / b;
     result = a % b;
-    
+
     // Unary operators
     result = +a;
     result = -b;
-    
+
     // Compound expressions
     result = a + b * 2;
     result = (a + b) * 2;
     result = a * b + a / b;
-    
+
     // Float arithmetic
     float f1 = 5.5;
     float f2 = 2.5;
     float fresult;
-    
+
     fresult = f1 + f2;
     fresult = f1 - f2;
     fresult = f1 * f2;
     fresult = f1 / f2;
-    
+
+    // Validate results
+    int test1 = a + b;  // 13
+    int test2 = a - b;  // 7
+    int test3 = a * b;  // 30
+    int test4 = a / b;  // 3
+    int test5 = a % b;  // 1
+    int test6 = a + b * 2;  // 10 + 6 = 16
+    int test7 = (a + b) * 2;  // 13 * 2 = 26
+
+    if (test1 != 13) return 1;
+    if (test2 != 7) return 2;
+    if (test3 != 30) return 3;
+    if (test4 != 3) return 4;
+    if (test5 != 1) return 5;
+    if (test6 != 16) return 6;
+    if (test7 != 26) return 7;
+
+    float ftest1 = f1 + f2;  // 8.0
+    float ftest2 = f1 - f2;  // 3.0
+    float ftest3 = f1 * f2;  // 13.75
+
+    if (ftest1 != 8.0) return 8;
+    if (ftest2 != 3.0) return 9;
+    if (ftest3 != 13.75) return 10;
+    // Skip ftest4 division check due to floating point precision issues
+
     return 0;
 }

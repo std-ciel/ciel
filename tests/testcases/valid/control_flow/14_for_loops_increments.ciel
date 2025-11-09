@@ -2,21 +2,24 @@
 
 int main() {
     int sum = 0;
-    
+
     // Test 1: For loop with increment by 10
     for (int i = 0; i < 100; i = i + 10) {
         sum = sum + 1;
     }
-    
+
     // Test 2: For loop with multiplication in increment
     for (int i = 1; i < 1000; i = i * 2) {
         sum = sum + 1;
     }
-    
+
     // Test 3: For loop with complex increment expression
     for (int i = 0; i < 10; i = i + 1 + 1) {
         sum = sum + 1;
     }
-    
+
+    // Validate: Test1 adds 10 (0,10,20..90), Test2 adds 10 (1,2,4,8,16,32,64,128,256,512), Test3 adds 5 (0,2,4,6,8) = 10+10+5 = 25
+    if (sum != 25) return 1;
+
     return 0;
 }

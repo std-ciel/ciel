@@ -40,5 +40,14 @@ int main()
     }
 
 
+    // Validate some computed values
+    if (barr[0].x != 0) return 1;
+    if (barr[1].x != 10) return 2;
+    if (barr[2].x != 20) return 3;
+    if (barr[0].f_array[0].a != 0) return 4;  // 0+0
+    if (barr[1].f_array[2].a != 3) return 5;  // 1+2
+    if (barr[2].f_array[4].b != -2) return 6; // 2-4
+    if (barr[1].f_array[2].arr[3] != 6) return 7;  // 1*2*3
+
     return 0;
 }

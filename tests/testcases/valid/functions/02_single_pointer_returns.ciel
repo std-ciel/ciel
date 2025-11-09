@@ -30,13 +30,14 @@ void* func_void_ptr() {
 }
 
 int main(){
-    func_int_ptr();
-    func_char_ptr();
-    func_float_ptr();
-    func_bool_ptr();
-    func_unsigned_ptr();
-    func_signed_ptr();
-    func_void_ptr();
+    // Validate pointer returns (all should be null pointers)
+    if (func_int_ptr() != (int*)0) return 1;
+    if (func_char_ptr() != (char*)0) return 2;
+    if (func_float_ptr() != (float*)0) return 3;
+    if (func_bool_ptr() != (bool*)0) return 4;
+    if (func_unsigned_ptr() != (unsigned*)0) return 5;
+    if (func_signed_ptr() != (int*)0) return 6;
+    if (func_void_ptr() != (void*)0) return 7;
 
     return 0;
 }

@@ -65,5 +65,9 @@ int main() {
     int px0 = pstruct[0].x;
     int py1 = pstruct[1].y;
 
+    // Validate all computed values
+    if (val0 != 5 || val5 != 50) return 1;
+    if (px0 != 10 || py1 != 40) return 2;
+
     return 0;
 }

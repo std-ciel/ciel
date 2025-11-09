@@ -7,23 +7,27 @@ int main() {
     float* p3;
     bool* p4;
     unsigned* p5;
-    
+
     // Double pointers
     int** pp1;
     char** pp2;
     float** pp3;
-    
+
     // Triple pointers
     int*** ppp1;
     char*** ppp2;
-    
+
     // Void pointers
     void* vp1;
     void** vp2;
-    
+
     // Pointer initialization
     int* ptr = (int*)0;
     char* str = (char*)0;
-    
+
+    // Validate pointer values
+    if (ptr != (int*)0) return 1;
+    if (str != (char*)0) return 2;
+
     return 0;
 }

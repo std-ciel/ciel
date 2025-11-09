@@ -62,5 +62,15 @@ int main() {
     int sum3d = cube[0][0][0] + cube[1][1][1] + cube[2][2][2];
     cube[1][2][1] = cube[0][0][0] + cube[1][1][1];
 
+    // Validate all computed values
+    if (val00 != 1 || val01 != 2 || val23 != 12) return 1;
+    if (value != 99) return 2;
+    if (top_left != 'A' || center != 'M' || bottom_right != 'Z') return 3;
+    if (corner != 1 || center_val != 14 || far_corner != 27) return 4;
+    if (val3d != 50) return 5;
+    if (f00 != 1.1 || f23 != 2.3) return 6;
+    if (sum3d != 42) return 7;  // 1 + 14 + 27
+    if (cube[1][2][1] != 15) return 8;  // 1 + 14
+
     return 0;
 }

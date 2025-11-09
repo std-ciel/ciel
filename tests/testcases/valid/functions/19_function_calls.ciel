@@ -100,5 +100,11 @@ int main() {
     // Call returning pointer used in another call
     char* name = get_name();
 
+    // Validate computed values
+    if (result1 != 15) return 1;  // 5 + 10
+    if (result2 != 6.28) return 2;  // 3.14 * 2.0
+    if (nested != 20) return 3;  // add(1,2)=3, multiply(3,4)=12, compute(3,12,5)=20
+    if (complex != 10) return 4;  // add(1,2)=3, add(3,4)=7, add(3,7)=10
+
     return 0;
 }

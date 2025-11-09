@@ -2,26 +2,29 @@
 
 int main() {
     int sum = 0;
-    
+
     // Test 1: For loop counting down with >
     for (int i = 10; i > 0; i = i - 1) {
         sum = sum + 1;
     }
-    
+
     // Test 2: For loop with <= operator
     for (int i = 0; i <= 10; i = i + 1) {
         sum = sum + 1;
     }
-    
+
     // Test 3: For loop with >= operator (countdown)
     for (int i = 10; i >= 0; i = i - 1) {
         sum = sum + 1;
     }
-    
+
     // Test 4: For loop with != operator
     for (int i = 0; i != 10; i = i + 1) {
         sum = sum + 1;
     }
-    
+
+    // Validate: 10 + 11 + 11 + 10 = 42
+    if (sum != 42) return 1;
+
     return 0;
 }

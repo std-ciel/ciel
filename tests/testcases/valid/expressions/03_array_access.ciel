@@ -68,5 +68,16 @@ int main() {
     arr[i * 2] = 200;
     int val2 = arr[i * 2];
 
+    // Validate all computed values
+    if (first != 5 || second != 10 || last != 95) return 1;
+    if (value != 50) return 2;
+    if (sum != 15 || diff != 90) return 3;
+    if (arr[2] != 15) return 4;
+    if (first_char != 'H' || second_char != 'e') return 5;
+    if (f1 != 1.5 || f2 != 2.5) return 6;
+    if (!flag0 || !flag7) return 7;
+    if (val != 100) return 8;  // arr[i+j] = arr[5]
+    if (val2 != 200) return 9;  // arr[i*2] = arr[4]
+
     return 0;
 }
