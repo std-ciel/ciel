@@ -1964,21 +1964,68 @@ bool InstructionSelector::is_aggregate_type(TypePtr type) const
     return type->kind == TypeKind::RECORD || type->kind == TypeKind::ARRAY;
 }
 
+MachineOpcode InstructionSelector::get_load_opcode(TypePtr type,
+                                                   bool is_float) const
+{
+    if (is_float) {
+        return MachineOpcode::FLD;
+    }
+
+    if (!type || !type->has_layout()) {
+        return MachineOpcode::LD;
+    }
+
+    constexpr auto size_to_opcode = [](size_t size) constexpr {
+        switch (size) {
+        case 1:
+            return MachineOpcode::LB;
+        case 2:
+            return MachineOpcode::LH;
+        case 4:
+            return MachineOpcode::LW;
+        default:
+            return MachineOpcode::LD;
+        }
+    };
+
+    return size_to_opcode(type->layout.size);
+}
+
+MachineOpcode InstructionSelector::get_store_opcode(TypePtr type,
+                                                    bool is_float) const
+{
+    if (is_float) {
+        return MachineOpcode::FSD;
+    }
+
+    if (!type || !type->has_layout()) {
+        return MachineOpcode::SD;
+    }
+
+    constexpr auto size_to_opcode = [](size_t size) constexpr {
+        switch (size) {
+        case 1:
+            return MachineOpcode::SB;
+        case 2:
+            return MachineOpcode::SH;
+        case 4:
+            return MachineOpcode::SW;
+        default:
+            return MachineOpcode::SD;
+        }
+    };
+
+    return size_to_opcode(type->layout.size);
+}
+
 VirtReg
 InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
 {
-    auto it = temp_to_vreg_.find(temp_name);
-    if (it != temp_to_vreg_.end()) {
-        return it->second;
+    auto [it, inserted] = temp_to_vreg_.try_emplace(temp_name, INVALID_VREG);
+    if (inserted) {
+        it->second = mfn_.get_next_vreg();
     }
-
-    // Create a new vreg for this TAC temporary
-    // Register allocator will assign it to a physical register or spill if
-    // needed
-    VirtReg vreg = mfn_.get_next_vreg();
-    temp_to_vreg_[temp_name] = vreg;
-
-    return vreg;
+    return it->second;
 }
 
 int32_t InstructionSelector::allocate_local_variable(SymbolPtr sym)

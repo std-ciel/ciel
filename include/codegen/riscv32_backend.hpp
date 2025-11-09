@@ -159,6 +159,9 @@ class InstructionSelector {
 
     int32_t get_local_variable_offset(SymbolPtr sym);
 
+    MachineOpcode get_load_opcode(TypePtr type, bool is_float) const;
+    MachineOpcode get_store_opcode(TypePtr type, bool is_float) const;
+
     MachineFunction &mfn_;
     TypeFactory &types_;
     RiscV32Backend &backend_;
