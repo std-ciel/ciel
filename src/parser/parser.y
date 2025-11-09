@@ -5655,7 +5655,9 @@ iteration_statement
       statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
-        $$ = std::make_shared<ForStmt>($2, $3, std::nullopt, $6);
+        auto init_opt = $2 == nullptr ? std::nullopt : std::make_optional($2);
+        auto cond_opt = $3 == nullptr ? std::nullopt : std::make_optional($3);
+        $$ = std::make_shared<ForStmt>(init_opt, cond_opt, std::nullopt, $6);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
@@ -5664,7 +5666,10 @@ iteration_statement
       statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
-        $$ = std::make_shared<ForStmt>($2, $3, $4, $7);
+        auto init_opt = $2 == nullptr ? std::nullopt : std::make_optional($2);
+        auto cond_opt = $3 == nullptr ? std::nullopt : std::make_optional($3);
+        auto upd_opt = $4 == nullptr ? std::nullopt : std::make_optional($4);
+        $$ = std::make_shared<ForStmt>(init_opt, cond_opt, upd_opt, $7);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
@@ -5674,7 +5679,8 @@ iteration_statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
         auto decl_opt = $2 == nullptr ? std::nullopt : std::make_optional($2);
-        $$ = std::make_shared<ForStmt>(decl_opt, $3, std::nullopt, $6);
+        auto cond_opt = $3 == nullptr ? std::nullopt : std::make_optional($3);
+        $$ = std::make_shared<ForStmt>(decl_opt, cond_opt, std::nullopt, $6);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
@@ -5684,7 +5690,9 @@ iteration_statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
         auto decl_opt = $2 == nullptr ? std::nullopt : std::make_optional($2);
-        $$ = std::make_shared<ForStmt>(decl_opt, $3, $4, $7);
+        auto cond_opt = $3 == nullptr ? std::nullopt : std::make_optional($3);
+        auto upd_opt = $4 == nullptr ? std::nullopt : std::make_optional($4);
+        $$ = std::make_shared<ForStmt>(decl_opt, cond_opt, upd_opt, $7);
         parser_state.pop_ctx();
         symbol_table.exit_scope();
     }
