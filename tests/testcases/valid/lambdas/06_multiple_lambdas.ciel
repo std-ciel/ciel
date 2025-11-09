@@ -1,7 +1,10 @@
 // Test: Multiple lambdas with different signatures
 // Expected: Each lambda should have its own class and correct calls
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Multiple lambdas with different signatures\n");
+    
     int value;
     value = 100;
 
@@ -27,9 +30,19 @@ int main() {
 
     // Call all lambdas
     noop();
+    printf("Lambda 1 (noop) called\n");
+    
     int m = multiply(3, 4);
+    printf("Lambda 2 (multiply): %d\n", m);
+    printf("Expected: 12\n");
+    
     int v = get_value();
+    printf("Lambda 3 (get_value): %d\n", v);
+    printf("Expected: 100\n");
+    
     int sum = add_to_value(50);
+    printf("Lambda 4 (add_to_value): %d\n", sum);
+    printf("Expected: 150\n");
 
     return 0;
 }

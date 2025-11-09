@@ -1,7 +1,10 @@
 // Test: Lambda with single capture and no parameters
 // Expected: Should call constructor with capture value, access capture in body
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with single capture\n");
+    
     int x;
     x = 42;
 
@@ -12,6 +15,9 @@ int main() {
 
     // Call the lambda
     int result = get_x(0);
+
+    printf("Result: %d\n", result);
+    printf("Expected: 42\n");
 
     return 0;
 }

@@ -1,7 +1,10 @@
 // Test: Lambda called multiple times
 // Expected: Constructor called once at initialization, operator() called multiple times
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda called multiple times\n");
+    
     int base;
     base = 10;
 
@@ -12,8 +15,16 @@ int main() {
 
     // Call the lambda multiple times
     int r1 = add_to_base(5);
+    printf("Call 1: %d\n", r1);
+    printf("Expected: 15\n");
+    
     int r2 = add_to_base(10);
+    printf("Call 2: %d\n", r2);
+    printf("Expected: 20\n");
+    
     int r3 = add_to_base(15);
+    printf("Call 3: %d\n", r3);
+    printf("Expected: 25\n");
 
     return 0;
 }

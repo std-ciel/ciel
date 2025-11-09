@@ -1,7 +1,10 @@
 // Test: Lambda with multiple captures and no parameters
 // Expected: Constructor should be called with all capture values
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with multiple captures\n");
+    
     int x;
     int y;
     int z;
@@ -17,6 +20,8 @@ int main() {
 
     // Call the lambda
     int result = sum_all();
+    printf("Result: %d\n", result);
+    printf("Expected: 60\n");
 
     return 0;
 }

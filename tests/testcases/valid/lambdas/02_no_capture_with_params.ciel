@@ -1,7 +1,10 @@
 // Test: Lambda with no captures but with parameters
 // Expected: Should compile and pass parameters to operator()
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with no captures but with parameters\n");
+    
     // Lambda with parameters but no captures
     [] add(int a, int b) -> int {
         return a + b;
@@ -9,6 +12,8 @@ int main() {
 
     // Call the lambda with arguments
     int result = add(5, 3);
+    printf("Result: %d\n", result);
+    printf("Expected: 8\n");
 
     return 0;
 }

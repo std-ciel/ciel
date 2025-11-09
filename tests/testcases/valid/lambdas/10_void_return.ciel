@@ -1,7 +1,10 @@
 // Test: Lambda with void return type
 // Expected: Both constructors and void operator() work correctly
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with void return type\n");
+    
     int counter;
     counter = 0;
 
@@ -17,7 +20,11 @@ int main() {
 
     // Call void lambdas
     do_nothing();
+    printf("do_nothing() called\n");
+    
     reset();
+    printf("reset() called\n");
+    printf("Expected: Both void lambdas called successfully\n");
 
     return 0;
 }

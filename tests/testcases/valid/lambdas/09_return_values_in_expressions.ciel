@@ -1,7 +1,10 @@
 // Test: Lambda return values used in expressions
 // Expected: operator() return value correctly used in arithmetic
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda return values used in expressions\n");
+    
     int a;
     int b;
 
@@ -23,7 +26,12 @@ int main() {
 
     // Use lambda return values in expressions
     int sum = get_a() + get_b();
+    printf("Sum (get_a + get_b): %d\n", sum);
+    printf("Expected: 30\n");
+    
     int result = calculate(5, 10) + get_a();
+    printf("Result (calculate(5,10) + get_a): %d\n", result);
+    printf("Expected: 25\n");
 
     return 0;
 }

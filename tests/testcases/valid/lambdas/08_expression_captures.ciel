@@ -1,7 +1,10 @@
 // Test: Lambda with expression captures
 // Expected: Capture expressions evaluated at lambda creation
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with expression captures\n");
+    
     int x;
     int y;
 
@@ -15,6 +18,8 @@ int main() {
 
     // Call the lambda
     int result = compute(2);
+    printf("Result: %d\n", result);
+    printf("Expected: 25 (sum=8, product=15, n=2, total=8+15+2=25)\n");
 
     return 0;
 }

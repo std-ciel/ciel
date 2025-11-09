@@ -1,7 +1,10 @@
 // Test: Nested lambda calls
 // Expected: Lambda return value used as argument to another lambda
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Nested lambda calls\n");
+    
     int x;
     x = 5;
 
@@ -17,6 +20,8 @@ int main() {
 
     // Use result of one lambda as argument to another
     int result = square(get_double());
+    printf("Result (square(get_double())): %d\n", result);
+    printf("Expected: 100 (get_double returns 10, square(10) = 100)\n");
 
     return 0;
 }

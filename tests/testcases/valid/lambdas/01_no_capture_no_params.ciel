@@ -1,7 +1,10 @@
 // Test: Lambda with no captures and no parameters
 // Expected: Should compile and generate constructor + operator() calls
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with no captures and no parameters\n");
+    
     // Lambda with no captures and no parameters
     [] simple() -> void {
         return;
@@ -9,6 +12,8 @@ int main() {
 
     // Call the lambda
     simple();
+    printf("Lambda called successfully\n");
+    printf("Expected: Lambda called successfully\n");
 
     return 0;
 }

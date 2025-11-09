@@ -1,7 +1,10 @@
 // Test: Lambda with captures and parameters
 // Expected: Constructor with captures, operator() with parameters
+int printf(char* format, ...);
 
 int main() {
+    printf("Test: Lambda with captures and parameters\n");
+    
     int x;
     int y;
 
@@ -15,6 +18,8 @@ int main() {
 
     // Call the lambda with arguments
     int result = add_all(3, 7);
+    printf("Result: %d\n", result);
+    printf("Expected: 25\n");
 
     return 0;
 }
