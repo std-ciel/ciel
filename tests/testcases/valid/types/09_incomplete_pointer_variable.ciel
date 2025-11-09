@@ -8,3 +8,7 @@ struct ForwardDeclaredStruct* ptr;
 struct ForwardDeclaredStruct {
 
 };
+
+int main(){
+    return 0;
+}

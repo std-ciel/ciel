@@ -12,3 +12,7 @@ class Container {
 
 struct ForwardDeclaredStruct {
 };
+
+int main() {
+    return 0;
+}

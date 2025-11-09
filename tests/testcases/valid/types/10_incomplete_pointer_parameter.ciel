@@ -8,3 +8,7 @@ void process(struct ForwardDeclaredStruct* param);
 struct ForwardDeclaredStruct {
 
 };
+
+int main(){
+    return 0;
+}
