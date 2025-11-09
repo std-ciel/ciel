@@ -980,13 +980,14 @@ TACOperand TACGenerator::generate_ternary(std::shared_ptr<TernaryExpr> expr)
     auto false_label = new_label("ternary_false");
     auto end_label = new_label("ternary_end");
 
+    auto result_temp = new_temp(expr->expr_type);
+    auto result = TACOperand::temporary(result_temp, expr->expr_type);
+
     emit_conditional_jump(TACOpcode::IF_FALSE, condition, false_label);
 
     // True branch
     emit_label(true_label);
     auto true_result = generate_expression(expr->true_branch);
-    auto result_temp = new_temp(expr->expr_type);
-    auto result = TACOperand::temporary(result_temp, expr->expr_type);
     emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
                                           result,
                                           true_result));

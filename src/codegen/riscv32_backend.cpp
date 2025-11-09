@@ -1841,7 +1841,36 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
 {
     if (dest.kind == TACOperand::Kind::TEMPORARY) {
         std::string temp_name = std::get<std::string>(dest.value);
-        temp_to_vreg_[temp_name] = vreg;
+
+        // Check if this temporary already has a vreg assigned
+        auto it = temp_to_vreg_.find(temp_name);
+        if (it != temp_to_vreg_.end()) {
+            VirtReg dest_vreg = it->second;
+
+            if (vreg != dest_vreg) {
+                bool is_float = float_vregs_.contains(vreg) ||
+                                float_vregs_.contains(dest_vreg);
+
+                if (is_float) {
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::FMV_D)
+                            .add_def(dest_vreg)
+                            .add_use(vreg)
+                            .add_operand(VRegOperand(dest_vreg))
+                            .add_operand(VRegOperand(vreg)));
+                } else {
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::ADDI)
+                            .add_def(dest_vreg)
+                            .add_use(vreg)
+                            .add_operand(VRegOperand(dest_vreg))
+                            .add_operand(VRegOperand(vreg))
+                            .add_operand(ImmOperand(0)));
+                }
+            }
+        } else {
+            temp_to_vreg_[temp_name] = vreg;
+        }
     } else if (dest.kind == TACOperand::Kind::SYMBOL) {
         SymbolPtr sym = std::get<SymbolPtr>(dest.value);
         if (sym->get_storage_class() == StorageClass::AUTO) {
