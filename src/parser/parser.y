@@ -3721,14 +3721,20 @@ equality_expression
     | equality_expression EQ_OP relational_expression
     {
       $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::EQUAL,
-                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
-                                  "scalar types");
+                                  [](TypePtr l, TypePtr r) {
+                                    return (is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r)) ||
+                                           (l->kind == TypeKind::ENUM && r->kind == TypeKind::ENUM && are_types_equal(l, r));
+                                  },
+                                  "scalar types or matching enum types");
     }
     | equality_expression NE_OP relational_expression
     {
       $$ = handle_binary_operator($1, $3, @1, @3, @2, Operator::NOT_EQUAL,
-                                  [](TypePtr l, TypePtr r) { return is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r); },
-                                  "scalar types");
+                                  [](TypePtr l, TypePtr r) {
+                                    return (is_scalar_type(l) && is_scalar_type(r) && are_types_equal(l, r)) ||
+                                           (l->kind == TypeKind::ENUM && r->kind == TypeKind::ENUM && are_types_equal(l, r));
+                                  },
+                                  "scalar types or matching enum types");
     }
     ;
 
