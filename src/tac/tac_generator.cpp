@@ -1538,6 +1538,27 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
     emit(std::make_shared<TACInstruction>(TACOpcode::ENTER));
 
     // Add parameters
+    // For methods, add implicit 'this' parameter first
+    if (func_meta_opt.has_value() && 
+        (func_meta_opt.value().function_kind == FunctionKind::METHOD ||
+         func_meta_opt.value().function_kind == FunctionKind::CONSTRUCTOR ||
+         func_meta_opt.value().function_kind == FunctionKind::DESTRUCTOR ||
+         func_meta_opt.value().function_kind == FunctionKind::OPERATOR)) {
+        // Create a pointer type to the parent class for 'this'
+        TypePtr this_type = nullptr;
+        if (func_meta_opt.value().parent_class.has_value()) {
+            auto ptr_result = type_factory.get_pointer(
+                QualifiedType(func_meta_opt.value().parent_class.value(), Qualifier::NONE));
+            if (ptr_result.is_ok()) {
+                this_type = ptr_result.value();
+            }
+        }
+        // Add 'this' as the first parameter
+        current_function->parameters.push_back(
+            TACOperand::temporary("this", this_type));
+    }
+    
+    // Add regular parameters from func_def
     for (const auto &param : func_def->parameters) {
         current_function->parameters.push_back(
             TACOperand::symbol(param, param->get_type().type));
