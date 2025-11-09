@@ -55,7 +55,20 @@ Result<bool, LayoutPassErrorInfo> LayoutPass::compute_type_layout(TypePtr type)
 Result<bool, LayoutPassErrorInfo> LayoutPass::compute_layout(TypePtr type)
 {
     switch (type->kind) {
-    case TypeKind::BUILTIN:
+    case TypeKind::BUILTIN: {
+        // Labels don't need layout information
+        auto builtin = std::static_pointer_cast<BuiltinType>(type);
+        if (builtin->builtin_kind == BuiltinTypeKind::LABEL) {
+            return true;
+        }
+        // Other builtins should already have layout from TypeFactory
+        if (!type->has_layout()) {
+            return LayoutPassErrorInfo(LayoutPassError::MISSING_LAYOUT,
+                                       type->debug_name(),
+                                       "Builtin or pointer type");
+        }
+        return true;
+    }
     case TypeKind::POINTER:
         // These should already have layout from TypeFactory
         if (!type->has_layout()) {
