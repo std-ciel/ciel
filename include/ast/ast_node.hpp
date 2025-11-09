@@ -294,10 +294,20 @@ class RetExpr : public ASTNode {
     std::optional<ASTNodePtr> value;
     TypePtr expr_type;
     bool is_lvalue = false;
+    std::vector<ASTNodePtr> destructor_calls;
 
     RetExpr(std::optional<ASTNodePtr> value, TypePtr expr_type)
         : ASTNode(ASTNodeType::RET_EXPR), value(std::move(value)),
           expr_type(std::move(expr_type))
+    {
+    }
+
+    RetExpr(std::optional<ASTNodePtr> value,
+            TypePtr expr_type,
+            std::vector<ASTNodePtr> destructor_calls)
+        : ASTNode(ASTNodeType::RET_EXPR), value(std::move(value)),
+          expr_type(std::move(expr_type)),
+          destructor_calls(std::move(destructor_calls))
     {
     }
     ~RetExpr() override = default;

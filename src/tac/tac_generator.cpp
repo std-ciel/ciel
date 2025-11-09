@@ -801,7 +801,7 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
                     std::static_pointer_cast<PointerType>(base_type);
                 pointee_type = ptr_type->pointee.type;
             }
-            
+
             auto deref_temp = new_temp(pointee_type);
             auto deref_result = TACOperand::temporary(deref_temp, pointee_type);
             emit(std::make_shared<TACInstruction>(TACOpcode::DEREF,
@@ -1541,7 +1541,7 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
 
     // Add parameters
     // For methods, add implicit 'this' parameter first
-    if (func_meta_opt.has_value() && 
+    if (func_meta_opt.has_value() &&
         (func_meta_opt.value().function_kind == FunctionKind::METHOD ||
          func_meta_opt.value().function_kind == FunctionKind::CONSTRUCTOR ||
          func_meta_opt.value().function_kind == FunctionKind::DESTRUCTOR ||
@@ -1550,7 +1550,8 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
         TypePtr this_type = nullptr;
         if (func_meta_opt.value().parent_class.has_value()) {
             auto ptr_result = type_factory.get_pointer(
-                QualifiedType(func_meta_opt.value().parent_class.value(), Qualifier::NONE));
+                QualifiedType(func_meta_opt.value().parent_class.value(),
+                              Qualifier::NONE));
             if (ptr_result.is_ok()) {
                 this_type = ptr_result.value();
             }
@@ -1559,7 +1560,7 @@ void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
         current_function->parameters.push_back(
             TACOperand::temporary("this", this_type));
     }
-    
+
     // Add regular parameters from func_def
     for (const auto &param : func_def->parameters) {
         current_function->parameters.push_back(
@@ -1957,6 +1958,10 @@ void TACGenerator::generate_for_stmt(std::shared_ptr<ForStmt> stmt)
 
 void TACGenerator::generate_return_stmt(std::shared_ptr<RetExpr> stmt)
 {
+    for (const auto &dtor_call : stmt->destructor_calls) {
+        generate_expression(dtor_call);
+    }
+
     if (stmt->value.has_value()) {
         auto return_value = generate_expression(stmt->value.value());
         emit(std::make_shared<TACInstruction>(TACOpcode::RETURN,

@@ -2062,6 +2062,64 @@ static void check_array_bounds(const TypePtr &array_type,
 
     return destructor_calls;
   }
+
+  // Helper function to generate destructor calls for ALL scopes (for return statements)
+  // This traverses from current scope up to (but not including) the function scope
+  static std::vector<ASTNodePtr> generate_all_scope_destructors(const yy::location& loc) {
+    std::vector<ASTNodePtr> destructor_calls;
+
+    if (parser_state.brace_init_objects.empty()) {
+      return destructor_calls;
+    }
+
+    // Traverse all scopes from innermost to outermost
+    for (auto scope_it = parser_state.brace_init_objects.rbegin();
+         scope_it != parser_state.brace_init_objects.rend();
+         ++scope_it) {
+      const auto& objects = *scope_it;
+
+      // Process objects in this scope in reverse order (LIFO destruction)
+      for (auto obj_it = objects.rbegin(); obj_it != objects.rend(); ++obj_it) {
+        const auto& obj = *obj_it;
+
+        if (!obj.symbol) {
+          continue; // Skip if symbol is null
+        }
+
+        // Get the class type
+        auto class_type = std::static_pointer_cast<ClassType>(obj.type);
+        std::string class_name = class_type->debug_name();
+        if (class_name.substr(0, 6) == "class ") {
+          class_name = class_name.substr(6);
+        }
+
+        // Look up the destructor using lookup_function
+        std::string dtor_name = "~" + class_name;
+        std::vector<QualifiedType> no_args; // Destructors take no arguments (except implicit 'this')
+
+        SymbolPtr dtor_symbol = lookup_function(dtor_name, no_args, FunctionKind::DESTRUCTOR, *class_type);
+        if (!dtor_symbol) {
+          continue; // No destructor defined, skip
+        }
+
+        // Get the destructor's return type (should be void)
+        auto fn_type = std::static_pointer_cast<FunctionType>(dtor_symbol->get_type().type);
+        TypePtr return_type = fn_type->return_type.type;
+
+        // Create identifier expression for the object
+        auto object_id_expr = std::make_shared<IdentifierExpr>(obj.symbol, obj.type);
+
+        // Create destructor call: ~ClassName(&obj)
+        std::vector<ASTNodePtr> dtor_args = {make_address_of_expr(object_id_expr, loc)};
+        auto dtor_call = std::make_shared<CallExpr>(dtor_symbol, dtor_args, return_type);
+
+        destructor_calls.push_back(dtor_call);
+      }
+    }
+
+    return destructor_calls;
+  }
+
   static ASTNodePtr handle_brace_initialization(
       const std::string& var_name,
       QualifiedType var_type,
@@ -5789,7 +5847,9 @@ jump_statement
           $$ = nullptr; // TODO: replace with error node
       } else if (parser_state.current_function_return() && is_void_type(parser_state.current_function_return())) {
           auto void_t = type_factory.get_builtin_type("void");
-          $$ = std::make_shared<RetExpr>(std::nullopt, void_t ? void_t.value() : nullptr);
+          // Generate destructors for all scopes before returning
+          auto destructors = generate_all_scope_destructors(@1);
+          $$ = std::make_shared<RetExpr>(std::nullopt, void_t ? void_t.value() : nullptr, destructors);
       } else {
           parser_add_error(@1.begin.line, @1.begin.column, "return without expression in non-void function");
           $$ = nullptr; // TODO: replace with error node
@@ -5816,7 +5876,8 @@ jump_statement
           parser_add_error(@2.begin.line, @2.begin.column, "return type mismatch: function expects '" + (fn_ret ? fn_ret->debug_name() : std::string("invalid")) + "', but returning expression of type '" + (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
           $$ = nullptr; // TODO: replace with error node
         } else {
-          $$ = std::make_shared<RetExpr>($2, expr_type);
+          auto destructors = generate_all_scope_destructors(@1);
+          $$ = std::make_shared<RetExpr>($2, expr_type, destructors);
         }
       }
     }
