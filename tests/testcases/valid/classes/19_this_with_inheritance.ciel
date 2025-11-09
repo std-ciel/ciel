@@ -8,8 +8,8 @@ class Base {
             return this->base_value;
         }
 
-        void set_base(int v) {
-            this->base_value = v;
+        void set_base(int val) {
+            this->base_value = val;
             return;
         }
 };
@@ -22,8 +22,8 @@ class Derived : public Base {
             return this->derived_value;
         }
 
-        void set_derived(int v) {
-            this->derived_value = v;
+        void set_derived(int val) {
+            this->derived_value = val;
             return;
         }
 
@@ -37,5 +37,8 @@ int main() {
     d.base_value = 10;
     d.derived_value = 20;
     int result = d.get_sum();
-    return result;
+    if (result == 30) {
+        return 0;
+    }
+    return 1;
 }

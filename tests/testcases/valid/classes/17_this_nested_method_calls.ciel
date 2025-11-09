@@ -8,8 +8,8 @@ class Counter {
             return this->count;
         }
 
-        void set_count(int c) {
-            this->count = c;
+        void set_count(int new_count) {
+            this->count = new_count;
             return;
         }
 
@@ -34,5 +34,8 @@ int main() {
     c.increment();
     c.add(10);
     int result = c.double_count();
-    return result;
+    if (result == 32) {
+        return 0;
+    }
+    return 1;
 }

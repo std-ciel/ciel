@@ -27,7 +27,7 @@ class Base {
     protected:
         int id;
     public:
-        Base(int i) { this->id = i; }
+        Base(int identifier) { this->id = identifier; }
         int get_id() { return this->id; }
 };
 
@@ -35,12 +35,12 @@ class Derived : public Base {
     private:
         int value;
     public:
-        Derived(int i, int v) { this->id = i; this->value = v; }
+        Derived(int identifier, int val) { this->id = identifier; this->value = val; }
         int get_value() { return this->value; }
 };
 
 // Functions with extreme parameter combinations
-int**** hyper_allocate(int w, int x, int y, int z, ...) {
+int**** hyper_allocate(int w, int dimx, int dimy, int dimz, ...) {
     return (int****)0;
 }
 

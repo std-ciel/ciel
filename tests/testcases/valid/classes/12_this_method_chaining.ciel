@@ -28,5 +28,8 @@ int main() {
     ptr = b.set_value(10);
     ptr = ptr->set_multiplier(5);
     int result = ptr->build();
-    return result;
+    if (result == 50) {
+        return 0;
+    }
+    return 1;
 }

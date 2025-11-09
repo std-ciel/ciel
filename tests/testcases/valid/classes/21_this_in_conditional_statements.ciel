@@ -34,5 +34,9 @@ int main() {
     v.current = 0;
     v.set_if_valid(50);
     bool check = v.is_valid(150);
-    return v.get_current();
+    int result = v.get_current();
+    if (result == 50 && !check) {
+        return 0;
+    }
+    return 1;
 }

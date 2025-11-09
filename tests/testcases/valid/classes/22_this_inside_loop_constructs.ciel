@@ -34,5 +34,9 @@ int main() {
     acc.total = 0;
     acc.add_range(1, 10);
     acc.multiply_by(2);
-    return acc.get_total();
+    int result = acc.get_total();
+    if (result == 55) {
+        return 0;
+    }
+    return 1;
 }

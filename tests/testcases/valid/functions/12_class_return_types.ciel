@@ -5,7 +5,7 @@ class Shape {
         int x;
         int y;
     public:
-        void set_position(int nx, int ny) { x = nx; y = ny; }
+        void set_position(int px, int py) { x = px; y = py; }
 };
 
 class Rectangle {

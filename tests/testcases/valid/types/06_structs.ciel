@@ -55,6 +55,6 @@ int distance(struct Point p1, struct Point p2) {
     return 0;
 }
 
-struct Node* create_node(int data) {
+struct Node* create_node(int val) {
     return (struct Node *)0;
 }

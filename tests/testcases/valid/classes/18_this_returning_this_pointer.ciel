@@ -34,5 +34,8 @@ int main() {
     p = obj.set_x(15);
     p = p->set_y(25);
     int result = p->sum();
-    return result;
+    if (result == 40) {
+        return 0;
+    }
+    return 1;
 }

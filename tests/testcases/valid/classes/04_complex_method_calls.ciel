@@ -41,7 +41,7 @@ class LinkedList {
             this->size = 0;
         }
 
-        void add(int value) {
+        void add(int val) {
             this->size = this->size + 1;
             return;
         }
@@ -101,7 +101,7 @@ class Matrix {
 
 class Factory {
     public:
-        class Node* create_node(int value) {
+        class Node* create_node(int val) {
             return (class Node *)0;
         }
 
@@ -109,7 +109,7 @@ class Factory {
             return (class LinkedList *)0;
         }
 
-        class Matrix* create_matrix(int rows, int cols) {
+        class Matrix* create_matrix(int r, int c) {
             return (class Matrix *)0;
         }
 };

@@ -13,5 +13,8 @@ class Derived : public Base {
         float extra;
 };
 
-// Using the derived class
 class Derived d_var;
+
+int main() {
+    return 0;
+}

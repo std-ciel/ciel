@@ -25,5 +25,8 @@ int main() {
     p.x = 10;
     p.y = 20;
     int result = p.get_x() + p.get_y();
-    return result;
+    if (result == 30) {
+        return 0;
+    }
+    return 1;
 }

@@ -1,29 +1,29 @@
 // Test name mangling scenarios
 
 // Overloaded functions with different parameter counts
-int process(int x) {
-    return x;
+int process(int a) {
+    return a;
 }
 
-int process(int x, int y) {
-    return x + y;
+int process(int a, int b) {
+    return a + b;
 }
 
-int process(int x, int y, int z) {
-    return x + y + z;
+int process(int a, int b, int c) {
+    return a + b + c;
 }
 
 // Overloaded with different parameter types
-float calculate(float x) {
-    return x;
+float calculate(float a) {
+    return a;
 }
 
-float calculate(int x) {
-    return (float)x;
+float calculate(int a) {
+    return (float)a;
 }
 
-float calculate(int x, float y) {
-    return x + y;
+float calculate(int a, float b) {
+    return a + b;
 }
 
 // Overloaded with pointer parameters
@@ -56,15 +56,15 @@ struct Point move(struct Point p, int dx, int dy) {
 }
 
 // Overloaded with mixed types
-void execute(int x, char c) {
+void execute(int a, char ch) {
     return;
 }
 
-void execute(char c, int x) {
+void execute(char ch, int a) {
     return;
 }
 
-void execute(float f, int x, char c) {
+void execute(float f, int a, char ch) {
     return;
 }
 
@@ -87,7 +87,7 @@ int** allocate(int rows, int cols) {
     return (int**)0;
 }
 
-int*** allocate(int x, int y, int z) {
+int*** allocate(int dimx, int dimy, int dimz) {
     return (int***)0;
 }
 

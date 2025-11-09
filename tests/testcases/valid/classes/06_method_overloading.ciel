@@ -3,23 +3,23 @@
 class Printer {
     public:
         // Overloaded print methods
-        void print(int x) {
+        void print(int val) {
             return;
         }
 
-        void print(float x) {
+        void print(float val) {
             return;
         }
 
-        void print(char c) {
+        void print(char ch) {
             return;
         }
 
-        void print(bool b) {
+        void print(bool val) {
             return;
         }
 
-        void print(int x, int y) {
+        void print(int a, int b) {
             return;
         }
 
@@ -56,15 +56,15 @@ class Math {
 class Converter {
     public:
         // Overloaded convert methods with different parameter types
-        int convert(int x) {
-            return x;
+        int convert(int val) {
+            return val;
         }
 
         int convert(float f) {
             return 0;
         }
 
-        int convert(char c) {
+        int convert(char ch) {
             return 0;
         }
 
@@ -90,11 +90,11 @@ struct Point {
 class Shape {
     public:
         // Overloaded methods with struct parameters
-        void draw(struct Point p) {
+        void draw(struct Point pt) {
             return;
         }
 
-        void draw(struct Point p, int scale) {
+        void draw(struct Point pt, int scale) {
             return;
         }
 

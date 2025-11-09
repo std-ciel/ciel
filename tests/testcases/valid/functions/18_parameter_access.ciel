@@ -1,13 +1,13 @@
 // Test that function parameters are accessible in function body
 
 // Forward declarations
-int add(int x, int y);
+int add(int a, int b);
 int multiply(int a, int b);
 int complex_calculation(int num, int multiplier, int offset);
 int deref_and_add(int *ptr, int value);
 
-int add(int x, int y) {
-    return x + y;
+int add(int a, int b) {
+    return a + b;
 }
 
 int multiply(int a, int b) {

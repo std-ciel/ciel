@@ -33,5 +33,9 @@ int main() {
     n1.set_next(&n2);
     class Node* ptr;
     ptr = n1.get_next();
-    return ptr->get_data();
+    int result = ptr->get_data();
+    if (result == 20) {
+        return 0;
+    }
+    return 1;
 }

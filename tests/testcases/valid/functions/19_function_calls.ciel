@@ -5,11 +5,11 @@ int add(int a, int b) {
     return a + b;
 }
 
-float multiply(float x, float y) {
-    return x * y;
+float multiply(float a, float b) {
+    return a * b;
 }
 
-void print_value(int x) {
+void print_value(int val) {
     return;
 }
 
@@ -28,7 +28,7 @@ struct Point {
     int y;
 };
 
-struct Point make_point(int x, int y) {
+struct Point make_point(int px, int py) {
     struct Point p;
     return p;
 }

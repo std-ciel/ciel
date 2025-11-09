@@ -5,8 +5,8 @@ class Animal {
         int age;
         char name[50];
     public:
-        Animal(int a) { this->age = a; }
-        void set_age(int a) { this->age = a; }
+        Animal(int initial_age) { this->age = initial_age; }
+        void set_age(int new_age) { this->age = new_age; }
         int get_age() { return this->age; }
 };
 
@@ -14,7 +14,7 @@ class Mammal : public Animal {
     protected:
         bool warm_blooded;
     public:
-        Mammal(int a) { this->age = a; this->warm_blooded = 1 == 1; }
+        Mammal(int initial_age) { this->age = initial_age; this->warm_blooded = 1 == 1; }
         void set_warm_blooded(bool wb) { this->warm_blooded = wb; }
 };
 
@@ -22,9 +22,9 @@ class Dog : public Mammal {
     private:
         char breed[30];
     public:
-        Dog(int a) { this->age = a; }
+        Dog(int initial_age) { this->age = initial_age; }
         void bark() { this->age = this->age + 1; }
-        void set_breed(char* b) {}
+        void set_breed(char* breed_name) {}
 };
 
 // Multiple inheritance levels
@@ -32,7 +32,7 @@ class Vehicle {
     protected:
         int speed;
     public:
-        Vehicle(int s) { this->speed = s; }
+        Vehicle(int initial_speed) { this->speed = initial_speed; }
         void accelerate(int amount) { this->speed = this->speed + amount; }
 };
 
@@ -40,7 +40,7 @@ class Car : public Vehicle {
     private:
         int doors;
     public:
-        Car(int s, int d) { this->speed = s; this->doors = d; }
+        Car(int initial_speed, int num_doors) { this->speed = initial_speed; this->doors = num_doors; }
         void honk() { this->speed = this->speed + 1; }
 };
 
@@ -48,7 +48,7 @@ class SportsCar : public Car {
     private:
         int turbo_boost;
     public:
-        SportsCar(int s, int d, int tb) { this->speed = s; this->turbo_boost = tb; }
+        SportsCar(int initial_speed, int num_doors, int turbo) { this->speed = initial_speed; this->turbo_boost = turbo; }
         void activate_turbo() { this->speed = this->speed + this->turbo_boost; }
 };
 

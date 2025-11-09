@@ -35,5 +35,9 @@ int main() {
     calc.value = 10;
     calc.increment_by_one();
     calc.add_twice(5);
-    return calc.get_value();
+    int result = calc.get_value();
+    if (result == 21) {
+        return 0;
+    }
+    return 1;
 }

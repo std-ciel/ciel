@@ -6,7 +6,7 @@ int main() {
     x = 42;
 
     // Lambda with single capture
-    [a = x] get_x(int x) -> int {
+    [a = x] get_x(int param) -> int {
         return a;
     };
 

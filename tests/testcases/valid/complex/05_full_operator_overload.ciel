@@ -6,7 +6,7 @@ class Vector3D {
         float y;
         float z;
     public:
-        Vector3D(float nx, float ny, float nz) {}
+        Vector3D(float px, float py, float pz) {}
         
         // All arithmetic operators
         class Vector3D operator+(class Vector3D other) { return other; }
@@ -89,7 +89,7 @@ class ComplexNumber {
 };
 
 // Functions that use operator overloaded types
-class Vector3D* create_vector(float x, float y, float z) {
+class Vector3D* create_vector(float px, float py, float pz) {
     class Vector3D* ptr;
     return ptr;
 }

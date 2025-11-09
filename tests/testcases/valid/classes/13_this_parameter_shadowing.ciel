@@ -5,9 +5,9 @@ class Rectangle {
         int width;
         int height;
 
-        void set_dimensions(int width, int height) {
-            this->width = width;
-            this->height = height;
+        void set_dimensions(int w, int h) {
+            this->width = w;
+            this->height = h;
             return;
         }
 
@@ -25,5 +25,9 @@ int main() {
     rect.set_dimensions(5, 10);
     int a = rect.area();
     int p = rect.perimeter();
-    return a + p;
+    int result = a + p;
+    if (result == 80) {
+        return 0;
+    }
+    return 1;
 }

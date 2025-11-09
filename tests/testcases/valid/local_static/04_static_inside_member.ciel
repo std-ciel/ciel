@@ -8,3 +8,7 @@ class A {
         return cnt;
     }
 };
+
+int main() {
+    return 0;
+}

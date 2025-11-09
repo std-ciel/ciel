@@ -28,5 +28,9 @@ int main() {
     m.multiplier = 3;
     int result = m.calculate();
     m.update(10);
-    return m.get_value();
+    int final_value = m.get_value();
+    if (result == 13 && final_value == 10) {
+        return 0;
+    }
+    return 1;
 }

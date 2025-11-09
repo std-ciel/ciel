@@ -19,24 +19,24 @@ int add(int a, int b, int c, int d) {
 }
 
 // 2. Different parameter types (same count)
-int process(int x) {
+int process(int a) {
     return 0;
 }
 
-int process(float x) {
+int process(float a) {
     return 0;
 }
 
-int process(char x) {
+int process(char a) {
     return 0;
 }
 
-int process(bool x) {
+int process(bool a) {
     return 0;
 }
 
 // 3. Pointer vs non-pointer
-int getValue(int x) {
+int getValue(int a) {
     return 0;
 }
 
@@ -85,7 +85,7 @@ class Vector {
         float x;
         float y;
     public:
-        Vector(float nx, float ny) { x = nx; y = ny; }
+        Vector(float px, float py) { x = px; y = py; }
 };
 
 int calculate(class Vector v) {
@@ -138,7 +138,7 @@ int work(FloatPtrPtr p) {
     return 0;
 }
 
-int work(int x) {
+int work(int a) {
     return 0;
 }
 
@@ -268,32 +268,32 @@ int forward(float x) {
 }
 
 // 19. Different basic types
-int typeFunc(int x) {
+int typeFunc(int a) {
     return 0;
 }
 
-int typeFunc(float x) {
+int typeFunc(float a) {
     return 0;
 }
 
-int typeFunc(char x) {
+int typeFunc(char a) {
     return 0;
 }
 
-int typeFunc(bool x) {
+int typeFunc(bool a) {
     return 0;
 }
 
 // 20. Variadic vs non-variadic
-int varFunc(int x) {
+int varFunc(int a) {
     return 0;
 }
 
-int varFunc(int x, int y) {
+int varFunc(int a, int b) {
     return 0;
 }
 
-int varFunc(int x, ...) {
+int varFunc(int a, ...) {
     return 0;
 }
 

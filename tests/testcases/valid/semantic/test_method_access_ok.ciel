@@ -21,6 +21,10 @@ public:
 
 int main() {
     class MyClass obj;
-    obj.publicMethod();  // OK: public method
-    return obj.getValue();
+    obj.publicMethod();
+    int result = obj.getValue();
+    if (result == 10) {
+        return 0;
+    }
+    return 1;
 }

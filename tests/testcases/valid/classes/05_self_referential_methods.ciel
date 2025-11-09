@@ -9,3 +9,7 @@ class Node {
         void setNext(class Node n);
         class Node* getNextPtr();
 };
+
+int main() {
+    return 0;
+}

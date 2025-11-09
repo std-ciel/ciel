@@ -30,7 +30,7 @@ class Shape {
         int x;
         int y;
     public:
-        Shape(int nx, int ny);
+        Shape(int px, int py);
         void move(int dx, int dy);
 };
 
@@ -39,12 +39,12 @@ class Rectangle : public Shape {
         int width;
         int height;
     public:
-        Rectangle(int x, int y, int w, int h);
+        Rectangle(int px, int py, int w, int h);
         int area();
 };
 
 // Complex function return types
-struct Point* create_point(Integer x, Integer y) {
+struct Point* create_point(Integer px, Integer py) {
     return (struct Point*)0;
 }
 
@@ -56,12 +56,12 @@ union Data process_data(union Data d, enum Status* status) {
     return d;
 }
 
-class Rectangle* make_rectangle(int x, int y, int w, int h) {
+class Rectangle* make_rectangle(int px, int py, int w, int h) {
     return (class Rectangle*)0;
 }
 
 // Functions with multiple pointer levels
-Integer*** create_3d_int_array(int x, int y, int z) {
+Integer*** create_3d_int_array(int dimx, int dimy, int dimz) {
     return (Integer***)0;
 }
 
@@ -70,10 +70,10 @@ struct Point*** allocate_point_grid(int rows, int cols) {
 }
 
 // Complex control flow
-int complex_logic(int x, int y, bool flag) {
+int complex_logic(int a, int b, bool flag) {
     int result = 0;
 
-    if (x > y) {
+    if (a > b) {
         if (flag) {
             result = 1;
             goto success;
@@ -81,7 +81,7 @@ int complex_logic(int x, int y, bool flag) {
             result = -1;
         }
     } else {
-        switch (x) {
+        switch (a) {
             case 0: {
                 result = 10;
                 break;
