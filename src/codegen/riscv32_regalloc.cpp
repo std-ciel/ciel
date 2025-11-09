@@ -643,6 +643,7 @@ RegClass LinearScanAllocator::determine_reg_class(VirtReg vreg) const
             case MachineOpcode::FMAX_D:
             case MachineOpcode::FLD:
             case MachineOpcode::FMV_D:
+            case MachineOpcode::FMV_D_X:
             case MachineOpcode::FSGNJ_D:
             case MachineOpcode::FSGNJN_D:
             case MachineOpcode::FSGNJX_D:
