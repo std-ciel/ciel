@@ -1603,21 +1603,80 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
         }
     } else {
         const std::string temp_str = std::get<std::string>(operand.value);
-        const VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
 
-        if (offset == 0) {
-            mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                     .add_def(member_addr)
-                                     .add_use(temp_addr)
-                                     .add_operand(VRegOperand(member_addr))
-                                     .add_operand(VRegOperand(temp_addr)));
+        // For member access, use base_type; otherwise use type
+        TypePtr temp_type =
+            operand.base_type ? operand.base_type : operand.type;
+
+        // Check if this temporary has an aggregate type
+        if (temp_type && is_aggregate_type(temp_type)) {
+            // Check if already allocated on stack
+            if (auto offset_it = temp_to_offset_.find(temp_str);
+                offset_it != temp_to_offset_.end()) {
+                // Already allocated on stack, compute address
+                int32_t temp_offset = offset_it->second;
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::ADDI)
+                        .add_def(member_addr)
+                        .add_operand(VRegOperand(member_addr))
+                        .add_operand(RegOperand(PhysReg::S0_FP))
+                        .add_operand(ImmOperand(temp_offset + offset)));
+            } else if (auto vreg_it = temp_to_vreg_.find(temp_str);
+                       vreg_it != temp_to_vreg_.end()) {
+                // Temporary holds an address (e.g., from LOAD_MEMBER)
+                // Use it as the base address
+                VirtReg base_addr = vreg_it->second;
+                if (offset == 0) {
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::MV)
+                            .add_def(member_addr)
+                            .add_use(base_addr)
+                            .add_operand(VRegOperand(member_addr))
+                            .add_operand(VRegOperand(base_addr)));
+                } else {
+                    mfn_.add_instruction(
+                        MachineInstr(MachineOpcode::ADDI)
+                            .add_def(member_addr)
+                            .add_use(base_addr)
+                            .add_operand(VRegOperand(member_addr))
+                            .add_operand(VRegOperand(base_addr))
+                            .add_operand(ImmOperand(offset)));
+                }
+            } else {
+                // First time seeing this aggregate temporary - allocate stack
+                // space
+                uint32_t size = get_type_size(temp_type);
+                uint32_t alignment = std::min(size, 4u);
+                int32_t temp_offset =
+                    mfn_.get_frame().allocate_slot(size, alignment);
+                temp_to_offset_[temp_str] = temp_offset;
+
+                // Compute address
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::ADDI)
+                        .add_def(member_addr)
+                        .add_operand(VRegOperand(member_addr))
+                        .add_operand(RegOperand(PhysReg::S0_FP))
+                        .add_operand(ImmOperand(temp_offset + offset)));
+            }
         } else {
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(member_addr)
-                                     .add_use(temp_addr)
-                                     .add_operand(VRegOperand(member_addr))
-                                     .add_operand(VRegOperand(temp_addr))
-                                     .add_operand(ImmOperand(offset)));
+            // Scalar temporary - use virtual register
+            const VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
+
+            if (offset == 0) {
+                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
+                                         .add_def(member_addr)
+                                         .add_use(temp_addr)
+                                         .add_operand(VRegOperand(member_addr))
+                                         .add_operand(VRegOperand(temp_addr)));
+            } else {
+                mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                         .add_def(member_addr)
+                                         .add_use(temp_addr)
+                                         .add_operand(VRegOperand(member_addr))
+                                         .add_operand(VRegOperand(temp_addr))
+                                         .add_operand(ImmOperand(offset)));
+            }
         }
     }
 
@@ -1823,6 +1882,22 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             VirtReg vreg = mfn_.get_next_vreg();
             int32_t offset = offset_it->second;
 
+            // For member access, use base_type; otherwise use type
+            TypePtr temp_type =
+                operand.base_type ? operand.base_type : operand.type;
+
+            // Check if this is an aggregate type - return address instead of
+            // loading
+            if (temp_type && is_aggregate_type(temp_type)) {
+                mfn_.add_instruction(
+                    MachineInstr(MachineOpcode::ADDI)
+                        .add_def(vreg)
+                        .add_operand(VRegOperand(vreg))
+                        .add_operand(RegOperand(PhysReg::S0_FP))
+                        .add_operand(ImmOperand(offset)));
+                return vreg;
+            }
+
             bool is_float = operand.type && is_float_type(operand.type);
             MachineOpcode load_op = get_load_opcode(operand.type, is_float);
 
@@ -1835,6 +1910,29 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                     .add_def(vreg)
                     .add_operand(VRegOperand(vreg))
                     .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            return vreg;
+        }
+
+        // For member access, use base_type; otherwise use type
+        TypePtr temp_type =
+            operand.base_type ? operand.base_type : operand.type;
+
+        // Check if this temporary needs stack allocation (aggregate type)
+        if (temp_type && is_aggregate_type(temp_type)) {
+            // Allocate stack space for aggregate temporary
+            uint32_t size = get_type_size(temp_type);
+            uint32_t alignment = std::min(size, 4u);
+            int32_t temp_offset =
+                mfn_.get_frame().allocate_slot(size, alignment);
+            temp_to_offset_[temp_name] = temp_offset;
+
+            // Return address of allocated stack space
+            VirtReg vreg = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                     .add_def(vreg)
+                                     .add_operand(VRegOperand(vreg))
+                                     .add_operand(RegOperand(PhysReg::S0_FP))
+                                     .add_operand(ImmOperand(temp_offset)));
             return vreg;
         }
 
@@ -1962,7 +2060,8 @@ bool InstructionSelector::is_aggregate_type(TypePtr type) const
     if (!type)
         return false;
 
-    return type->kind == TypeKind::RECORD || type->kind == TypeKind::ARRAY;
+    return type->kind == TypeKind::RECORD || type->kind == TypeKind::ARRAY ||
+           type->kind == TypeKind::CLASS;
 }
 
 MachineOpcode InstructionSelector::get_load_opcode(TypePtr type,
