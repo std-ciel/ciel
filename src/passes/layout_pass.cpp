@@ -177,7 +177,10 @@ LayoutPass::compute_record_layout(RecordTypePtr record)
         uint32_t max_size = 0;
         uint32_t max_alignment = 1;
 
-        for (const auto &[name, qualified_type] : record->fields) {
+        for (const auto &name : record->field_order) {
+            auto it = record->fields.find(name);
+
+            const auto &qualified_type = it->second;
             TypePtr field_type = strip_typedefs(qualified_type.type);
             if (!field_type) {
                 return LayoutPassErrorInfo(
@@ -220,7 +223,10 @@ LayoutPass::compute_record_layout(RecordTypePtr record)
         uint32_t current_offset = 0;
         uint32_t max_alignment = 1;
 
-        for (const auto &[name, qualified_type] : record->fields) {
+        for (const auto &name : record->field_order) {
+            auto it = record->fields.find(name);
+
+            const auto &qualified_type = it->second;
             TypePtr field_type = strip_typedefs(qualified_type.type);
             if (!field_type) {
                 return LayoutPassErrorInfo(

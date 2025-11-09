@@ -2388,8 +2388,8 @@ static void check_array_bounds(const TypePtr &array_type,
 %type <TypePtr> type_specifier specifier_qualifier_list type_name declaration_specifiers
 %type <unsigned> pointer pointer_opt
 %type <DeclaratorInfo> declarator direct_declarator abstract_declarator direct_abstract_declarator
-%type <std::unordered_map<std::string, QualifiedType>> struct_declaration_list
-%type <std::unordered_map<std::string, QualifiedType>> struct_declaration
+%type <std::vector<std::pair<std::string, QualifiedType>>> struct_declaration_list
+%type <std::vector<std::pair<std::string, QualifiedType>>> struct_declaration
 %type <std::vector<DeclaratorInfo>> struct_declarator_list
 %type <DeclaratorInfo> struct_declarator
 
@@ -4176,7 +4176,7 @@ init_declarator
             QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
             // The order of applying pointer and array depends on declarator syntax:
-            
+
             if(di.pointer_parenthesized) {
               // Case: int (*p)[3] - apply arrays first, then pointers
               if(!di.array_dims.empty()){
@@ -4308,7 +4308,7 @@ init_declarator
             // The order of applying pointer and array depends on declarator syntax:
             // - int *p[3]: Apply pointers first, then arrays
             // - int (*p)[3]: Apply arrays first, then pointers
-            
+
             if(di.pointer_parenthesized) {
               // Case: int (*p)[3] - apply arrays first, then pointers
               if(!di.array_dims.empty()){
@@ -4681,13 +4681,20 @@ struct_declaration_list
 	  }
     | struct_declaration_list struct_declaration {
         $$ = $1;
-        for (auto &kv : $2) {
+        for (const auto &kv : $2) {
           // Check for duplicate field names across multiple declarations
-          if ($$.find(kv.first) != $$.end()) {
+          bool found = false;
+          for (const auto &existing : $$) {
+            if (existing.first == kv.first) {
+              found = true;
+              break;
+            }
+          }
+          if (found) {
             parser_add_error(@2.begin.line, @2.begin.column,
                            "duplicate member '" + kv.first + "' in struct/union");
           } else {
-            $$.insert(kv);
+            $$.push_back(kv);
           }
         }
 	  }
@@ -4696,18 +4703,18 @@ struct_declaration_list
 struct_declaration
     : specifier_qualifier_list SEMICOLON_OP
       {
-        $$ = std::unordered_map<std::string, QualifiedType>{};
+        $$ = std::vector<std::pair<std::string, QualifiedType>>{};
       }
     | specifier_qualifier_list struct_declarator_list SEMICOLON_OP
       {
-        $$ = std::unordered_map<std::string, QualifiedType>{};
+        $$ = std::vector<std::pair<std::string, QualifiedType>>{};
         auto base = $1;
         if (base) {
           for (auto &di : $2) {
             if (!di.name.empty()) {
               QualifiedType final_t = base;
 
-               
+
               if(di.pointer_parenthesized) {
                 if(!di.array_dims.empty()){
                   final_t = apply_array_dimensions_or_error(final_t,
@@ -4746,11 +4753,18 @@ struct_declaration
               }
 
               // Check for duplicate field names
-              if ($$.find(di.name) != $$.end()) {
+              bool found = false;
+              for (const auto &existing : $$) {
+                if (existing.first == di.name) {
+                  found = true;
+                  break;
+                }
+              }
+              if (found) {
                 parser_add_error(@1.begin.line, @1.begin.column,
                                "duplicate member '" + di.name + "' in struct/union");
               } else {
-                $$[di.name] = final_t;
+                $$.push_back({di.name, final_t});
               }
             }
           }
@@ -6378,7 +6392,7 @@ function_declaration_or_definition
           } else {
             QualifiedType final_t = ret;
 
-  
+
             if(di.pointer_parenthesized) {
               if(!di.array_dims.empty()){
                 final_t = apply_array_dimensions_or_error(final_t,

@@ -336,22 +336,15 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
         }
         TypePtr base_type = base_type_result.value();
 
-        // Handle pointer dereference for -> operator
+        // Handle pointer member access (ptr->member)
         if (member->op == Operator::MEMBER_ACCESS_PTR) {
-            // Dereference pointer first
-            auto deref_temp = new_temp(base_type);
-            auto deref_result = TACOperand::temporary(deref_temp, base_type);
-            emit(std::make_shared<TACInstruction>(TACOpcode::DEREF,
-                                                  deref_result,
-                                                  base));
-            base = deref_result;
-
-            // Get pointed-to type - use pointee member of PointerType
+            TypePtr pointee_type = base_type;
             if (base_type->kind == TypeKind::POINTER) {
                 auto ptr_type =
                     std::static_pointer_cast<PointerType>(base_type);
-                base_type = ptr_type->pointee.type;
+                pointee_type = ptr_type->pointee.type;
             }
+            base_type = pointee_type;
         }
 
         return generate_member_access(base, member->member_name, base_type);
@@ -536,16 +529,39 @@ TACOperand TACGenerator::generate_binary_op(std::shared_ptr<BinaryExpr> expr)
                                               base,
                                               offset));
 
-        // Only load if the result is not an array type
-        // For multidimensional arrays like int[3][4], accessing array[i]
-        // should return the address of the sub-array, not load from it
+        bool is_array_member_access = false;
+        if (expr->left->type == ASTNodeType::MEMBER_EXPR) {
+            auto member_expr = std::static_pointer_cast<MemberExpr>(expr->left);
+            auto member_type_result = get_expression_type(expr->left);
+            if (member_type_result.is_ok()) {
+                TypePtr member_type =
+                    strip_typedefs(member_type_result.value());
+                if (member_type && member_type->kind == TypeKind::ARRAY) {
+                    is_array_member_access = true;
+                }
+            }
+        }
+
+        // General case: Check base type from expression
+        auto base_type_result = get_expression_type(expr->left);
+        TypePtr base_type = nullptr;
+        if (base_type_result.is_ok()) {
+            base_type = strip_typedefs(base_type_result.value());
+        }
+
         TypePtr result_type = strip_typedefs(element_type);
-        if (result_type && result_type->kind == TypeKind::ARRAY) {
-            // Return address for array types (will be used as base for further
-            // subscripting)
+        bool result_is_array =
+            (result_type && result_type->kind == TypeKind::ARRAY);
+        bool result_is_struct =
+            (result_type && result_type->kind == TypeKind::RECORD);
+
+        // The type of the RESULT determines whether we return an address or
+        // load a value.
+        if (result_is_array || result_is_struct) {
+            // Multi-dimensional array OR array of structs - return address
+            // (lvalue)
             return addr;
         } else {
-            // Load from calculated address for non-array types
             auto result_temp = new_temp(element_type);
             auto result = TACOperand::temporary(result_temp, element_type);
             emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
@@ -1191,22 +1207,88 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         return TACOperand(); // Return empty operand on error
     }
 
+    // Check if base_object is a pointer type
+    TACOperand actual_base = base_object;
+    bool base_is_pointer = false;
+    TypePtr base_obj_type = strip_typedefs(base_object.type);
+    if (base_obj_type && base_obj_type->kind == TypeKind::POINTER) {
+        base_is_pointer = true;
+        actual_base = base_object;
+    }
+
+    if (member_type && member_type->kind == TypeKind::ARRAY) {
+        auto array_type = std::static_pointer_cast<ArrayType>(member_type);
+        TypePtr element_type = array_type->element_type.type;
+
+        // Create pointer type to the array element
+        auto ptr_result = type_factory.get_pointer(QualifiedType{element_type});
+        if (ptr_result.is_err()) {
+            record_error("Failed to create pointer type for array member");
+            return TACOperand();
+        }
+        TypePtr ptr_type = ptr_result.value();
+
+        // Get base address
+        TACOperand base_addr;
+        if (base_is_pointer) {
+            base_addr = actual_base;
+        } else {
+            // For struct variables, get the address of the variable
+            std::string addr_temp = new_temp(ptr_type);
+            base_addr = TACOperand::temporary(addr_temp, ptr_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ADDR_OF,
+                                                  base_addr,
+                                                  actual_base));
+        }
+
+        // Add offset to get address of array member
+        std::string array_addr_temp = new_temp(ptr_type);
+        TACOperand array_addr =
+            TACOperand::temporary(array_addr_temp, ptr_type);
+        TACOperand offset_operand = TACOperand::constant_int(offset, nullptr);
+        auto add_instr = std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                                          array_addr,
+                                                          base_addr,
+                                                          offset_operand);
+        add_instr->comment =
+            "Address of " + actual_base.to_string() + "." + member_name;
+        emit(add_instr);
+
+        return array_addr;
+    }
+
     // Create temporary for result
     std::string temp_name = new_temp(member_type);
     TACOperand result = TACOperand::temporary(temp_name, member_type);
 
-    // Create operand with member info
-    TACOperand member_op = TACOperand::member_access(base_object,
-                                                     member_name,
-                                                     offset,
-                                                     member_type);
+    if (base_is_pointer && offset == 0) {
+        // Offset is 0, can load directly from the pointer
+        emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                              result,
+                                              actual_base));
+    } else if (base_is_pointer) {
+        // Need to add offset to pointer first
+        auto addr_temp = new_temp(nullptr);
+        auto addr = TACOperand::temporary(addr_temp, nullptr);
+        emit(std::make_shared<TACInstruction>(
+            TACOpcode::ADD,
+            addr,
+            actual_base,
+            TACOperand::constant_int(offset, nullptr)));
+        emit(std::make_shared<TACInstruction>(TACOpcode::LOAD, result, addr));
+    } else {
+        // Normal member access on struct variable
+        TACOperand member_op = TACOperand::member_access(actual_base,
+                                                         member_name,
+                                                         offset,
+                                                         member_type);
 
-    // Emit LOAD_MEMBER instruction: result = base.member
-    auto instr = std::make_shared<TACInstruction>(TACOpcode::LOAD_MEMBER,
-                                                  result,
-                                                  member_op);
-    instr->comment = "Load " + base_object.to_string() + "." + member_name;
-    emit(instr);
+        auto instr = std::make_shared<TACInstruction>(TACOpcode::LOAD_MEMBER,
+                                                      result,
+                                                      member_op);
+        instr->comment = "Load " + actual_base.to_string() + "." + member_name;
+        emit(instr);
+    }
 
     return result;
 }

@@ -323,6 +323,7 @@ struct RecordType : public Type {
     std::string tag;
     std::unordered_map<std::string, QualifiedType> fields;
     std::unordered_map<std::string, uint32_t> field_offsets;
+    std::vector<std::string> field_order;
     bool is_union;
     bool is_defined;
 
@@ -335,6 +336,7 @@ struct RecordType : public Type {
     void add_field(const std::string &name, QualifiedType type)
     {
         fields[name] = std::move(type);
+        field_order.push_back(name);
     }
 
     void set_field_offset(const std::string &name, uint32_t offset)
