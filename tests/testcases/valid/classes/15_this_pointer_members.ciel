@@ -27,9 +27,9 @@ int main() {
     class Node n1;
     class Node n2;
     n1.data = 10;
-    n1.next = 0;
+    n1.next = (class Node*)0;
     n2.data = 20;
-    n2.next = 0;
+    n2.next = (class Node*)0;
     n1.set_next(&n2);
     class Node* ptr;
     ptr = n1.get_next();
