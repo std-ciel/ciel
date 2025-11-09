@@ -925,26 +925,24 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
 TACOperand TACGenerator::generate_call(std::shared_ptr<CallExpr> expr)
 {
-    // Generate arguments in reverse order (right-to-left evaluation)
     std::vector<TACOperand> args;
-    for (auto &arg : expr->arguments) {
+    args.reserve(expr->arguments.size());
+    for (const auto &arg : expr->arguments) {
         args.push_back(generate_expression(arg));
     }
 
-    // Emit PARAM instructions
-    for (auto it = args.rbegin(); it != args.rend(); ++it) {
+    for (const auto &arg : args) {
         emit(std::make_shared<TACInstruction>(TACOpcode::PARAM,
                                               TACOperand(),
-                                              *it));
+                                              arg));
     }
 
-    // Generate call
-    auto callee = TACOperand::symbol(expr->callee, nullptr);
+    const auto callee = TACOperand::symbol(expr->callee, nullptr);
     TACOperand result;
 
     if (expr->expr_type && !is_void_type(expr->expr_type)) {
-        auto result_temp = new_temp(expr->expr_type);
-        result = TACOperand::temporary(result_temp, expr->expr_type);
+        result =
+            TACOperand::temporary(new_temp(expr->expr_type), expr->expr_type);
         emit(std::make_shared<TACInstruction>(
             TACOpcode::CALL,
             result,
