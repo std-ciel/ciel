@@ -2267,6 +2267,63 @@ static void check_array_bounds(const TypePtr &array_type,
     return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type, is_static_assignment);
   }
 
+  // Helper function to recursively validate designated initializers
+  static void validate_designated_initializers(const std::vector<ASTNodePtr>& initializers, 
+                                               TypePtr target_type,
+                                               int line, int column) {
+    if (!target_type) return;
+    
+    target_type = strip_typedefs(target_type);
+    if (target_type->kind != TypeKind::RECORD && target_type->kind != TypeKind::CLASS) {
+      return; // Only validate struct/class types
+    }
+    
+    for (const auto& init : initializers) {
+      if (!init || init->type != ASTNodeType::DESIGNATED_INITIALIZER_EXPR) {
+        continue;
+      }
+      
+      auto* desig = static_cast<DesignatedInitializerExpr*>(init.get());
+      
+      // Validate member path exists in the type
+      TypePtr current_type = target_type;
+      for (size_t i = 0; i < desig->member_path.size(); ++i) {
+        const std::string& member = desig->member_path[i];
+        
+        if (current_type->kind == TypeKind::RECORD) {
+          auto record = std::static_pointer_cast<RecordType>(current_type);
+          if (record->fields.find(member) == record->fields.end()) {
+            parser_add_error(line, column,
+                           "no member named '" + member + "' in '" +
+                           current_type->debug_name() + "'");
+            return; // Stop validation on first error
+          }
+          current_type = record->fields.at(member).type;
+        } else if (current_type->kind == TypeKind::CLASS) {
+          auto class_type = std::static_pointer_cast<ClassType>(current_type);
+          if (class_type->members.find(member) == class_type->members.end()) {
+            parser_add_error(line, column,
+                           "no member named '" + member + "' in '" +
+                           current_type->debug_name() + "'");
+            return; // Stop validation on first error
+          }
+          current_type = class_type->members.at(member).type.type;
+        } else {
+          parser_add_error(line, column,
+                         "member access on non-struct/class type");
+          return; // Stop validation on error
+        }
+      }
+      
+      // Recursively validate nested initializers (BLOCK_STMT)
+      if (desig->value && desig->value->type == ASTNodeType::BLOCK_STMT) {
+        auto block = std::static_pointer_cast<BlockStmt>(desig->value);
+        // Recursively validate with the member's type
+        validate_designated_initializers(block->statements, current_type, line, column);
+      }
+    }
+  }
+
   // Helper function to check if a cast is valid
   static bool is_valid_cast(TypePtr from_type, TypePtr to_type, ASTNodePtr expr, const yy::location& loc) {
     if (!from_type || !to_type) {
@@ -3421,44 +3478,9 @@ postfix_expression
                            "compound literals only supported for struct/class types");
             $$ = nullptr;
         } else {
-            // Validate all initializers reference valid members
+            // Validate all initializers reference valid members (recursively)
             std::vector<ASTNodePtr> initializers = $5;
-
-            for (const auto& init : initializers) {
-                if (init && init->type == ASTNodeType::DESIGNATED_INITIALIZER_EXPR) {
-                    auto* desig = static_cast<DesignatedInitializerExpr*>(init.get());
-
-                    // Validate member path exists in the type
-                    TypePtr current_type = target_type;
-                    for (size_t i = 0; i < desig->member_path.size(); ++i) {
-                        const std::string& member = desig->member_path[i];
-
-                        if (current_type->kind == TypeKind::RECORD) {
-                            auto record = std::static_pointer_cast<RecordType>(current_type);
-                            if (record->fields.find(member) == record->fields.end()) {
-                                parser_add_error(@5.begin.line, @5.begin.column,
-                                               "no member named '" + member + "' in '" +
-                                               current_type->debug_name() + "'");
-                                break;
-                            }
-                            current_type = record->fields.at(member).type;
-                        } else if (current_type->kind == TypeKind::CLASS) {
-                            auto class_type = std::static_pointer_cast<ClassType>(current_type);
-                            if (class_type->members.find(member) == class_type->members.end()) {
-                                parser_add_error(@5.begin.line, @5.begin.column,
-                                               "no member named '" + member + "' in '" +
-                                               current_type->debug_name() + "'");
-                                break;
-                            }
-                            current_type = class_type->members.at(member).type.type;
-                        } else {
-                            parser_add_error(@5.begin.line, @5.begin.column,
-                                           "member access on non-struct/class type");
-                            break;
-                        }
-                    }
-                }
-            }
+            validate_designated_initializers(initializers, target_type, @5.begin.line, @5.begin.column);
 
             $$ = std::make_shared<CompoundLiteralExpr>(target_type, initializers, target_type);
         }
