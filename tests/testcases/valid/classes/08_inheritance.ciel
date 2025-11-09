@@ -1,5 +1,7 @@
 // Test class inheritance
 
+int printf(char* format, ...);
+
 class Base {
     private:
         int base_private;
@@ -16,6 +18,7 @@ class Derived : public Base {
     public:
         int derived_public;
         void derived_method() { this->derived_public = 0; }
+        int get_base_public() { return this->base_public; }
 };
 
 class ProtectedDerived : protected Base {
@@ -32,6 +35,7 @@ class PrivateDerived : private Base {
 class GrandChild : public Derived {
     public:
         void grandchild_method() { this->derived_public = 2; }
+        int get_derived_public() { return this->derived_public; }
 };
 
 // Classes with constructors
@@ -42,6 +46,8 @@ class Point {
     public:
         Point(int px, int py) { this->x = px; this->y = py; }
         void set(int px, int py) { this->x = px; this->y = py; }
+        int get_x() { return this->x; }
+        int get_y() { return this->y; }
 };
 
 class Rectangle : public Point {
@@ -51,6 +57,8 @@ class Rectangle : public Point {
     public:
         Rectangle(int px, int py, int w, int h) { this->width = w; this->height = h; }
         int area() { return this->width * this->height; }
+        int get_width() { return this->width; }
+        int get_height() { return this->height; }
 };
 
 int main() {
@@ -58,9 +66,63 @@ int main() {
     class Derived d;
     class GrandChild gc;
 
+    // Test Base class
+    b.base_public = 100;
+    b.base_method();
+    printf("Base public after base_method: %d\n", b.base_public);
+
+    // Test Derived class
+    d.base_public = 200;
+    d.derived_public = 300;
+    d.derived_method();
+    printf("Derived base_public: %d, derived_public after method: %d\n", d.get_base_public(), d.derived_public);
+    
+    int base_val = d.get_base_public();
+    printf("Base public via getter: %d\n", base_val);
+
+    // Test GrandChild class
+    gc.base_public = 400;
+    gc.derived_public = 500;
+    gc.grandchild_method();
+    int gc_derived = gc.get_derived_public();
+    printf("GrandChild derived_public after method: %d\n", gc_derived);
+
+    // Test Point and Rectangle with constructors
+    class Point p{10,20};
+    int px = p.get_x();
+    int py = p.get_y();
+    printf("Point: x=%d, y=%d\n", px, py);
+
+    p.set(30, 40);
+    px = p.get_x();
+    py = p.get_y();
+    printf("Point after set: x=%d, y=%d\n", px, py);
+
+    // Test Rectangle inheritance
+    class Rectangle rect{5,10,15,25};
+    int rect_area = rect.area();
+    int w = rect.get_width();
+    int h = rect.get_height();
+    printf("Rectangle: width=%d, height=%d, area=%d\n", w, h, rect_area);
+
+    // Test Rectangle inherited methods
+    rect.set(50, 60);
+    int rect_x = rect.get_x();
+    int rect_y = rect.get_y();
+    printf("Rectangle position: x=%d, y=%d\n", rect_x, rect_y);
+
     // Pointers
     class Base* b_ptr;
     class Derived* d_ptr;
+    
+    b_ptr = &b;
+    d_ptr = &d;
+    
+    b_ptr->base_public = 999;
+    printf("Base via pointer: %p\n", b_ptr);
+    
+    d_ptr->derived_public = 888;
+    printf("Derived via pointer: %d\n", d_ptr->derived_public);
 
     return 0;
 }
