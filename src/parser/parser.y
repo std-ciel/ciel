@@ -1435,6 +1435,39 @@ static void check_array_bounds(const TypePtr &array_type,
       return nullptr;
     }
 
+    if (operand->type == ASTNodeType::LITERAL_EXPR) {
+      auto literal = std::static_pointer_cast<LiteralExpr>(operand);
+
+      if (op_enum == Operator::UNARY_MINUS && std::holds_alternative<int64_t>(literal->value)) {
+        int64_t original_value = std::get<int64_t>(literal->value);
+        int64_t negated_value = -original_value;
+        return std::make_shared<LiteralExpr>(negated_value, literal->expr_type);
+      }
+
+      if (op_enum == Operator::UNARY_MINUS && std::holds_alternative<uint64_t>(literal->value)) {
+        uint64_t original_value = std::get<uint64_t>(literal->value);
+        int64_t negated_value = -static_cast<int64_t>(original_value);
+        return std::make_shared<LiteralExpr>(negated_value, literal->expr_type);
+      }
+
+      if (op_enum == Operator::UNARY_PLUS &&
+          (std::holds_alternative<int64_t>(literal->value) || std::holds_alternative<uint64_t>(literal->value))) {
+        return operand;
+      }
+
+      if (op_enum == Operator::BITWISE_NOT && std::holds_alternative<int64_t>(literal->value)) {
+        int64_t original_value = std::get<int64_t>(literal->value);
+        int64_t negated_value = ~original_value;
+        return std::make_shared<LiteralExpr>(negated_value, literal->expr_type);
+      }
+
+      if (op_enum == Operator::BITWISE_NOT && std::holds_alternative<uint64_t>(literal->value)) {
+        uint64_t original_value = std::get<uint64_t>(literal->value);
+        uint64_t negated_value = ~original_value;
+        return std::make_shared<LiteralExpr>(negated_value, literal->expr_type);
+      }
+    }
+
     // Check for operator overload in class types
     auto overload_result = try_operator_overload(operand_type, op_symbol, {make_address_of_expr(operand, loc)}, loc, op_name);
     if (overload_result.has_value()) {
