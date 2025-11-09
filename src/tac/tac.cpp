@@ -56,11 +56,13 @@ TACOperand TACOperand::member_access(const TACOperand &base,
                                      TypePtr member_type)
 {
     TACOperand op;
-    op.kind = base.kind; // Preserve the base kind (SYMBOL or TEMPORARY)
+    op.kind = base.kind;   // Preserve the base kind (SYMBOL or TEMPORARY)
     op.value = base.value; // Preserve the base value (SymbolPtr or string)
     op.type = member_type;
     op.member_name = member;
-    op.member_offset = offset;
+    // Accumulate offset: if base already has an offset (nested member),
+    // add it to the new offset
+    op.member_offset = base.member_offset + offset;
     return op;
 }
 
