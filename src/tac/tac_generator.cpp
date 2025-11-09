@@ -794,19 +794,21 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
         // Handle pointer dereference for -> operator
         if (member->op == Operator::MEMBER_ACCESS_PTR) {
-            auto deref_temp = new_temp(base_type);
-            auto deref_result = TACOperand::temporary(deref_temp, base_type);
+            // Get pointed-to type first - use pointee member of PointerType
+            TypePtr pointee_type = base_type;
+            if (base_type->kind == TypeKind::POINTER) {
+                auto ptr_type =
+                    std::static_pointer_cast<PointerType>(base_type);
+                pointee_type = ptr_type->pointee.type;
+            }
+            
+            auto deref_temp = new_temp(pointee_type);
+            auto deref_result = TACOperand::temporary(deref_temp, pointee_type);
             emit(std::make_shared<TACInstruction>(TACOpcode::DEREF,
                                                   deref_result,
                                                   base));
             base = deref_result;
-
-            // Get pointed-to type - use pointee member of PointerType
-            if (base_type->kind == TypeKind::POINTER) {
-                auto ptr_type =
-                    std::static_pointer_cast<PointerType>(base_type);
-                base_type = ptr_type->pointee.type;
-            }
+            base_type = pointee_type;
         }
 
         // Handle compound assignment operators
