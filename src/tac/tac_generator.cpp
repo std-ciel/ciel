@@ -325,16 +325,15 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
     }
 
     case ASTNodeType::MEMBER_EXPR: {
-        auto member = std::static_pointer_cast<MemberExpr>(node);
+        const auto member = std::static_pointer_cast<MemberExpr>(node);
         auto base = generate_expression(member->object);
 
-        // Get base type from expression
-        auto base_type_result = get_expression_type(member->object);
+        const auto base_type_result = get_expression_type(member->object);
         if (!base_type_result.is_ok()) {
             record_error("Cannot determine base type for member access");
-            return TACOperand(); // Return empty operand on error
+            return TACOperand();
         }
-        TypePtr base_type = base_type_result.value();
+        auto base_type = strip_typedefs(base_type_result.value());
 
         // Handle pointer member access (ptr->member)
         if (member->op == Operator::MEMBER_ACCESS_PTR) {
@@ -342,9 +341,13 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
             if (base_type->kind == TypeKind::POINTER) {
                 auto ptr_type =
                     std::static_pointer_cast<PointerType>(base_type);
-                pointee_type = ptr_type->pointee.type;
+                pointee_type = strip_typedefs(ptr_type->pointee.type);
             }
             base_type = pointee_type;
+        }
+
+        if (base.type) {
+            base_type = strip_typedefs(base.type);
         }
 
         return generate_member_access(base, member->member_name, base_type);
