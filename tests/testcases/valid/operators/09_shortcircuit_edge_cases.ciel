@@ -1,0 +1,136 @@
+// Test short-circuiting edge cases
+// ALL tests must evaluate expressions DIRECTLY in control flow (if/while/for)
+
+int global_counter = 0;
+
+bool side_effect() {
+    global_counter = global_counter + 1;
+    return true;
+}
+
+bool side_effect_false() {
+    global_counter = global_counter + 1;
+    return false;
+}
+
+void reset_counter() {
+    global_counter = 0;
+}
+
+int main() {
+    // Test 1: Multiple ANDs - false && side_effect() && side_effect()
+    reset_counter();
+    if (false && side_effect() && side_effect()) {
+        return 1;
+    } else {
+        if (global_counter != 0) return 2;
+    }
+
+    // Test 2: Multiple ORs - true || side_effect() || side_effect()
+    reset_counter();
+    if (true || side_effect() || side_effect()) {
+        if (global_counter != 0) return 3;
+    } else return 4;
+
+    // Test 3: Chain of ANDs where first succeeds
+    reset_counter();
+    if (side_effect() && side_effect() && side_effect()) {
+        if (global_counter != 3) return 5;
+    } else return 6;
+
+    // Test 4: Chain of ORs where all are checked
+    reset_counter();
+    if (side_effect_false() || side_effect_false() || side_effect()) {
+        if (global_counter != 3) return 7;
+    } else return 8;
+
+    // Test 5: While loop with short-circuit condition
+    reset_counter();
+    int count = 0;
+    while (count < 3 && side_effect()) {
+        count = count + 1;
+    }
+    if (global_counter != 3) return 9;
+    if (count != 3) return 10;
+
+    // Test 6: While loop - condition becomes false, stops calling
+    reset_counter();
+    count = 0;
+    while (count < 5 || side_effect()) {
+        count = count + 1;
+        if (count >= 5) {
+            break;
+        }
+    }
+    if (global_counter != 0) return 11;  // OR short-circuits because count < 5 is true
+
+    // Test 7: For loop with short-circuit in condition
+    reset_counter();
+    int i = 0;
+    for (i = 0; i < 3 && side_effect(); i = i + 1) {
+        // Loop body
+    }
+    if (global_counter != 3) return 12;
+
+    // Test 8: For loop with OR - side_effect not called if first is true
+    reset_counter();
+    for (i = 0; i < 10 || side_effect(); i = i + 1) {
+        if (i >= 5) break;
+    }
+    if (global_counter != 0) return 13;
+
+    // Test 9: Nested if with short-circuit
+    reset_counter();
+    if (side_effect()) {
+        if (false && side_effect()) {
+            return 14;
+        }
+        if (global_counter != 1) return 15;  // Only outer if's side_effect called
+    } else return 16;
+
+    // Test 10: Short-circuit with comparisons
+    reset_counter();
+    int x = 10;
+    if (x > 5 && side_effect()) {
+        if (global_counter != 1) return 17;
+    } else return 18;
+
+    // Test 11: Short-circuit with comparisons - first false
+    reset_counter();
+    if (x < 5 && side_effect()) {
+        return 19;
+    } else {
+        if (global_counter != 0) return 20;
+    }
+
+    // Test 12: Complex nesting with short-circuit
+    reset_counter();
+    if ((false && side_effect()) || (true && side_effect())) {
+        if (global_counter != 1) return 21;
+    } else return 22;
+
+    // Test 13: All conditions true in nested expression
+    reset_counter();
+    if ((side_effect() && side_effect()) && (side_effect() && side_effect())) {
+        if (global_counter != 4) return 23;
+    } else return 24;
+
+    // Test 14: Pointer check with short-circuit
+    reset_counter();
+    int* ptr = (int*)0;
+    if (ptr != (int*)0 && side_effect()) {
+        return 25;
+    } else {
+        if (global_counter != 0) return 26;
+    }
+
+    // Test 15: Pointer check - valid pointer
+    reset_counter();
+    int value = 100;
+    ptr = &value;
+    if (ptr != (int*)0 && side_effect()) {
+        if (global_counter != 1) return 27;
+    } else return 28;
+
+    return 0;
+}

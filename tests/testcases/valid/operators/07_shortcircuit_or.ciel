@@ -1,0 +1,329 @@
+// Test short-circuiting behavior of logical OR (||) operator
+// The right operand should NOT be evaluated if the left operand is true
+
+int global_counter = 0;
+
+// Helper function that has side effects (increments counter)
+bool increment_and_return(bool value) {
+    global_counter = global_counter + 1;
+    return value;
+}
+
+// Helper function that always returns true with side effect
+bool always_true() {
+    global_counter = global_counter + 1;
+    return true;
+}
+
+// Helper function that always returns false with side effect
+bool always_false() {
+    global_counter = global_counter + 1;
+    return false;
+}
+
+// Division by zero would crash if evaluated
+int divide(int a, int b) {
+    return a / b;
+}
+
+int main() {
+    int x = 10;
+    int y = 0;
+
+    // Test 1: Basic short-circuit in if - true || anything
+    // Right side should NOT be evaluated
+    global_counter = 0;
+    if (true || increment_and_return(false)) {
+        // Should execute
+    } else {
+        return 1;
+    }
+    if (global_counter != 0) return 2;  // Right side not evaluated
+
+    // Test 2: Basic short-circuit in if - true || (complex expression)
+    global_counter = 0;
+    if (true || (increment_and_return(true) && increment_and_return(false))) {
+        // Should execute
+    } else {
+        return 3;
+    }
+    if (global_counter != 0) return 4;  // Right side not evaluated
+
+    // Test 3: No short-circuit in if - false || true
+    // Right side SHOULD be evaluated
+    global_counter = 0;
+    if (false || increment_and_return(true)) {
+        // Should execute
+    } else {
+        return 5;
+    }
+    if (global_counter != 1) return 6;  // Right side WAS evaluated
+
+    // Test 4: No short-circuit in if - false || false
+    global_counter = 0;
+    if (false || increment_and_return(false)) {
+        return 7;  // Should not execute
+    }
+    if (global_counter != 1) return 8;  // Right side WAS evaluated
+
+    // Test 5: Short-circuit with expression - (true expression) || anything
+    global_counter = 0;
+    if ((x > 5) || increment_and_return(true)) {
+        // Should execute
+    } else {
+        return 9;
+    }
+    if (global_counter != 0) return 10;  // Right side not evaluated
+
+    // Test 6: No short-circuit with expression - (false expression) || true
+    global_counter = 0;
+    if ((x < 5) || increment_and_return(true)) {
+        // Should execute
+    } else {
+        return 11;
+    }
+    if (global_counter != 1) return 12;  // Right side WAS evaluated
+
+    // Test 7: Chained OR with short-circuit on first true
+    global_counter = 0;
+    if (true || always_false() || always_false()) {
+        // Should execute
+    } else {
+        return 13;
+    }
+    if (global_counter != 0) return 14;  // Neither right side evaluated
+
+    // Test 8: Chained OR with short-circuit on second true
+    global_counter = 0;
+    if (always_false() || true || always_false()) {
+        // Should execute
+    } else {
+        return 15;
+    }
+    if (global_counter != 1) return 16;  // Only first evaluated
+
+    // Test 9: Chained OR with all false - no short-circuit
+    global_counter = 0;
+    if (always_false() || always_false() || always_false()) {
+        return 17;  // Should not execute
+    }
+    if (global_counter != 3) return 18;  // All three evaluated
+
+    // Test 10: Short-circuit prevents division by zero in if
+    // If short-circuit works, this won't crash
+    if ((y == 0) || (divide(x, y) > 0)) {
+        // Should execute (first part is true)
+    } else {
+        return 19;
+    }
+
+    // Test 11: No short-circuit requires division in if
+    int z = 5;
+    if ((z == 0) || (divide(x, z) > 0)) {
+        // Should execute (second part is true)
+    } else {
+        return 20;
+    }
+
+    // Test 12: Complex nested expression with short-circuit in if
+    global_counter = 0;
+    if ((x > 5) || ((always_false() && always_false()) || always_true())) {
+        // Should execute
+    } else {
+        return 21;
+    }
+    if (global_counter != 0) return 22;  // Entire right side not evaluated
+
+    // Test 13: Complex nested expression without short-circuit in if
+    global_counter = 0;
+    if ((x < 5) || ((always_true() && always_false()) || always_true())) {
+        // Should execute
+    } else {
+        return 23;
+    }
+    if (global_counter != 3) return 24;  // All three calls evaluated
+
+    // Test 14: Short-circuit with function calls in left operand
+    global_counter = 0;
+    if (always_true() || always_false()) {
+        // Should execute
+    } else {
+        return 25;
+    }
+    if (global_counter != 1) return 26;  // Only left side evaluated
+
+    // Test 15: Multiple short-circuits in sequence (separate ifs)
+    global_counter = 0;
+    if (true || always_false()) {
+        // Execute
+    }
+    if (true || always_false()) {
+        // Execute
+    }
+    if (true || always_false()) {
+        // Execute
+    }
+    if (global_counter != 0) return 27;  // No right sides evaluated
+
+    // Test 16: Short-circuit with pointer check (null pointer guard)
+    int* ptr = (int*)0;  // NULL pointer
+    if ((ptr == (int*)0) || (*ptr == 10)) {
+        // Should execute (first part is true, and should not crash)
+    } else {
+        return 28;
+    }
+
+    // Test 17: No short-circuit with valid pointer
+    int value = 42;
+    ptr = &value;
+    if ((ptr == (int*)0) || (*ptr == 42)) {
+        // Should execute (second part is true)
+    } else {
+        return 29;
+    }
+
+    // Test 18: Short-circuit in while loop condition
+    global_counter = 0;
+    int count = 0;
+    while (true || always_false()) {
+        count = count + 1;
+        if (count == 3) {
+            break;
+        }
+    }
+    if (global_counter != 0) return 30;  // always_false never called
+
+    // Test 19: No short-circuit in while statement
+    global_counter = 0;
+    count = 0;
+    while (false || always_true()) {
+        count = count + 1;
+        if (count == 3) {
+            break;
+        }
+    }
+    if (global_counter != 3) return 31;  // always_true called 3 times
+
+    // Test 20: Short-circuit in while loop with changing condition
+    global_counter = 0;
+    count = 0;
+    while (count < 3 || always_false()) {
+        count = count + 1;
+    }
+    // Loop: count=0,1,2 → left true, short-circuits (3 iterations)
+    // Final check: count=3 → left false, evaluates right (1 call to always_false)
+    if (global_counter != 1) return 32;  // Right side evaluated once on final check
+
+    // Test 21: Ternary with short-circuit in condition
+    global_counter = 0;
+    int ternary_result = (true || always_false()) ? 1 : 2;
+    if (ternary_result != 1) return 33;
+    if (global_counter != 0) return 34;
+
+    // Test 22: Multiple levels of nesting with short-circuit in if
+    global_counter = 0;
+    if (true || (false || (false || (false || always_false())))) {
+        // Should execute
+    } else {
+        return 35;
+    }
+    if (global_counter != 0) return 36;
+
+    // Test 23: Multiple levels of nesting without short-circuit in if
+    global_counter = 0;
+    if (false || (false || (false || (false || always_true())))) {
+        // Should execute
+    } else {
+        return 37;
+    }
+    if (global_counter != 1) return 38;
+
+    // Test 24: Short-circuit with range validation (out of bounds)
+    int arr[5];
+    arr[0] = 1;
+    arr[1] = 2;
+    arr[2] = 3;
+    arr[3] = 4;
+    arr[4] = 5;
+    int idx = -1;
+    if ((idx < 0 || idx >= 5) || (arr[idx] > 0)) {
+        // Should execute (first part true, and should not crash)
+    } else {
+        return 39;
+    }
+
+    // Test 25: No short-circuit - valid array access
+    idx = 2;
+    if ((idx < 0 || idx >= 5) || (arr[idx] > 0)) {
+        // Should execute (third part is true)
+    } else {
+        return 40;
+    }
+
+    // Test 26: Short-circuit in else-if chain
+    global_counter = 0;
+    if (true || always_false()) {
+        // Should execute
+    } else if (true || always_false()) {
+        return 41;
+    } else {
+        return 42;
+    }
+    if (global_counter != 0) return 43;  // No always_false called
+
+    // Test 27: Nested if with short-circuit
+    global_counter = 0;
+    if (x > 5) {
+        if (true || always_false()) {
+            // Should execute
+        } else {
+            return 44;
+        }
+    }
+    if (global_counter != 0) return 45;
+
+    // Test 28: Interaction with AND operator
+    global_counter = 0;
+    if ((x < 5 || always_true()) && always_false()) {
+        return 46;  // Should not execute
+    }
+    if (global_counter != 2) return 47;  // always_true and always_false called
+
+    // Test 29: For loop with short-circuit in condition
+    global_counter = 0;
+    for (int i = 0; true || always_false(); i = i + 1) {
+        if (i >= 3) {
+            break;
+        }
+    }
+    if (global_counter != 0) return 48;  // always_false never called
+
+    // Test 30: For loop with no short-circuit
+    global_counter = 0;
+    for (int i = 0; false || always_true(); i = i + 1) {
+        if (i >= 3) {
+            break;
+        }
+    }
+    if (global_counter != 4) return 49;  // always_true called 4 times (before each of 4 loop iterations)
+
+    // Test 31: Verify true short-circuits even with false after
+    global_counter = 0;
+    if (always_true() || always_false() || always_false()) {
+        // Should execute
+    } else {
+        return 50;
+    }
+    if (global_counter != 1) return 51;  // Only first evaluated
+
+    // Test 32: Complex condition mixing AND and OR
+    global_counter = 0;
+    if ((x > 5) || (x < 0 && always_true())) {
+        // Should execute (first part is true)
+    } else {
+        return 52;
+    }
+    if (global_counter != 0) return 53;  // always_true not called due to short-circuit
+
+    return 0;  // All tests passed
+}
