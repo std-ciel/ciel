@@ -1,0 +1,126 @@
+// Test sizeof operator with comprehensive coverage
+// Tests basic types, pointers, arrays, structs, classes, and variables
+
+struct Point {
+    int x;
+    int y;
+};
+
+struct Rectangle {
+    struct Point top_left;
+    struct Point bottom_right;
+};
+
+struct Node {
+    int data;
+    struct Node* next;
+};
+
+class Vector3D {
+    int x;
+    int y;
+    int z;
+};
+
+class Matrix {
+    int data[9];
+};
+
+int main() {
+    // Basic types
+    int size_int = sizeof(int);
+    int size_char = sizeof(char);
+    int size_float = sizeof(float);
+    int size_bool = sizeof(bool);
+    
+    // Pointer types
+    int size_int_ptr = sizeof(int*);
+    int size_char_ptr = sizeof(char*);
+    int size_void_ptr = sizeof(void*);
+    int size_struct_ptr = sizeof(struct Point*);
+    
+    // Array types
+    int arr[10];
+    int size_array = sizeof(arr);
+    int elem_count = sizeof(arr) / sizeof(int);
+    
+    // Struct types
+    int size_point = sizeof(struct Point);
+    int size_rect = sizeof(struct Rectangle);
+    int size_node = sizeof(struct Node);
+    
+    // Class types
+    int size_vector = sizeof(class Vector3D);
+    int size_matrix = sizeof(class Matrix);
+    
+    // Variables
+    int x = 42;
+    char c = 'A';
+    float f = 3.14;
+    struct Point p;
+    class Vector3D v;
+    
+    int size_var_int = sizeof(x);
+    int size_var_char = sizeof(c);
+    int size_var_float = sizeof(f);
+    int size_var_struct = sizeof(p);
+    int size_var_class = sizeof(v);
+    
+    // Array variables
+    struct Point points[5];
+    int size_point_array = sizeof(points);
+    int point_count = sizeof(points) / sizeof(struct Point);
+    
+    // Practical use cases
+    int buffer_elem_size = sizeof(int);
+    int buffer_capacity = 100;
+    int buffer_size = buffer_elem_size * buffer_capacity;
+    
+    int struct_elem_size = sizeof(struct Point);
+    int struct_count = 20;
+    int struct_buffer_size = struct_elem_size * struct_count;
+    
+    // Verify correctness with assertions-like returns
+    // On 64-bit architecture:
+    // int = 8, char = 1, float = 8, bool = 1
+    // pointers = 8
+    // Point = 16 (2 * 8)
+    // Rectangle = 32 (2 * 16)
+    // Node = 16 (8 + 8)
+    // Vector3D = 24 (3 * 8)
+    // Matrix = 72 (9 * 8)
+    
+    if (size_int != 8) return 1;
+    if (size_char != 1) return 2;
+    if (size_float != 8) return 3;
+    if (size_bool != 1) return 4;
+    
+    if (size_int_ptr != 8) return 5;
+    if (size_char_ptr != 8) return 6;
+    if (size_void_ptr != 8) return 7;
+    if (size_struct_ptr != 8) return 8;
+    
+    if (size_array != 80) return 9;
+    if (elem_count != 10) return 10;
+    
+    if (size_point != 16) return 11;
+    if (size_rect != 32) return 12;
+    if (size_node != 16) return 13;
+    
+    if (size_vector != 24) return 14;
+    if (size_matrix != 72) return 15;
+    
+    if (size_var_int != 8) return 16;
+    if (size_var_char != 1) return 17;
+    if (size_var_float != 8) return 18;
+    if (size_var_struct != 16) return 19;
+    if (size_var_class != 24) return 20;
+    
+    if (size_point_array != 80) return 21;
+    if (point_count != 5) return 22;
+    
+    if (buffer_size != 800) return 23;
+    if (struct_buffer_size != 320) return 24;
+    
+    return 0;  // All tests passed
+}
