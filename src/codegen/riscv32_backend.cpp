@@ -177,8 +177,6 @@ void InstructionSelector::handle_aggregate_param(SymbolPtr sym,
 {
     aggregate_params_.insert(sym->get_name());
 
-    const auto ptr_vreg = mfn_.get_next_vreg();
-
     if (allocator.int_idx < MAX_INT_REGS) {
         store_param_from_register(allocator.next_int_reg(),
                                   offset,
@@ -1557,7 +1555,16 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
         if (sym->get_storage_class() == StorageClass::AUTO) {
             const int32_t local_offset = get_local_variable_offset(sym);
 
-            if (aggregate_params_.contains(sym->get_name())) {
+            // Check if this is an aggregate parameter or a pointer variable
+            bool is_aggregate_param =
+                aggregate_params_.contains(sym->get_name());
+            bool is_pointer_var = false;
+            auto qual_type = sym->get_type();
+            if (qual_type.type && qual_type.type->kind == TypeKind::POINTER) {
+                is_pointer_var = true;
+            }
+
+            if (is_aggregate_param || is_pointer_var) {
                 const VirtReg ptr = mfn_.get_next_vreg();
                 mfn_.add_instruction(
                     MachineInstr(MachineOpcode::LD)
@@ -1568,6 +1575,7 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
                 if (offset == 0)
                     return ptr;
 
+                // Add the member offset to the loaded pointer
                 mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
                                          .add_def(member_addr)
                                          .add_use(ptr)
@@ -1575,6 +1583,7 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
                                          .add_operand(VRegOperand(ptr))
                                          .add_operand(ImmOperand(offset)));
             } else {
+                // For non-pointer local variables, compute address directly
                 mfn_.add_instruction(
                     MachineInstr(MachineOpcode::ADDI)
                         .add_def(member_addr)
