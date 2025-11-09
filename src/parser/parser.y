@@ -1050,6 +1050,16 @@ static void check_array_bounds(const TypePtr &array_type,
                         QualifiedType(fn, Qualifier::NONE),
                         loc_ret,
                         std::optional<FunctionMeta>{meta});
+
+    // Create FunctionDef node and store it for TAC generation
+    auto sym_opt = symbol_table.lookup_symbol(*mangled);
+    if (sym_opt.has_value() && body) {
+      // Use current_function_parameters which were already looked up when the function body was entered
+      auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), return_type, current_function_parameters, body);
+      parsed_class_methods.push_back(func_def);
+    }
+    // Clear parameters for next function
+    current_function_parameters.clear();
   }
 
   static void handle_constructor_definition(
@@ -1115,17 +1125,12 @@ static void check_array_bounds(const TypePtr &array_type,
     // Create FunctionDef node and store it for TAC generation
     auto sym_opt = symbol_table.lookup_symbol(*mangled);
     if (sym_opt.has_value() && body) {
-      // Convert param_names to SymbolPtr vector
-      std::vector<SymbolPtr> param_symbols;
-      for (const auto& param_name : param_names) {
-        auto param_sym = symbol_table.lookup_symbol(param_name);
-        if (param_sym.has_value()) {
-          param_symbols.push_back(param_sym.value());
-        }
-      }
-      auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, param_symbols, body);
+      // Use current_function_parameters which were already looked up when the function body was entered
+      auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, current_function_parameters, body);
       parsed_class_methods.push_back(func_def);
     }
+    // Clear parameters for next function
+    current_function_parameters.clear();
   }
 
   static void handle_destructor_definition(
@@ -2515,16 +2520,12 @@ primary_expression
       {
         // At this point, an indentifier can be a variable name, function name, or enum name.
 
-        // Variable name case
-        auto sym_opt = symbol_table.lookup_symbol($1);
-        if(sym_opt.has_value()){
-          $$ = std::make_shared<IdentifierExpr>(sym_opt.value(), sym_opt.value()->get_type().type);
-        } else {
-          // Check if we're in a member function and this could be a class member
-          bool found_as_member = false;
-          if (is_in_member_function_of_class() && parser_state.current_class_type) {
-            ClassTypePtr searching_class = parser_state.current_class_type;
-            ClassTypePtr current_class = parser_state.current_class_type;
+        // Check if we're in a member function and this could be a class member FIRST
+        // This takes precedence over regular symbol lookup to ensure members are accessed via 'this'
+        bool found_as_member = false;
+        if (is_in_member_function_of_class() && parser_state.current_class_type) {
+          ClassTypePtr searching_class = parser_state.current_class_type;
+          ClassTypePtr current_class = parser_state.current_class_type;
 
             // Search in current class and base classes
             while (current_class && !found_as_member) {
@@ -2589,7 +2590,12 @@ primary_expression
             }
           }
 
-          if (!found_as_member) {
+        if (!found_as_member) {
+          // Variable name case - regular symbol lookup
+          auto sym_opt = symbol_table.lookup_symbol($1);
+          if(sym_opt.has_value()){
+            $$ = std::make_shared<IdentifierExpr>(sym_opt.value(), sym_opt.value()->get_type().type);
+          } else {
             auto enum_opt = type_factory.lookup_by_scope("enum " + $1, symbol_table.get_scope_chain());
 
             if (enum_opt.has_value()) {
@@ -4032,10 +4038,19 @@ declaration
                 // Look up the symbol that was just added
                 auto sym = symbol_table.lookup_symbol(di.name);
                 if (sym.has_value()) {
-                  // Create an assignment expression: var = initializer
-                  auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym.value()->get_type().type);
-                  auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
-                  auto assign_expr = handle_assignment_operator(id_expr,
+                  auto sym_type = sym.value()->get_type().type;
+
+                  // For class types, if the initializer is a constructor call,
+                  // add it directly without wrapping in an assignment
+                  if (is_class_type(sym_type)) {
+                    // The initializer should already be a constructor CallExpr
+                    // that takes 'this' as the first argument
+                    init_stmts.push_back(di.initializer);
+                  } else {
+                    // For non-class types, create an assignment expression: var = initializer
+                    auto id_expr = std::make_shared<IdentifierExpr>(sym.value(), sym_type);
+                    auto is_static = (sym.value()->get_storage_class() == StorageClass::STATIC);
+                    auto assign_expr = handle_assignment_operator(id_expr,
                                                                 di.initializer,
                                                                 @2,
                                                                 @2,
@@ -4043,7 +4058,8 @@ declaration
                                                                 Operator::ASSIGN,
                                                                 is_static ? "static variable initialization" : "variable initialization",
                                                                 is_static);
-                  init_stmts.push_back(assign_expr);
+                    init_stmts.push_back(assign_expr);
+                  }
                 }
               }
             }
@@ -6412,17 +6428,12 @@ function_declaration_or_definition
               // Create FunctionDef node and store it for TAC generation
               auto sym_opt = symbol_table.lookup_symbol(*mangled);
               if (sym_opt.has_value() && $4) {
-                // Convert param_names to SymbolPtr vector
-                std::vector<SymbolPtr> param_symbols;
-                for (const auto& param_name : di.param_names) {
-                  auto param_sym = symbol_table.lookup_symbol(param_name);
-                  if (param_sym.has_value()) {
-                    param_symbols.push_back(param_sym.value());
-                  }
-                }
-                auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, param_symbols, $4);
+                // Use current_function_parameters which were already looked up when the function body was entered
+                auto func_def = std::make_shared<FunctionDef>(sym_opt.value(), ret, current_function_parameters, $4);
                 parsed_class_methods.push_back(func_def);
               }
+              // Clear parameters for next function
+              current_function_parameters.clear();
             }
           } else {
             QualifiedType final_t = ret;
