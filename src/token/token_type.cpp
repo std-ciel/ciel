@@ -37,7 +37,8 @@ static const std::unordered_map<std::string, TokenType> keyword_map = {
     {"operator", TokenType::OPERATOR},
     {"new", TokenType::NEW},
     {"delete", TokenType::DELETE},
-    {"this", TokenType::THIS}};
+    {"this", TokenType::THIS},
+    {"sizeof", TokenType::SIZEOF}};
 
 static const std::unordered_map<std::string, TokenType> operator_map = {
 
@@ -140,6 +141,7 @@ static const std::unordered_map<TokenType, std::string> token_to_string_map = {
     {TokenType::NEW, "new"},
     {TokenType::DELETE, "delete"},
     {TokenType::THIS, "this"},
+    {TokenType::SIZEOF, "sizeof"},
     {TokenType::ARROW_OP, "arrow_op"},
     {TokenType::DOT_OP, "dot_op"},
     {TokenType::QUESTION_OP, "question_op"},

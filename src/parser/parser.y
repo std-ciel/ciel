@@ -88,6 +88,7 @@
     std::vector<ContextKind> ctx_stack = {ContextKind::GLOBAL};
     Access current_access = Access::PRIVATE;
     QualifiedType current_decl_base_type;
+    QualifiedType saved_decl_base_type;  // Used to save the base type before parsing initializers
     std::vector<Qualifier> current_decl_qualifiers;
 	  Access inherited_access = Access::PRIVATE;
 	  ClassTypePtr parent_class_type = nullptr;
@@ -2325,7 +2326,7 @@ static void check_array_bounds(const TypePtr &array_type,
 %token TYPEDEF STATIC CONST VOLATILE
 %token ENUM STRUCT UNION CLASS
 %token RETURN IF ELSE SWITCH CASE DEFAULT FOR WHILE DO GOTO CONTINUE BREAK UNTIL
-%token NEW DELETE THIS
+%token NEW DELETE THIS SIZEOF
 %token PUBLIC PRIVATE PROTECTED
 
 %token <std::string> TYPE_NAME
@@ -3516,6 +3517,30 @@ unary_expression
           }
         }
       }
+    | SIZEOF unary_expression
+      {
+        TypePtr operand_type = get_expression_type($2, @2, "sizeof operand");
+        if (!operand_type) {
+          parser_add_error(@1.begin.line, @1.begin.column,
+                          "cannot determine type of sizeof operand");
+          $$ = nullptr;
+        } else {
+          TypePtr result_type = require_builtin("int", @1, "sizeof expression");
+          $$ = std::make_shared<SizeofExpr>(operand_type, result_type);
+        }
+      }
+    | SIZEOF OPEN_PAREN_OP type_name CLOSE_PAREN_OP
+      {
+        TypePtr target_type = $3;
+        if (!target_type) {
+          parser_add_error(@1.begin.line, @1.begin.column,
+                          "invalid type in sizeof");
+          $$ = nullptr;
+        } else {
+          TypePtr result_type = require_builtin("int", @1, "sizeof expression");
+          $$ = std::make_shared<SizeofExpr>(target_type, result_type);
+        }
+      }
     | OPEN_PAREN_OP type_name CLOSE_PAREN_OP cast_expression
       {
         TypePtr target_type = $2;
@@ -4160,12 +4185,14 @@ init_declarator_list
     ;
 
 init_declarator
-    : declarator ASSIGN_OP initializer
+    : declarator ASSIGN_OP {
+        parser_state.saved_decl_base_type = parser_state.current_decl_base_type;
+      } initializer
       {
         $$ = $1;
-        $$.initializer = $3;  // Store the initializer expression
+        $$.initializer = $4;
         const DeclaratorInfo &di = $1;
-        QualifiedType base = parser_state.current_decl_base_type;
+        QualifiedType base = parser_state.saved_decl_base_type;
         if (base.type) {
           // Functions cannot have initializers in declarations
           if (di.is_function) {

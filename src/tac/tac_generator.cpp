@@ -324,6 +324,19 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
         return result;
     }
 
+    case ASTNodeType::SIZEOF_EXPR: {
+        auto sizeof_expr = std::static_pointer_cast<SizeofExpr>(node);
+        TypePtr operand_type = sizeof_expr->operand_type;
+
+        // Compute the size using the layout information
+        TypePtr canonical = strip_typedefs(operand_type);
+        size_t type_size = compute_type_size(canonical);
+
+        // Return as a constant
+        return TACOperand::constant_int(static_cast<int64_t>(type_size),
+                                        sizeof_expr->expr_type);
+    }
+
     case ASTNodeType::MEMBER_EXPR: {
         const auto member = std::static_pointer_cast<MemberExpr>(node);
         auto base = generate_expression(member->object);
@@ -1165,7 +1178,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
 
     // Strip typedefs and handle pointer types first
     base_type = strip_typedefs(base_type);
-    
+
     // If base_type is a pointer, get the pointee type
     if (base_type && base_type->kind == TypeKind::POINTER) {
         auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
@@ -1314,7 +1327,7 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
 
     // Strip typedefs and handle pointer types first
     base_type = strip_typedefs(base_type);
-    
+
     // If base_type is a pointer, get the pointee type
     if (base_type && base_type->kind == TypeKind::POINTER) {
         auto ptr_type = std::static_pointer_cast<PointerType>(base_type);

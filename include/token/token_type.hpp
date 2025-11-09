@@ -46,6 +46,7 @@ enum class TokenType {
     NEW,
     DELETE,
     THIS,
+    SIZEOF,
 
     ARROW_OP,
     DOT_OP,

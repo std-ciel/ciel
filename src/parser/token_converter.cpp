@@ -87,6 +87,8 @@ int to_bison_token(TokenType t)
         return Token::DELETE;
     case TokenType::THIS:
         return Token::THIS;
+    case TokenType::SIZEOF:
+        return Token::SIZEOF;
     case TokenType::ARROW_OP:
         return Token::ARROW_OP;
     case TokenType::DOT_OP:

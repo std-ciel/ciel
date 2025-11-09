@@ -70,6 +70,7 @@ enum class Operator {
     MEMBER_ACCESS_PTR,
     SUBSCRIPT_OP,
     COMMA_OP,
+    SIZEOF_OP,
 };
 
 inline const std::unordered_map<Operator, std::pair<std::string, std::string>>
@@ -129,6 +130,7 @@ inline const std::unordered_map<Operator, std::pair<std::string, std::string>>
         {Operator::MEMBER_ACCESS_PTR, {"->", "member access pointer"}},
         {Operator::COMMA_OP, {",", "comma"}},
         {Operator::SUBSCRIPT_OP, {"[]", "subscript"}},
+        {Operator::SIZEOF_OP, {"sizeof", "sizeof"}},
 };
 
 inline std::string get_operator_string(Operator op)
@@ -159,6 +161,7 @@ enum class ASTNodeType {
     CALL_EXPR,
     RET_EXPR,
     CAST_EXPR,
+    SIZEOF_EXPR,
 
     UNARY_EXPR,
     MEMBER_EXPR,
@@ -314,6 +317,20 @@ class CastExpr : public ASTNode {
         expr_type = this->target_type;
     }
     ~CastExpr() override = default;
+};
+
+class SizeofExpr : public ASTNode {
+  public:
+    TypePtr operand_type; // Type to get size of
+    TypePtr expr_type;    // Result type (int)
+    bool is_lvalue = false;
+
+    SizeofExpr(TypePtr operand_type, TypePtr expr_type)
+        : ASTNode(ASTNodeType::SIZEOF_EXPR),
+          operand_type(std::move(operand_type)), expr_type(std::move(expr_type))
+    {
+    }
+    ~SizeofExpr() override = default;
 };
 
 class UnaryExpr : public ASTNode {
@@ -726,6 +743,8 @@ get_expression_type(const ASTNodePtr &node)
         return static_cast<RetExpr *>(node.get())->expr_type;
     case ASTNodeType::CAST_EXPR:
         return static_cast<CastExpr *>(node.get())->expr_type;
+    case ASTNodeType::SIZEOF_EXPR:
+        return static_cast<SizeofExpr *>(node.get())->expr_type;
     case ASTNodeType::UNARY_EXPR:
         return static_cast<UnaryExpr *>(node.get())->expr_type;
     case ASTNodeType::BINARY_EXPR:
@@ -788,6 +807,8 @@ inline bool get_expression_lvalue_status(const ASTNodePtr &node)
         return static_cast<RetExpr *>(node.get())->is_lvalue;
     case ASTNodeType::CAST_EXPR:
         return static_cast<CastExpr *>(node.get())->is_lvalue;
+    case ASTNodeType::SIZEOF_EXPR:
+        return static_cast<SizeofExpr *>(node.get())->is_lvalue;
     case ASTNodeType::UNARY_EXPR:
         return static_cast<UnaryExpr *>(node.get())->is_lvalue;
     case ASTNodeType::BINARY_EXPR:
