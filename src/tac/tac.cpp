@@ -63,6 +63,8 @@ TACOperand TACOperand::member_access(const TACOperand &base,
     // Accumulate offset: if base already has an offset (nested member),
     // add it to the new offset
     op.member_offset = base.member_offset + offset;
+    // Store the base type for codegen (type of base object, not member)
+    op.base_type = base.type ? base.type : base.base_type;
     return op;
 }
 

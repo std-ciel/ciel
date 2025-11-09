@@ -100,8 +100,12 @@ struct TACOperand {
     // NEW: Additional fields for struct member access
     std::string member_name; // For member access operations
     size_t member_offset;    // Byte offset of member in struct
+    TypePtr base_type;       // Type of base object for member access
 
-    TACOperand() : kind(Kind::NONE), type(nullptr), member_offset(0) {}
+    TACOperand()
+        : kind(Kind::NONE), type(nullptr), member_offset(0), base_type(nullptr)
+    {
+    }
 
     static TACOperand symbol(SymbolPtr sym, TypePtr t = nullptr);
     static TACOperand temporary(const std::string &name, TypePtr t);

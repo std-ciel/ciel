@@ -1463,54 +1463,72 @@ void TACGenerator::generate_designated_member_store(
         return;
     }
 
-    // Navigate through the member path to find the final member to store
+    // For designated initializers, we need to compute the address directly
+    // by accumulating offsets, rather than loading intermediate aggregate
+    // members
     TACOperand current_object = base_object;
     TypePtr current_type = base_type;
+    size_t accumulated_offset = 0;
 
-    // For all but the last member in the path, we need to access nested members
+    // Navigate through the member path, accumulating offsets
     for (size_t i = 0; i < member_path.size() - 1; ++i) {
         const std::string &member = member_path[i];
 
-        // Get the nested member as an intermediate value
-        auto intermediate_temp = new_temp(nullptr);
-        auto intermediate = TACOperand::temporary(intermediate_temp, nullptr);
-
-        // Get member type
+        // Get member type and offset
         auto record_type = std::static_pointer_cast<RecordType>(current_type);
         if (!record_type) {
             record_error("Cannot access member on non-struct type");
-            return; // Return early on error
+            return;
         }
 
         TypePtr member_type = get_member_type(record_type, member);
         if (!member_type) {
             record_error("Member '" + member + "' not found");
-            return; // Return early on error
+            return;
         }
 
-        // Load the intermediate member
         auto offset_opt = get_member_offset(record_type, member);
-        size_t offset = 0;
+        size_t member_offset = 0;
         if (!record_type->is_union && offset_opt.has_value()) {
-            offset = offset_opt.value();
+            member_offset = offset_opt.value();
         }
 
-        TACOperand member_op = TACOperand::member_access(current_object,
-                                                         member,
-                                                         offset,
-                                                         member_type);
-
-        auto instr = std::make_shared<TACInstruction>(TACOpcode::LOAD_MEMBER,
-                                                      intermediate,
-                                                      member_op);
-        emit(instr);
-
-        current_object = intermediate;
+        accumulated_offset += member_offset;
         current_type = member_type;
     }
 
+    // Now handle the final member with accumulated offset
     const std::string &final_member = member_path.back();
-    generate_member_store(current_object, final_member, current_type, value);
+
+    // Create a member access with the accumulated offset
+    auto record_type = std::static_pointer_cast<RecordType>(current_type);
+    if (!record_type) {
+        record_error("Cannot access member on non-struct type");
+        return;
+    }
+
+    auto offset_opt = get_member_offset(record_type, final_member);
+    size_t final_offset = 0;
+    if (!record_type->is_union && offset_opt.has_value()) {
+        final_offset = offset_opt.value();
+    }
+
+    accumulated_offset += final_offset;
+
+    // Create a member access operand with the full offset from base
+    TypePtr final_member_type = get_member_type(record_type, final_member);
+    TACOperand target_member = TACOperand::member_access(base_object,
+                                                         final_member,
+                                                         accumulated_offset,
+                                                         final_member_type);
+
+    // Store directly to the final member
+    auto instr = std::make_shared<TACInstruction>(TACOpcode::STORE_MEMBER,
+                                                  target_member,
+                                                  value);
+    instr->comment = "Store to " + base_object.to_string() + " at offset " +
+                     std::to_string(accumulated_offset);
+    emit(instr);
 }
 
 void TACGenerator::generate_function(std::shared_ptr<FunctionDef> func_def)
