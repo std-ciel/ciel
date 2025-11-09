@@ -35,15 +35,6 @@ int main() {
     int* pp0 = pp[0];
     int* pp1 = pp[1];
 
-    // Character pointer array access
-    char* str;
-    str[0] = 'H';
-    str[1] = 'i';
-    str[2] = '\0';
-
-    char c0 = str[0];
-    char c1 = str[1];
-
     // Array of character pointers
     char* strings[5];
     strings[0] = (char *)0;
