@@ -1163,6 +1163,15 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
     size_t offset = 0;
     TypePtr member_type = nullptr;
 
+    // Strip typedefs and handle pointer types first
+    base_type = strip_typedefs(base_type);
+    
+    // If base_type is a pointer, get the pointee type
+    if (base_type && base_type->kind == TypeKind::POINTER) {
+        auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
+        base_type = strip_typedefs(ptr_type->pointee.type);
+    }
+
     // Handle struct/union types
     if (base_type->kind == TypeKind::RECORD) {
         auto record_type = std::static_pointer_cast<RecordType>(base_type);
@@ -1302,6 +1311,15 @@ void TACGenerator::generate_member_store(const TACOperand &base_object,
 {
     size_t offset = 0;
     TypePtr member_type = nullptr;
+
+    // Strip typedefs and handle pointer types first
+    base_type = strip_typedefs(base_type);
+    
+    // If base_type is a pointer, get the pointee type
+    if (base_type && base_type->kind == TypeKind::POINTER) {
+        auto ptr_type = std::static_pointer_cast<PointerType>(base_type);
+        base_type = strip_typedefs(ptr_type->pointee.type);
+    }
 
     // Handle struct/union types
     if (base_type->kind == TypeKind::RECORD) {
