@@ -7,3 +7,7 @@ class Container {
     private:
         struct ForwardDeclaredStruct member;
 };
+
+int main(){
+    return 0;
+}

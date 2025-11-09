@@ -4,3 +4,7 @@
 struct ForwardDeclaredStruct;
 
 void process(struct ForwardDeclaredStruct param);
+
+int main(){
+    return 0;
+}

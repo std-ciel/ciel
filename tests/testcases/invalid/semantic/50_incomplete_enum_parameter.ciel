@@ -4,3 +4,7 @@
 enum ForwardDeclaredEnum;
 
 void process(enum ForwardDeclaredEnum value);
+
+int main(){
+    return 0;
+}

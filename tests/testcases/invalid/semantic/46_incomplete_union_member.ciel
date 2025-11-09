@@ -7,3 +7,7 @@ union Container {
     struct ForwardDeclaredStruct member;
     int alternative;
 };
+
+int main(){
+    return 0;
+}

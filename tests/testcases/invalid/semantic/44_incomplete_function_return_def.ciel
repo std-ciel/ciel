@@ -5,3 +5,7 @@ struct ForwardDeclaredStruct;
 
 struct ForwardDeclaredStruct makeObject() {
 }
+
+int main(){
+    return 0;
+}

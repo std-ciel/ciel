@@ -6,3 +6,7 @@ class ForwardDeclaredClass;
 class Derived : public ForwardDeclaredClass {
     int member;
 };
+
+int main(){
+    return 0;
+}
