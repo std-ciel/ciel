@@ -2,8 +2,6 @@ int printf(char* fmt, ...);
 int scanf(char* fmt, ...);
 int putchar(int c);
 int getchar();
-int puts(char* s);
-char* gets(char* s);
 
 void* malloc(unsigned size);
 void free(void* ptr);
@@ -24,9 +22,6 @@ int read(int fd, void* buf, int count);
 int write(int fd, void* buf, int count);
 int close(int fd);
 
-int atoi(char* str);
-float atof(char* str);
-
 void exit(int status);
 
 int main() {
@@ -38,9 +33,6 @@ int main() {
 
     // Test printf with various argument counts
     printf("  Testing printf (variadic): %s %d %c\n", "Hello", 42, 65);
-
-    // Test puts
-    puts("  Testing puts: simple string output");
 
     // Test putchar - spell out "  OK\n"
     putchar(32);  // space
@@ -145,13 +137,6 @@ int main() {
     // ========================================================================
     printf("┌─ Test 5: Conversion Functions ──────────────────────────────┐\n");
 
-    char* num_str = "12345";
-    int converted_int = atoi(num_str);
-    printf("  atoi(\"%s\"): %d\n", num_str, converted_int);
-
-    char* float_str = "3.14159";
-    float converted_float = atof(float_str);
-    printf("  atof(\"%s\"): (float conversion)\n", float_str);
 
     printf("└──────────────────────────────────────────────────────────────┘\n\n");
 
@@ -200,7 +185,6 @@ int main() {
     printf("║    • Memory: malloc, free, calloc, realloc                   ║\n");
     printf("║    • String: strlen, strcmp, strcpy, strcat                  ║\n");
     printf("║    • Memory ops: memcpy, memset, memcmp                      ║\n");
-    printf("║    • Conversion: atoi, atof                                  ║\n");
     printf("║                                                              ║\n");
     printf("║  Features demonstrated:                                      ║\n");
     printf("║    ✓ Variadic functions (printf, scanf, open)                ║\n");
