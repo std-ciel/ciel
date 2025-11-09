@@ -123,39 +123,132 @@ InstructionSelector::InstructionSelector(MachineFunction &mfn,
 {
 }
 
+void InstructionSelector::store_param_from_register(PhysReg source_reg,
+                                                    int32_t stack_offset,
+                                                    MachineOpcode store_op)
+{
+    mfn_.add_instruction(
+        MachineInstr(store_op)
+            .add_operand(RegOperand(source_reg))
+            .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
+}
+
+void InstructionSelector::store_param_from_stack(int32_t source_stack_offset,
+                                                 int32_t dest_stack_offset,
+                                                 MachineOpcode load_op,
+                                                 MachineOpcode store_op)
+{
+    const auto tmp = mfn_.get_next_vreg();
+    mfn_.add_instruction(
+        MachineInstr(load_op)
+            .add_def(tmp)
+            .add_operand(VRegOperand(tmp))
+            .add_operand(MemOperand(PhysReg::S0_FP, source_stack_offset)));
+    mfn_.add_instruction(
+        MachineInstr(store_op)
+            .add_use(tmp)
+            .add_operand(VRegOperand(tmp))
+            .add_operand(MemOperand(PhysReg::S0_FP, dest_stack_offset)));
+}
+
+void InstructionSelector::handle_implicit_this_param(const TACOperand &param,
+                                                     ParamAllocator &allocator)
+{
+    const auto temp_name = std::get<std::string>(param.value);
+    const auto offset =
+        mfn_.get_frame().allocate_slot(POINTER_SIZE, POINTER_SIZE);
+    temp_to_offset_[temp_name] = offset;
+
+    if (allocator.int_idx < MAX_INT_REGS) {
+        store_param_from_register(allocator.next_int_reg(),
+                                  offset,
+                                  MachineOpcode::SD);
+    } else {
+        store_param_from_stack(allocator.next_stack_offset(),
+                               offset,
+                               MachineOpcode::LD,
+                               MachineOpcode::SD);
+    }
+}
+
+void InstructionSelector::handle_aggregate_param(SymbolPtr sym,
+                                                 int32_t offset,
+                                                 ParamAllocator &allocator)
+{
+    aggregate_params_.insert(sym->get_name());
+
+    const auto ptr_vreg = mfn_.get_next_vreg();
+
+    if (allocator.int_idx < MAX_INT_REGS) {
+        store_param_from_register(allocator.next_int_reg(),
+                                  offset,
+                                  MachineOpcode::SD);
+    } else {
+        store_param_from_stack(allocator.next_stack_offset(),
+                               offset,
+                               MachineOpcode::LD,
+                               MachineOpcode::SD);
+    }
+}
+
+void InstructionSelector::handle_regular_param(const TACOperand &param,
+                                               SymbolPtr sym,
+                                               int32_t offset,
+                                               ParamAllocator &allocator)
+{
+    const auto is_float = param.type && is_float_type(param.type);
+    const auto tmp = mfn_.get_next_vreg();
+
+    if (is_float) {
+        float_vregs_.insert(tmp);
+    }
+
+    const auto in_int_reg = !is_float && allocator.int_idx < MAX_INT_REGS;
+    const auto in_float_reg = is_float && allocator.float_idx < MAX_FLOAT_REGS;
+
+    if (in_int_reg) {
+        const auto store_op = get_store_opcode(param.type, false);
+        store_param_from_register(allocator.next_int_reg(), offset, store_op);
+    } else if (in_float_reg) {
+        store_param_from_register(allocator.next_float_reg(),
+                                  offset,
+                                  MachineOpcode::FSD);
+    } else {
+        const auto stack_offset = allocator.next_stack_offset();
+        const auto load_op = get_load_opcode(param.type, is_float);
+        const auto store_op = get_store_opcode(param.type, is_float);
+
+        mfn_.add_instruction(
+            MachineInstr(load_op)
+                .add_def(tmp)
+                .add_operand(VRegOperand(tmp))
+                .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
+        mfn_.add_instruction(
+            MachineInstr(store_op)
+                .add_use(tmp)
+                .add_operand(VRegOperand(tmp))
+                .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+    }
+}
+
 void InstructionSelector::select(const TACFunction &tac_fn)
 {
     param_to_reg_.clear();
     aggregate_params_.clear();
     sret_ptr_vreg_ = INVALID_VREG;
 
-    constexpr size_t MAX_INT_REGS = 8;
-    constexpr size_t MAX_FLOAT_REGS = 8;
-
-    struct ParamAllocator {
-        size_t int_idx = 0;
-        size_t float_idx = 0;
-        size_t stack_idx = 0;
-
-        PhysReg next_int_reg()
-        {
-            return static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) +
-                                        int_idx++);
-        }
-
-        PhysReg next_float_reg()
-        {
-            return static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::FA0) +
-                                        float_idx++);
-        }
-
-        int32_t next_stack_offset()
-        {
-            return static_cast<int32_t>(stack_idx++ * 8);
-        }
-    };
-
     ParamAllocator allocator;
+
+    const auto has_implicit_this = [&] {
+        if (tac_fn.parameters.empty())
+            return false;
+        const auto &first_param = tac_fn.parameters[0];
+        if (first_param.kind != TACOperand::Kind::TEMPORARY ||
+            !first_param.is_valid()) {
+            return false;
+        }
+        return std::get<std::string>(first_param.value) == "this";
+    }();
 
     if (is_aggregate_type(tac_fn.return_type)) {
         sret_ptr_vreg_ = mfn_.get_next_vreg();
@@ -166,94 +259,27 @@ void InstructionSelector::select(const TACFunction &tac_fn)
         allocator.int_idx = 1;
     }
 
-    for (const auto &param : tac_fn.parameters) {
-        if (param.kind != TACOperand::Kind::SYMBOL)
-            continue;
+    for (size_t param_idx = 0; param_idx < tac_fn.parameters.size();
+         ++param_idx) {
+        const auto &param = tac_fn.parameters[param_idx];
 
-        const auto sym = std::get<SymbolPtr>(param.value);
-        const auto offset = get_local_variable_offset(sym);
-        const bool is_aggregate = param.type && is_aggregate_type(param.type);
-        const bool is_float = param.type && is_float_type(param.type);
-
-        if (is_aggregate) {
-            aggregate_params_.insert(sym->get_name());
-
-            if (allocator.int_idx < MAX_INT_REGS) {
-                const auto ptr_vreg = mfn_.get_next_vreg();
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::MV)
-                        .add_def(ptr_vreg)
-                        .add_operand(VRegOperand(ptr_vreg))
-                        .add_operand(RegOperand(allocator.next_int_reg())));
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::SD)
-                        .add_use(ptr_vreg)
-                        .add_operand(VRegOperand(ptr_vreg))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-            } else {
-                const auto ptr_vreg = mfn_.get_next_vreg();
-                mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
-                                         .add_def(ptr_vreg)
-                                         .add_operand(VRegOperand(ptr_vreg))
-                                         .add_operand(MemOperand(
-                                             PhysReg::S0_FP,
-                                             allocator.next_stack_offset())));
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::SD)
-                        .add_use(ptr_vreg)
-                        .add_operand(VRegOperand(ptr_vreg))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-            }
+        if (param_idx == 0 && has_implicit_this) {
+            handle_implicit_this_param(param, allocator);
             continue;
         }
 
-        const bool in_int_reg = !is_float && allocator.int_idx < MAX_INT_REGS;
-        const bool in_float_reg =
-            is_float && allocator.float_idx < MAX_FLOAT_REGS;
+        if (param.kind != TACOperand::Kind::SYMBOL) {
+            continue;
+        }
 
-        const auto tmp = mfn_.get_next_vreg();
-        if (is_float)
-            float_vregs_.insert(tmp);
+        const auto sym = std::get<SymbolPtr>(param.value);
+        const auto offset = get_local_variable_offset(sym);
+        const auto is_aggregate = param.type && is_aggregate_type(param.type);
 
-        if (in_int_reg) {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::MV)
-                    .add_def(tmp)
-                    .add_operand(VRegOperand(tmp))
-                    .add_operand(RegOperand(allocator.next_int_reg())));
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::SD)
-                    .add_use(tmp)
-                    .add_operand(VRegOperand(tmp))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-        } else if (in_float_reg) {
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::FMV_D)
-                    .add_def(tmp)
-                    .add_operand(VRegOperand(tmp))
-                    .add_operand(RegOperand(allocator.next_float_reg())));
-            mfn_.add_instruction(
-                MachineInstr(MachineOpcode::FSD)
-                    .add_use(tmp)
-                    .add_operand(VRegOperand(tmp))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+        if (is_aggregate) {
+            handle_aggregate_param(sym, offset, allocator);
         } else {
-            const auto stack_offset = allocator.next_stack_offset();
-            const auto load_op =
-                is_float ? MachineOpcode::FLD : MachineOpcode::LD;
-            const auto store_op =
-                is_float ? MachineOpcode::FSD : MachineOpcode::SD;
-
-            mfn_.add_instruction(
-                MachineInstr(load_op)
-                    .add_def(tmp)
-                    .add_operand(VRegOperand(tmp))
-                    .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
-            mfn_.add_instruction(
-                MachineInstr(store_op)
-                    .add_use(tmp)
-                    .add_operand(VRegOperand(tmp))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            handle_regular_param(param, sym, offset, allocator);
         }
     }
 
@@ -263,9 +289,8 @@ void InstructionSelector::select(const TACFunction &tac_fn)
         }
 
         for (size_t i = 0; i < bb->instructions.size(); ++i) {
-            const auto &tac_instr = bb->instructions[i];
             try {
-                select_instruction(*tac_instr);
+                select_instruction(*bb->instructions[i]);
             } catch (const std::exception &e) {
                 throw std::runtime_error(
                     std::string("Error selecting instruction #") +
@@ -380,7 +405,6 @@ void InstructionSelector::copy_aggregate_words(VirtReg dst_base,
                                                VirtReg src_base,
                                                uint32_t size_bytes)
 {
-    constexpr uint32_t WORD_SIZE = 8;
     const uint32_t num_words = (size_bytes + WORD_SIZE - 1) / WORD_SIZE;
 
     for (uint32_t word = 0; word < num_words; ++word) {
@@ -496,9 +520,13 @@ void InstructionSelector::select_deref(const TACInstruction &instr)
     VirtReg addr = load_operand(instr.operand1);
     VirtReg result = mfn_.get_next_vreg();
 
-    // Dereferencing a pointer-to-array yields an array.
-    if (instr.result.type && instr.result.type->kind == TypeKind::ARRAY) {
-        // Just move the address to the result (array decay semantics)
+    // Dereferencing a pointer-to-array, pointer-to-struct, or pointer-to-class
+    // yields the address
+    if (instr.result.type && (instr.result.type->kind == TypeKind::ARRAY ||
+                              instr.result.type->kind == TypeKind::RECORD ||
+                              instr.result.type->kind == TypeKind::CLASS)) {
+        // Just move the address to the result (no actual dereferencing needed
+        // for aggregate types)
         mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
                                  .add_def(result)
                                  .add_use(addr)
@@ -514,24 +542,18 @@ void InstructionSelector::select_deref(const TACInstruction &instr)
         is_float = is_float_type(instr.result.type);
     }
 
+    MachineOpcode load_op = get_load_opcode(instr.result.type, is_float);
     if (is_float) {
         float_vregs_.insert(result);
-        auto load = MachineInstr(MachineOpcode::FLD);
-        load.add_def(result);
-        load.add_use(addr);
-        load.add_operand(VRegOperand(result));
-        load.add_operand(VRegOperand(addr));
-        load.add_operand(ImmOperand(0));
-        mfn_.add_instruction(std::move(load));
-    } else {
-        auto load = MachineInstr(MachineOpcode::LD);
-        load.add_def(result);
-        load.add_use(addr);
-        load.add_operand(VRegOperand(result));
-        load.add_operand(VRegOperand(addr));
-        load.add_operand(ImmOperand(0));
-        mfn_.add_instruction(std::move(load));
     }
+
+    auto load = MachineInstr(load_op);
+    load.add_def(result);
+    load.add_use(addr);
+    load.add_operand(VRegOperand(result));
+    load.add_operand(VRegOperand(addr));
+    load.add_operand(ImmOperand(0));
+    mfn_.add_instruction(std::move(load));
 
     store_result(result, instr.result);
 }
@@ -942,15 +964,12 @@ void InstructionSelector::select_call(const TACInstruction &instr)
         }
     }
 
-    // Check if function returns aggregate - if so, allocate space for it
     VirtReg sret_slot_ptr = INVALID_VREG;
     bool returns_aggregate = return_type && is_aggregate_type(return_type);
     if (returns_aggregate) {
-        // Allocate space on stack for return value
         uint32_t ret_size = get_type_size(return_type);
         int32_t sret_offset = mfn_.get_frame().allocate_slot(ret_size, 8);
 
-        // Get address of return slot
         sret_slot_ptr = mfn_.get_next_vreg();
         mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
                                  .add_def(sret_slot_ptr)
@@ -959,18 +978,17 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                                  .add_operand(ImmOperand(sret_offset)));
     }
 
+    bool has_implicit_this =
+        (pending_params_.size() == expected_param_types.size() + 1);
+
     size_t int_reg_idx = 0;
     size_t float_reg_idx = 0;
-    // vreg, is_float, original_operand (for constant optimization)
     std::vector<std::tuple<VirtReg, bool, TACOperand>> stack_params;
 
-    // If returns aggregate, a0 is reserved for sret pointer
     if (returns_aggregate) {
-        int_reg_idx = 1; // Start from a1 for actual parameters
+        int_reg_idx = 1;
     }
 
-    // Store MV instructions to emit them backwards (to avoid parallel move
-    // conflicts)
     std::vector<MachineInstr> param_moves;
 
     for (size_t i = 0; i < pending_params_.size(); ++i) {
@@ -981,7 +999,6 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             original_operand.type && is_aggregate_type(original_operand.type);
 
         if (is_aggregate_param) {
-            // For aggregate parameters: copy to stack, pass pointer
             uint32_t agg_size = get_type_size(original_operand.type);
 
             int32_t agg_copy_offset =
@@ -998,10 +1015,8 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 
             copy_aggregate_words(dst_addr, src_addr, agg_size);
 
-            // Now pass pointer to the copy
             param_vreg = dst_addr;
 
-            // Place pointer in register or on stack
             if (int_reg_idx < 8) {
                 PhysReg target_reg = static_cast<PhysReg>(
                     static_cast<uint8_t>(PhysReg::A0) + int_reg_idx++);
@@ -1011,23 +1026,35 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                         .add_operand(RegOperand(target_reg))
                         .add_operand(VRegOperand(param_vreg)));
             } else {
-                // Pointer goes on stack
                 stack_params.push_back({param_vreg, false, original_operand});
             }
             continue;
         }
 
         bool is_float = float_vregs_.contains(param_vreg);
+        if (!is_float && original_operand.kind == TACOperand::Kind::CONSTANT &&
+            std::holds_alternative<double>(original_operand.value)) {
+            is_float = true;
+        }
+
         bool is_float_expected = false;
         bool is_vararg = (i >= expected_param_types.size()) && is_variadic;
 
-        if (i < expected_param_types.size()) {
+        if (has_implicit_this && i == 0) {
+            is_float_expected = false;
+        } else if (has_implicit_this) {
+            size_t expected_index = i - 1;
+            if (expected_index < expected_param_types.size()) {
+                is_float_expected =
+                    expected_param_types[expected_index].type &&
+                    is_float_type(expected_param_types[expected_index].type);
+            } else {
+                is_float_expected = false;
+            }
+        } else if (i < expected_param_types.size()) {
             is_float_expected = expected_param_types[i].type &&
                                 is_float_type(expected_param_types[i].type);
         } else {
-            // For varargs parameters (beyond known parameter types),
-            // floats must be passed in INTEGER registers per RISC-V calling
-            // convention
             is_float_expected = false;
         }
 
@@ -1042,7 +1069,7 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                                      .add_use(param_vreg)
                                      .add_operand(VRegOperand(converted_vreg))
                                      .add_operand(VRegOperand(param_vreg)));
-            is_float_expected = false; // Treat as integer now
+            is_float_expected = false;
         } else if (is_float && !is_float_expected) {
             converted_vreg = mfn_.get_next_vreg();
             mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_X_D)
@@ -1051,7 +1078,6 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                                      .add_operand(VRegOperand(converted_vreg))
                                      .add_operand(VRegOperand(param_vreg)));
         } else if (!is_float && is_float_expected) {
-            // Using FMV_D_X to move bits without conversion
             converted_vreg = mfn_.get_next_vreg();
             float_vregs_.insert(converted_vreg);
             mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D_X)
@@ -1355,7 +1381,6 @@ void InstructionSelector::select_call(const TACInstruction &instr)
             static_cast<uint32_t>(pending_params_.size()));
     }
 
-    // If function returns aggregate, pass sret pointer in a0
     if (returns_aggregate && sret_slot_ptr != INVALID_VREG) {
         mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
                                  .add_use(sret_slot_ptr)
@@ -1372,8 +1397,6 @@ void InstructionSelector::select_call(const TACInstruction &instr)
         TypePtr ret_type = instr.result.type;
 
         if (ret_type && is_aggregate_type(ret_type)) {
-            // For aggregate returns, the value is at sret_slot_ptr location
-            // Store the address of sret_slot_ptr to result
             store_result(sret_slot_ptr, instr.result);
         } else if (ret_type && is_float_type(ret_type)) {
             VirtReg result = mfn_.get_next_vreg();
@@ -1445,7 +1468,6 @@ void InstructionSelector::select_jump_table(const TACInstruction &instr)
 
 void InstructionSelector::select_load(const TACInstruction &instr)
 {
-    // LOAD: result = *address
     VirtReg addr = load_operand(instr.operand1);
     VirtReg result = mfn_.get_next_vreg();
 
@@ -1454,32 +1476,24 @@ void InstructionSelector::select_load(const TACInstruction &instr)
         is_float = is_float_type(instr.result.type);
     }
 
+    MachineOpcode load_op = get_load_opcode(instr.result.type, is_float);
     if (is_float) {
         float_vregs_.insert(result);
-        auto load = MachineInstr(MachineOpcode::FLD);
-        load.add_def(result);
-        load.add_use(addr);
-        load.add_operand(VRegOperand(result));
-        load.add_operand(VRegOperand(addr));
-        load.add_operand(ImmOperand(0));
-        mfn_.add_instruction(std::move(load));
-    } else {
-        // All non-float types use LD (64-bit load)
-        auto load = MachineInstr(MachineOpcode::LD);
-        load.add_def(result);
-        load.add_use(addr);
-        load.add_operand(VRegOperand(result));
-        load.add_operand(VRegOperand(addr));
-        load.add_operand(ImmOperand(0));
-        mfn_.add_instruction(std::move(load));
     }
+
+    auto load = MachineInstr(load_op);
+    load.add_def(result);
+    load.add_use(addr);
+    load.add_operand(VRegOperand(result));
+    load.add_operand(VRegOperand(addr));
+    load.add_operand(ImmOperand(0));
+    mfn_.add_instruction(std::move(load));
 
     store_result(result, instr.result);
 }
 
 void InstructionSelector::select_store(const TACInstruction &instr)
 {
-    // STORE: *address = value
     VirtReg addr = load_operand(instr.result);
     VirtReg value = load_operand(instr.operand1);
 
@@ -1490,24 +1504,14 @@ void InstructionSelector::select_store(const TACInstruction &instr)
         is_float = float_vregs_.contains(value);
     }
 
-    if (is_float) {
-        auto store = MachineInstr(MachineOpcode::FSD);
-        store.add_use(value);
-        store.add_use(addr);
-        store.add_operand(VRegOperand(value));
-        store.add_operand(VRegOperand(addr));
-        store.add_operand(ImmOperand(0));
-        mfn_.add_instruction(std::move(store));
-    } else {
-
-        auto store = MachineInstr(MachineOpcode::SD);
-        store.add_use(value);
-        store.add_use(addr);
-        store.add_operand(VRegOperand(value));
-        store.add_operand(VRegOperand(addr));
-        store.add_operand(ImmOperand(0));
-        mfn_.add_instruction(std::move(store));
-    }
+    MachineOpcode store_op = get_store_opcode(instr.operand1.type, is_float);
+    auto store = MachineInstr(store_op);
+    store.add_use(value);
+    store.add_use(addr);
+    store.add_operand(VRegOperand(value));
+    store.add_operand(VRegOperand(addr));
+    store.add_operand(ImmOperand(0));
+    mfn_.add_instruction(std::move(store));
 }
 
 void InstructionSelector::select_cast(const TACInstruction &instr)
@@ -1628,23 +1632,18 @@ void InstructionSelector::select_load_member(const TACInstruction &instr)
 
     const VirtReg result = mfn_.get_next_vreg();
     const bool is_float = instr.result.type && is_float_type(instr.result.type);
+    MachineOpcode load_op = get_load_opcode(instr.result.type, is_float);
 
     if (is_float) {
         float_vregs_.insert(result);
-        mfn_.add_instruction(MachineInstr(MachineOpcode::FLD)
-                                 .add_def(result)
-                                 .add_use(member_addr)
-                                 .add_operand(VRegOperand(result))
-                                 .add_operand(VRegOperand(member_addr))
-                                 .add_operand(ImmOperand(0)));
-    } else {
-        mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
-                                 .add_def(result)
-                                 .add_use(member_addr)
-                                 .add_operand(VRegOperand(result))
-                                 .add_operand(VRegOperand(member_addr))
-                                 .add_operand(ImmOperand(0)));
     }
+
+    mfn_.add_instruction(MachineInstr(load_op)
+                             .add_def(result)
+                             .add_use(member_addr)
+                             .add_operand(VRegOperand(result))
+                             .add_operand(VRegOperand(member_addr))
+                             .add_operand(ImmOperand(0)));
 
     store_result(result, instr.result);
 }
@@ -1673,15 +1672,10 @@ void InstructionSelector::select_store_member(const TACInstruction &instr)
     if (instr.operand1.type && is_aggregate_type(instr.operand1.type)) {
         const uint32_t size = get_type_size(instr.operand1.type);
         copy_aggregate_words(member_addr, value, size);
-    } else if (is_float) {
-        mfn_.add_instruction(MachineInstr(MachineOpcode::FSD)
-                                 .add_use(value)
-                                 .add_use(member_addr)
-                                 .add_operand(VRegOperand(value))
-                                 .add_operand(VRegOperand(member_addr))
-                                 .add_operand(ImmOperand(0)));
     } else {
-        mfn_.add_instruction(MachineInstr(MachineOpcode::SD)
+        MachineOpcode store_op =
+            get_store_opcode(instr.operand1.type, is_float);
+        mfn_.add_instruction(MachineInstr(store_op)
                                  .add_use(value)
                                  .add_use(member_addr)
                                  .add_operand(VRegOperand(value))
@@ -1698,15 +1692,10 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
         if (std::holds_alternative<double>(operand.value)) {
             double fval = std::get<double>(operand.value);
 
-            // Mark as float vreg
             float_vregs_.insert(vreg);
 
-            // Add constant to pool and get label
             std::string label = backend_.add_float_constant(fval);
 
-            // TODO: Proper approach is lui + fld with %hi/%lo relocations
-            // For now, use la + fld pattern (will be fixed in register
-            // allocation)
             VirtReg addr_vreg = mfn_.get_next_vreg();
             mfn_.add_instruction(make_la(addr_vreg, label));
 
@@ -1742,9 +1731,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             auto qual_type = sym->get_type();
 
             if (qual_type.type && is_aggregate_type(qual_type.type)) {
-                // Check if this is an aggregate parameter (passed by pointer)
                 if (aggregate_params_.contains(sym_name)) {
-                    // This is an aggregate parameter: load the pointer value
                     int32_t offset = get_local_variable_offset(sym);
                     VirtReg vreg = mfn_.get_next_vreg();
 
@@ -1755,7 +1742,6 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                             .add_operand(MemOperand(PhysReg::S0_FP, offset)));
                     return vreg;
                 } else {
-                    // For local arrays and structs, return the address
                     int32_t offset = get_local_variable_offset(sym);
                     VirtReg vreg = mfn_.get_next_vreg();
 
@@ -1768,24 +1754,22 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                     return vreg;
                 }
             } else {
-                // For scalar types, load the value
                 int32_t offset = get_local_variable_offset(sym);
                 VirtReg vreg = mfn_.get_next_vreg();
 
-                if (qual_type.type && is_float_type(qual_type.type)) {
+                bool is_float = qual_type.type && is_float_type(qual_type.type);
+                MachineOpcode load_op =
+                    get_load_opcode(qual_type.type, is_float);
+
+                if (is_float) {
                     float_vregs_.insert(vreg);
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::FLD)
-                            .add_def(vreg)
-                            .add_operand(VRegOperand(vreg))
-                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-                } else {
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::LD)
-                            .add_def(vreg)
-                            .add_operand(VRegOperand(vreg))
-                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
                 }
+
+                mfn_.add_instruction(
+                    MachineInstr(load_op)
+                        .add_def(vreg)
+                        .add_operand(VRegOperand(vreg))
+                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
                 return vreg;
             }
         } else {
@@ -1803,15 +1787,15 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                 mfn_.add_instruction(make_la(addr_vreg, sym_name));
 
                 VirtReg vreg = mfn_.get_next_vreg();
-                MachineInstr load{};
-                if (qual_type.type && is_float_type(qual_type.type)) {
-                    float_vregs_.insert(vreg);
-                    load = MachineInstr(MachineOpcode::FLD);
+                bool is_float = qual_type.type && is_float_type(qual_type.type);
+                MachineOpcode load_op =
+                    get_load_opcode(qual_type.type, is_float);
 
-                } else {
-                    load = MachineInstr(MachineOpcode::LD);
+                if (is_float) {
+                    float_vregs_.insert(vreg);
                 }
 
+                MachineInstr load(load_op);
                 load.add_def(vreg);
                 load.add_use(addr_vreg);
                 load.add_operand(VRegOperand(vreg));
@@ -1824,6 +1808,27 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
     }
     case TACOperand::Kind::TEMPORARY: {
         std::string temp_name = std::get<std::string>(operand.value);
+
+        if (auto offset_it = temp_to_offset_.find(temp_name);
+            offset_it != temp_to_offset_.end()) {
+            VirtReg vreg = mfn_.get_next_vreg();
+            int32_t offset = offset_it->second;
+
+            bool is_float = operand.type && is_float_type(operand.type);
+            MachineOpcode load_op = get_load_opcode(operand.type, is_float);
+
+            if (is_float) {
+                float_vregs_.insert(vreg);
+            }
+
+            mfn_.add_instruction(
+                MachineInstr(load_op)
+                    .add_def(vreg)
+                    .add_operand(VRegOperand(vreg))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            return vreg;
+        }
+
         VirtReg vreg = get_or_create_vreg_for_temp(temp_name);
 
         if (operand.type && is_float_type(operand.type)) {
@@ -1877,35 +1882,22 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
 
             int32_t offset = get_local_variable_offset(sym);
             bool is_float = float_vregs_.contains(vreg);
+            MachineOpcode store_op = get_store_opcode(dest.type, is_float);
 
-            if (is_float) {
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::FSD)
-                        .add_use(vreg)
-                        .add_operand(VRegOperand(vreg))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-            } else {
-
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::SD)
-                        .add_use(vreg)
-                        .add_operand(VRegOperand(vreg))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
-            }
+            mfn_.add_instruction(
+                MachineInstr(store_op)
+                    .add_use(vreg)
+                    .add_operand(VRegOperand(vreg))
+                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
         } else {
             // Global variable (STATIC storage class)
             VirtReg addr_vreg = mfn_.get_next_vreg();
             mfn_.add_instruction(make_la(addr_vreg, sym->get_name()));
 
             bool is_float = float_vregs_.contains(vreg);
+            MachineOpcode store_op = get_store_opcode(dest.type, is_float);
 
-            MachineInstr store{};
-            if (is_float) {
-                store = MachineInstr(MachineOpcode::FSD);
-            } else {
-                store = MachineInstr(MachineOpcode::SD);
-            }
-
+            MachineInstr store(store_op);
             store.add_use(vreg);
             store.add_use(addr_vreg);
             store.add_operand(VRegOperand(vreg));
@@ -2030,21 +2022,19 @@ InstructionSelector::get_or_create_vreg_for_temp(const std::string &temp_name)
 
 int32_t InstructionSelector::allocate_local_variable(SymbolPtr sym)
 {
-
-    std::string unique_key =
+    const auto unique_key =
         std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
 
-    auto it = local_var_offsets_.find(unique_key);
-    if (it != local_var_offsets_.end()) {
+    if (auto it = local_var_offsets_.find(unique_key);
+        it != local_var_offsets_.end()) {
         return it->second;
     }
 
-    uint32_t size = get_type_size(sym->get_type().type);
-    uint32_t alignment = std::min(size, 4u);
+    const auto size = get_type_size(sym->get_type().type);
+    const auto alignment = std::min(size, 4u);
+    const auto offset = mfn_.get_frame().allocate_slot(size, alignment);
 
-    int32_t offset = mfn_.get_frame().allocate_slot(size, alignment);
     local_var_offsets_[unique_key] = offset;
-
     sym->set_stack_offset(offset);
 
     return offset;
@@ -2052,12 +2042,11 @@ int32_t InstructionSelector::allocate_local_variable(SymbolPtr sym)
 
 int32_t InstructionSelector::get_local_variable_offset(SymbolPtr sym)
 {
-
-    std::string unique_key =
+    const auto unique_key =
         std::to_string(sym->get_scope_id()) + "_" + sym->get_name();
 
-    auto it = local_var_offsets_.find(unique_key);
-    if (it != local_var_offsets_.end()) {
+    if (auto it = local_var_offsets_.find(unique_key);
+        it != local_var_offsets_.end()) {
         return it->second;
     }
 

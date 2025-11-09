@@ -16,6 +16,11 @@ namespace ciel {
 namespace codegen {
 namespace riscv32 {
 
+inline constexpr size_t MAX_INT_REGS = 8;
+inline constexpr size_t MAX_FLOAT_REGS = 8;
+inline constexpr size_t POINTER_SIZE = 8;
+inline constexpr size_t WORD_SIZE = 8;
+
 class RiscV32Backend;
 
 class MachineFunction {
@@ -107,14 +112,52 @@ class InstructionSelector {
                         TypeFactory &types,
                         RiscV32Backend &backend);
 
-    /// Select instructions for a TAC function
     void select(const TACFunction &tac_fn);
 
   private:
-    /// Select instruction for a single TAC instruction
+    struct ParamAllocator {
+        size_t int_idx = 0;
+        size_t float_idx = 0;
+        size_t stack_idx = 0;
+
+        [[nodiscard]] PhysReg next_int_reg() noexcept
+        {
+            return static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::A0) +
+                                        int_idx++);
+        }
+
+        [[nodiscard]] PhysReg next_float_reg() noexcept
+        {
+            return static_cast<PhysReg>(static_cast<uint8_t>(PhysReg::FA0) +
+                                        float_idx++);
+        }
+
+        [[nodiscard]] int32_t next_stack_offset() noexcept
+        {
+            return static_cast<int32_t>(stack_idx++ * 8);
+        }
+    };
+
     void select_instruction(const TACInstruction &tac_instr);
 
-    /// Helper methods for specific TAC opcodes
+    void store_param_from_register(PhysReg source_reg,
+                                   int32_t stack_offset,
+                                   MachineOpcode store_op);
+    void store_param_from_stack(int32_t source_stack_offset,
+                                int32_t dest_stack_offset,
+                                MachineOpcode load_op,
+                                MachineOpcode store_op);
+
+    void handle_implicit_this_param(const TACOperand &param,
+                                    ParamAllocator &allocator);
+    void handle_aggregate_param(SymbolPtr sym,
+                                int32_t offset,
+                                ParamAllocator &allocator);
+    void handle_regular_param(const TACOperand &param,
+                              SymbolPtr sym,
+                              int32_t offset,
+                              ParamAllocator &allocator);
+
     void select_enter(const TACInstruction &instr);
     void select_return(const TACInstruction &instr);
     void select_assign(const TACInstruction &instr);
@@ -167,6 +210,9 @@ class InstructionSelector {
     RiscV32Backend &backend_;
 
     std::unordered_map<std::string, VirtReg> temp_to_vreg_;
+
+    // Map from temporary name to stack offset for temporary parameters
+    std::unordered_map<std::string, int32_t> temp_to_offset_;
 
     // Map from symbol name to stack offset for local variables
     std::unordered_map<std::string, int32_t> local_var_offsets_;
