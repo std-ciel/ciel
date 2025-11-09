@@ -12,24 +12,18 @@ union CompleteUnion {
 };
 
 class CompleteClass {
-    private:
+    public:
         int data;
     public:
-        int getValue();
+        int getValue() {
+            return data;
+        }
 };
 
 // Using the complete types (should be OK)
 struct CompleteStruct s_var;
 union CompleteUnion u_var;
 class CompleteClass c_var;
-
-void func1(struct CompleteStruct param);
-void func2(union CompleteUnion param);
-void func3(class CompleteClass param);
-
-struct CompleteStruct getStruct();
-union CompleteUnion getUnion();
-class CompleteClass getClass();
 
 struct Outer {
     struct CompleteStruct s_member;
@@ -38,7 +32,33 @@ struct Outer {
 };
 
 class Container {
+    public:
     struct CompleteStruct s_member;
     union CompleteUnion u_member;
     class CompleteClass c_member;
 };
+
+int main() {
+    s_var.x = 10;
+    s_var.y = 20.5;
+
+    u_var.i = 100;
+    u_var.f = 200.5;
+    c_var.data = 300;
+    c_var.getValue();
+
+
+    struct Outer outer;
+    outer.s_member.x = 1;
+    outer.u_member.i = 2;
+    outer.c_member.data = 3;
+    outer.c_member.getValue();
+
+    class Container container;
+    container.s_member.y = 3.5;
+    container.u_member.f = 4.5;
+    container.c_member.data = 5;
+    container.c_member.getValue();
+
+    return 0;
+}

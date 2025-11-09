@@ -77,7 +77,7 @@ class StudentRecord {
 
 int main() {
     // Vector class with array member
-    class Vector v;
+    class Vector v{};
     v.set(0, 1.5);
     v.set(1, 2.5);
     v.set(2, 3.5);
@@ -87,7 +87,7 @@ int main() {
     float v2 = v.get(2);
 
     // Matrix class with 2D array member
-    class Matrix m;
+    class Matrix m{};
     m.set(0, 0, 1);
     m.set(0, 1, 2);
     m.set(1, 0, 3);
@@ -97,7 +97,7 @@ int main() {
     int m22 = m.get(2, 2);
 
     // StudentRecord with array operations
-    class StudentRecord student;
+    class StudentRecord student{};
     student.add_grade(90);
     student.add_grade(85);
     student.add_grade(95);

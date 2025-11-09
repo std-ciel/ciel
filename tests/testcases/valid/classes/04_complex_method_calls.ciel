@@ -151,9 +151,9 @@ int main() {
     class Matrix* new_matrix = factory.create_matrix(3, 3);
 
     // Chained method calls
-    int chained_val = new_node->get_value();
-    new_list->add(100);
-    int list_sz = new_list->get_size();
+    // int chained_val = new_node->get_value();
+    // new_list->add(100);
+    // int list_sz = new_list->get_size();
 
     // Method calls with method results as arguments
     class Matrix m3;

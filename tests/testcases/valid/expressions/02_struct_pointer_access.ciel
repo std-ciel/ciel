@@ -1,5 +1,7 @@
 // Test struct pointer member access
 
+int printf(char* format, ...);
+
 struct Point {
     int x;
     int y;
@@ -25,30 +27,47 @@ struct Tree {
 };
 
 int main() {
+    // Declare actual struct instances to take addresses from
+    struct Point p_actual;
+    struct Node head_actual;
+    struct Node second_actual;
+    struct Person person_actual;
+    struct Tree root_actual;
+    struct Tree left_child_actual;
+    struct Tree right_child_actual;
+    struct Tree deep_node_actual;
+
     // Basic pointer member access
     struct Point* p_ptr;
+    p_ptr = &p_actual;
     p_ptr->x = 10;
     p_ptr->y = 20;
     int x_val = p_ptr->x;
     int y_val = p_ptr->y;
+    printf("Point: x=%d, y=%d\n", x_val, y_val);
 
     // Linked list pointer access
     struct Node* head;
+    head = &head_actual;
     head->value = 100;
     head->next = (struct Node *)0;
     head->prev = (struct Node *)0;
 
     int head_val = head->value;
     struct Node* next_node = head->next;
+    printf("Head value: %d\n", head_val);
 
     // Chained pointer access
     struct Node* second;
+    second = &second_actual;
     head->next = second;
     second->value = 200;
     int second_val = head->next->value;
+    printf("Second value via chain: %d\n", second_val);
 
     // Person with pointer members
     struct Person* person_ptr;
+    person_ptr = &person_actual;
     person_ptr->name = (char *)0;
     person_ptr->age = 25;
     person_ptr->spouse = (struct Person *)0;
@@ -56,32 +75,39 @@ int main() {
     char* name = person_ptr->name;
     int age = person_ptr->age;
     struct Person* spouse = person_ptr->spouse;
+    printf("Person age: %d\n", age);
 
     // Tree traversal pointer access
     struct Tree* root;
+    root = &root_actual;
     root->data = 50;
     root->left = (struct Tree *)0;
     root->right = (struct Tree *)0;
     root->parent = (struct Tree *)0;
 
     struct Tree* left_child;
+    left_child = &left_child_actual;
     root->left = left_child;
     left_child->data = 25;
     left_child->parent = root;
 
     int root_data = root->data;
     int left_data = root->left->data;
+    printf("Root data: %d, Left child data: %d\n", root_data, left_data);
 
     // Deep chaining
     struct Tree* right_child;
+    right_child = &right_child_actual;
     root->right = right_child;
     right_child->right = (struct Tree *)0;
 
     struct Tree* deep_node;
+    deep_node = &deep_node_actual;
     root->right->right = deep_node;
     deep_node->data = 100;
 
     int deep_val = root->right->right->data;
+    printf("Deep chained value: %d\n", deep_val);
 
     return 0;
 }
