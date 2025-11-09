@@ -1,0 +1,27 @@
+// Simple test matching user's example - destructors called on return
+
+int printf(char* format, ...);
+
+class A {
+public:
+    A() {
+        printf("A()\n");
+    }
+    ~A() {
+        printf("~A()\n");
+    }
+};
+
+int main() {
+    class A a{};
+    int b = 1;  // Changed to 1 to enter the if block
+    if (b == 1) {
+        class A b{};
+        // b's destructor should be called here
+        // a's destructor should be called here
+        return 0;
+    }
+
+    // Both destructors should still be called at normal end
+    return 0;
+}

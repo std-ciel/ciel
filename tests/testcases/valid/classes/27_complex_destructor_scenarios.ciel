@@ -1,0 +1,326 @@
+// Comprehensive test for destructors with multiple nested blocks and return statements
+
+int printf(char* format, ...);
+
+class A {
+public:
+    int id;
+
+    A(int i) {
+        id = i;
+        printf("A(%d)\n", id);
+    }
+
+    ~A() {
+        printf("~A(%d)\n", id);
+    }
+};
+
+class B {
+public:
+    int value;
+
+    B(int v) {
+        value = v;
+        printf("B(%d)\n", value);
+    }
+
+    ~B() {
+        printf("~B(%d)\n", value);
+    }
+};
+
+class C {
+public:
+    int data;
+
+    C(int d) {
+        data = d;
+        printf("C(%d)\n", data);
+    }
+
+    ~C() {
+        printf("~C(%d)\n", data);
+    }
+};
+
+// Test 1: Multiple nested blocks with early returns
+int test_nested_blocks(int choice) {
+    class A a1{1};
+    printf("-- Outer scope --\n");
+
+    if (choice == 1) {
+        class B b1{10};
+        printf("-- Level 1 if --\n");
+
+        if (choice == 1) {
+            class C c1{100};
+            printf("-- Level 2 if --\n");
+
+            if (choice == 1) {
+                class A a2{1000};
+                printf("-- Level 3 if --\n");
+                // Should call: ~A(1000), ~C(100), ~B(10), ~A(1)
+                printf("Returning from level 3\n");
+                return 1;
+            }
+        }
+    }
+
+    printf("Reached end of function\n");
+    return 0;
+}
+
+// Test 2: Multiple return paths with different nesting levels
+int test_multiple_returns(int path) {
+    class A a1{2};
+    printf("-- Starting test_multiple_returns --\n");
+
+    {
+        class B b1{20};
+        printf("-- Inner block 1 --\n");
+
+        if (path == 1) {
+            class C c1{200};
+            printf("Path 1 selected\n");
+            // Should call: ~C(200), ~B(20), ~A(2)
+            return 10;
+        }
+
+        if (path == 2) {
+            class A a2{201};
+            printf("Path 2 selected\n");
+            // Should call: ~A(201), ~B(20), ~A(2)
+            return 20;
+        }
+
+        printf("-- End of inner block 1 --\n");
+    }
+
+    {
+        class C c2{202};
+        printf("-- Inner block 2 --\n");
+
+        if (path == 3) {
+            class B b2{2000};
+            printf("Path 3 selected\n");
+            // Should call: ~B(2000), ~C(202), ~A(2)
+            return 30;
+        }
+
+        printf("-- End of inner block 2 --\n");
+    }
+
+    printf("Default path\n");
+    return 0;
+}
+
+// Test 3: Complex nested structure with multiple objects per scope
+int test_complex_nesting(bool flag1, bool flag2, bool flag3) {
+    class A a1{3};
+    class B b1{30};
+    printf("-- Outer scope with 2 objects --\n");
+
+    if (flag1) {
+        class C c1{300};
+        class A a2{301};
+        printf("-- Level 1 with 2 objects --\n");
+
+        if (flag2) {
+            class B b2{3000};
+            class C c2{3001};
+            class A a3{3002};
+            printf("-- Level 2 with 3 objects --\n");
+
+            if (flag3) {
+                class A a4{30000};
+                class B b3{30001};
+                printf("-- Level 3 with 2 objects --\n");
+                // Should call in order: ~B(30001), ~A(30000), ~A(3002), ~C(3001), ~B(3000), ~A(301), ~C(300), ~B(30), ~A(3)
+                printf("Early return from level 3\n");
+                return 100;
+            }
+
+            printf("-- Exiting level 2 normally --\n");
+            // Should call: ~A(3002), ~C(3001), ~B(3000)
+        }
+
+        printf("-- Exiting level 1 normally --\n");
+        // Should call: ~A(301), ~C(300)
+    }
+
+    printf("-- Exiting outer scope normally --\n");
+    return 0;
+}
+
+// Test 4: Sequential blocks with returns
+int test_sequential_blocks(int select) {
+    class A a1{4};
+    printf("-- Sequential blocks test --\n");
+
+    {
+        class B b1{40};
+        printf("-- Block 1 --\n");
+        if (select == 1) {
+            printf("Return from block 1\n");
+            // Should call: ~B(40), ~A(4)
+            return 41;
+        }
+    }
+
+    {
+        class C c1{400};
+        printf("-- Block 2 --\n");
+        if (select == 2) {
+            printf("Return from block 2\n");
+            // Should call: ~C(400), ~A(4)
+            return 42;
+        }
+    }
+
+    {
+        class A a2{4000};
+        printf("-- Block 3 --\n");
+        if (select == 3) {
+            printf("Return from block 3\n");
+            // Should call: ~A(4000), ~A(4)
+            return 43;
+        }
+    }
+
+    printf("Return from end\n");
+    return 0;
+}
+
+// Test 5: Return from deeply nested blocks with mixed if/block nesting
+int test_deep_nesting(bool enter) {
+    class A a1{5};
+
+    if (enter) {
+        class B b1{50};
+
+        {
+            class C c1{500};
+
+            if (enter) {
+                class A a2{5000};
+
+                {
+                    class B b2{50000};
+
+                    if (enter) {
+                        class C c2{500000};
+                        printf("Deep nesting return\n");
+                        // Should call: ~C(500000), ~B(50000), ~A(5000), ~C(500), ~B(50), ~A(5)
+                        return 555;
+                    }
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+// Test 6: Multiple objects in same scope with early return
+int test_same_scope_multiple_objects(bool early_exit) {
+    class A a1{6};
+    class B b1{60};
+    class C c1{600};
+    class A a2{6000};
+    class B b2{60000};
+
+    printf("-- Created 5 objects in same scope --\n");
+
+    if (early_exit) {
+        printf("Early exit\n");
+        // Should call in reverse order: ~B(60000), ~A(6000), ~C(600), ~B(60), ~A(6)
+        return 666;
+    }
+
+    printf("Normal exit\n");
+    return 0;
+}
+
+// Test 7: Nested blocks with some empty paths
+int test_mixed_paths(int route) {
+    class A a1{7};
+
+    if (route == 1) {
+        class B b1{70};
+
+        if (route == 1) {
+            printf("Route 1A\n");
+            return 71;
+        }
+
+        printf("Route 1B\n");
+        return 72;
+    }
+
+    if (route == 2) {
+        class C c1{700};
+
+        {
+            class A a2{7000};
+
+            if (route == 2) {
+                printf("Route 2A\n");
+                return 73;
+            }
+        }
+
+        printf("Route 2B\n");
+        return 74;
+    }
+
+    if (route == 3) {
+        printf("Route 3 - no objects\n");
+        // Only ~A(7) should be called
+        return 75;
+    }
+
+    return 0;
+}
+
+int main() {
+    printf("=== Test 1: Nested blocks ===\n");
+    int r1 = test_nested_blocks(1);
+    printf("Result: %d\n\n", r1);
+
+    printf("=== Test 2: Multiple returns (path 1) ===\n");
+    int r2a = test_multiple_returns(1);
+    printf("Result: %d\n\n", r2a);
+
+    printf("=== Test 2: Multiple returns (path 2) ===\n");
+    int r2b = test_multiple_returns(2);
+    printf("Result: %d\n\n", r2b);
+
+    printf("=== Test 2: Multiple returns (path 3) ===\n");
+    int r2c = test_multiple_returns(3);
+    printf("Result: %d\n\n", r2c);
+
+    printf("=== Test 3: Complex nesting ===\n");
+    bool t = true;
+    int r3 = test_complex_nesting(t, t, t);
+    printf("Result: %d\n\n", r3);
+
+    printf("=== Test 4: Sequential blocks (select 2) ===\n");
+    int r4 = test_sequential_blocks(2);
+    printf("Result: %d\n\n", r4);
+
+    printf("=== Test 5: Deep nesting ===\n");
+    int r5 = test_deep_nesting(t);
+    printf("Result: %d\n\n", r5);
+
+    printf("=== Test 6: Same scope multiple objects ===\n");
+    int r6 = test_same_scope_multiple_objects(t);
+    printf("Result: %d\n\n", r6);
+
+    printf("=== Test 7: Mixed paths (route 3) ===\n");
+    int r7 = test_mixed_paths(3);
+    printf("Result: %d\n\n", r7);
+
+    printf("=== All tests completed ===\n");
+    return 0;
+}

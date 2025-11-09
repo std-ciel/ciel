@@ -1,0 +1,101 @@
+// Test destructors are called when return statements are encountered in nested scopes
+
+int printf(char* format, ...);
+
+class A {
+public:
+    int id;
+    
+    A(int i) {
+        id = i;
+        printf("A(%d) constructed\n", id);
+    }
+    
+    ~A() {
+        printf("~A(%d) destructed\n", id);
+    }
+};
+
+class B {
+public:
+    int value;
+    
+    B(int v) {
+        value = v;
+        printf("B(%d) constructed\n", value);
+    }
+    
+    ~B() {
+        printf("~B(%d) destructed\n", value);
+    }
+};
+
+int test_simple_return() {
+    class A a{1};
+    int x = 5;
+    if (x == 5) {
+        class A b{2};
+        // b's destructor should be called here before return
+        return 1;
+    }
+    // a's destructor should be called at end of function
+    return 0;
+}
+
+int test_nested_scopes() {
+    class A a{10};
+    {
+        class B b{20};
+        bool condition = true;
+        if (condition) {
+            class A c{30};
+            // c's destructor should be called
+            // b's destructor should be called
+            // a's destructor should be called
+            return 2;
+        }
+    }
+    return 0;
+}
+
+int test_multiple_objects() {
+    class A a{100};
+    class B b{200};
+    class A c{300};
+    bool condition = true;
+    if (condition) {
+        // All three destructors should be called in reverse order: c, b, a
+        return 3;
+    }
+    return 0;
+}
+
+int test_early_return_no_objects() {
+    class A a{1000};
+    bool condition = true;
+    if (condition) {
+        // Only a's destructor should be called
+        return 4;
+    }
+    return 0;
+}
+
+int main() {
+    printf("=== Test 1: Simple return ===\n");
+    int r1 = test_simple_return();
+    printf("Result: %d\n\n", r1);
+    
+    printf("=== Test 2: Nested scopes ===\n");
+    int r2 = test_nested_scopes();
+    printf("Result: %d\n\n", r2);
+    
+    printf("=== Test 3: Multiple objects ===\n");
+    int r3 = test_multiple_objects();
+    printf("Result: %d\n\n", r3);
+    
+    printf("=== Test 4: Early return no inner objects ===\n");
+    int r4 = test_early_return_no_objects();
+    printf("Result: %d\n\n", r4);
+    
+    return 0;
+}
