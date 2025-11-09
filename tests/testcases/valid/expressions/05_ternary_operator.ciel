@@ -17,44 +17,85 @@ int main() {
     int y = 20;
     int z = 0;
     
-    // Basic ternary
-    z = x > y ? x : y;
+    // Test max function: max(10, 20) should be 20
+    if (max(x, y) != 20) return 1;
     
-    // Nested ternary
+    // Test min function: min(10, 20) should be 10
+    if (min(x, y) != 10) return 2;
+    
+    // Test abs function: abs(-5) should be 5
+    if (abs(-5) != 5) return 3;
+    if (abs(5) != 5) return 4;
+    
+    // Basic ternary: x > y ? x : y  =>  10 > 20 ? 10 : 20  =>  20
+    z = x > y ? x : y;
+    if (z != 20) return 5;
+    
+    // Nested ternary: x > y ? (x > 100 ? 100 : x) : (y > 100 ? 100 : y)
+    // 10 > 20 ? ... : (20 > 100 ? 100 : 20)  =>  20
     z = x > y ? (x > 100 ? 100 : x) : (y > 100 ? 100 : y);
+    if (z != 20) return 6;
     
     // Ternary with different operators
-    z = x == y ? 0 : 1;
-    z = x != y ? 1 : 0;
-    z = x >= y ? x : y;
-    z = x <= y ? x : y;
+    z = x == y ? 0 : 1;  // 10 == 20 ? 0 : 1  =>  1
+    if (z != 1) return 7;
+    
+    z = x != y ? 1 : 0;  // 10 != 20 ? 1 : 0  =>  1
+    if (z != 1) return 8;
+    
+    z = x >= y ? x : y;  // 10 >= 20 ? 10 : 20  =>  20
+    if (z != 20) return 9;
+    
+    z = x <= y ? x : y;  // 10 <= 20 ? 10 : 20  =>  10
+    if (z != 10) return 10;
     
     // Ternary in arithmetic expressions
-    z = (x > y ? x : y) + 10;
-    z = 5 * (x < y ? x : y);
-    z = (x > 0 ? x : -x) - (y > 0 ? y : -y);
+    z = (x > y ? x : y) + 10;  // (10 > 20 ? 10 : 20) + 10  =>  20 + 10 = 30
+    if (z != 30) return 11;
+    
+    z = 5 * (x < y ? x : y);  // 5 * (10 < 20 ? 10 : 20)  =>  5 * 10 = 50
+    if (z != 50) return 12;
+    
+    z = (x > 0 ? x : -x) - (y > 0 ? y : -y);  // (10) - (20) = -10
+    if (z != -10) return 13;
     
     // Ternary with function calls
+    // max(10, 20) > 50 ? max(10, 20) : min(10, 20)
+    // 20 > 50 ? 20 : 10  =>  10
     z = max(x, y) > 50 ? max(x, y) : min(x, y);
+    if (z != 10) return 14;
     
     // Ternary in assignments
+    // x > 0 ? (y > 0 ? 1 : -1) : (y > 0 ? -1 : 0)
+    // 10 > 0 ? (20 > 0 ? 1 : -1) : ...  =>  10 > 0 ? 1 : ...  =>  1
     int result = x > 0 ? (y > 0 ? 1 : -1) : (y > 0 ? -1 : 0);
+    if (result != 1) return 15;
     
     // Ternary with boolean conditions
-    bool flag = x > y;
-    z = flag ? 100 : 200;
+    bool flag = x > y;  // false
+    z = flag ? 100 : 200;  // false ? 100 : 200  =>  200
+    if (z != 200) return 16;
     
     // Chained ternary (right associative)
+    // x > 10 ? 1 : x > 5 ? 2 : x > 0 ? 3 : 4
+    // 10 > 10 ? 1 : (10 > 5 ? 2 : ...)  =>  false ? 1 : (true ? 2 : ...)  =>  2
     z = x > 10 ? 1 : x > 5 ? 2 : x > 0 ? 3 : 4;
+    if (z != 2) return 17;
     
     // Ternary with pointers
+    // x > 0 ? &x : &y  =>  true ? &x : &y  =>  &x
     int* ptr = x > 0 ? &x : &y;
+    if (*ptr != 10) return 18;  // Should point to x which is 10
     
     // Ternary with char
+    // x > y ? 'a' : 'b'  =>  10 > 20 ? 'a' : 'b'  =>  'b'
     char c = x > y ? 'a' : 'b';
+    if (c != 'b') return 19;
     
     // Ternary with float
+    // x > y ? 1.5 : 2.5  =>  10 > 20 ? 1.5 : 2.5  =>  2.5
     float f = x > y ? 1.5 : 2.5;
+    if (f != 2.5) return 20;
     
-    return 0;
+    return 0;  // All tests passed
 }
