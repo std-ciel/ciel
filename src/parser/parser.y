@@ -21,6 +21,7 @@
   #include <unordered_map>
   #include <functional>
   #include <format>
+  #include <sstream>
 
   #include "ast/ast_node.hpp"
   #include "symbol_table/type.hpp"
@@ -118,6 +119,12 @@
     std::vector<QualifiedType> pending_param_types;
     std::vector<std::string> pending_param_names;
     bool has_pending_params = false;
+
+    // Lambda context tracking
+    bool in_lambda_body = false;
+    std::vector<CaptureInfo> current_lambda_captures;
+    ClassTypePtr current_lambda_class;
+    size_t global_lambda_counter = 0;  // Global counter for unique lambda class names
 
     void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
     void pop_ctx() {
@@ -937,8 +944,13 @@ static void check_array_bounds(const TypePtr &array_type,
 
   static void prepare_parameters_for_scope(const std::vector<QualifiedType>& param_types,
                                             const std::vector<std::string>& param_names) {
-    parser_state.pending_param_types = param_types;
-    parser_state.pending_param_names = param_names;
+    // Append to existing pending params (for lambdas that have captures already added)
+    for (const auto& type : param_types) {
+      parser_state.pending_param_types.push_back(type);
+    }
+    for (const auto& name : param_names) {
+      parser_state.pending_param_names.push_back(name);
+    }
     parser_state.has_pending_params = true;
   }
 
@@ -1790,7 +1802,107 @@ static void check_array_bounds(const TypePtr &array_type,
     return nullptr;
   }
 
+  // Transform lambda body to replace capture variable references with this->cap_x member accesses
+  static ASTNodePtr transform_captures_to_member_access(
+      const ASTNodePtr& node,
+      const std::vector<CaptureInfo>& captures,
+      ClassTypePtr lambda_class,
+      const yy::location& loc)
+  {
+    if (!node) return node;
+
+    // For IdentifierExpr, check if it references a capture
+    if (auto ident = std::dynamic_pointer_cast<IdentifierExpr>(node)) {
+      for (const auto& capture : captures) {
+        if (ident->symbol->get_name() == capture.capture_name) {
+          // Replace with this->cap_<name>
+          TypePtr this_ptr_type = apply_pointer_levels_or_error(
+              QualifiedType(lambda_class, Qualifier::NONE),
+              1,
+              "lambda operator() 'this'",
+              loc.begin.line,
+              loc.begin.column
+          ).type;
+          auto this_expr = std::make_shared<ThisExpr>(this_ptr_type);
+
+          std::string member_name = "cap_" + capture.capture_name;
+          TypePtr capture_type = get_expression_type(capture.init_expr, loc, "lambda capture type");
+
+          return std::make_shared<MemberExpr>(
+              Operator::MEMBER_ACCESS_PTR,
+              this_expr,
+              member_name,
+              capture_type
+          );
+        }
+      }
+      return node;  // Not a capture
+    }
+
+    // For BinaryExpr, transform both operands
+    if (auto binary = std::dynamic_pointer_cast<BinaryExpr>(node)) {
+      auto new_left = transform_captures_to_member_access(binary->left, captures, lambda_class, loc);
+      auto new_right = transform_captures_to_member_access(binary->right, captures, lambda_class, loc);
+      return std::make_shared<BinaryExpr>(binary->op, new_left, new_right, binary->expr_type);
+    }
+
+    // For UnaryExpr, transform the operand
+    if (auto unary = std::dynamic_pointer_cast<UnaryExpr>(node)) {
+      auto new_operand = transform_captures_to_member_access(unary->operand, captures, lambda_class, loc);
+      return std::make_shared<UnaryExpr>(unary->op, new_operand, unary->expr_type);
+    }
+
+    // For BlockStmt, transform all statements
+    if (auto block = std::dynamic_pointer_cast<BlockStmt>(node)) {
+      std::vector<ASTNodePtr> new_statements;
+      for (const auto& stmt : block->statements) {
+        new_statements.push_back(transform_captures_to_member_access(stmt, captures, lambda_class, loc));
+      }
+      return std::make_shared<BlockStmt>(new_statements);
+    }
+
+    // For CompoundStmt, transform all statements
+    if (auto compound = std::dynamic_pointer_cast<CompoundStmt>(node)) {
+      std::vector<ASTNodePtr> new_statements;
+      for (const auto& stmt : compound->statements) {
+        new_statements.push_back(transform_captures_to_member_access(stmt, captures, lambda_class, loc));
+      }
+      return std::make_shared<CompoundStmt>(new_statements);
+    }
+
+    // For RetExpr, transform the value if present
+    if (auto ret = std::dynamic_pointer_cast<RetExpr>(node)) {
+      if (ret->value) {
+        auto new_value = transform_captures_to_member_access(*ret->value, captures, lambda_class, loc);
+        return std::make_shared<RetExpr>(new_value, ret->expr_type, ret->destructor_calls);
+      }
+      return node;
+    }
+
+    // For IfStmt, transform condition, then_branch, and else_branch
+    if (auto if_stmt = std::dynamic_pointer_cast<IfStmt>(node)) {
+      auto new_cond = transform_captures_to_member_access(if_stmt->condition, captures, lambda_class, loc);
+      auto new_then = transform_captures_to_member_access(if_stmt->then_branch, captures, lambda_class, loc);
+      std::optional<ASTNodePtr> new_else = std::nullopt;
+      if (if_stmt->else_branch) {
+        new_else = transform_captures_to_member_access(*if_stmt->else_branch, captures, lambda_class, loc);
+      }
+      return std::make_shared<IfStmt>(new_cond, new_then, new_else);
+    }
+
+    // For WhileStmt, transform condition and body
+    if (auto while_stmt = std::dynamic_pointer_cast<WhileStmt>(node)) {
+      auto new_cond = transform_captures_to_member_access(while_stmt->condition, captures, lambda_class, loc);
+      auto new_body = transform_captures_to_member_access(while_stmt->body, captures, lambda_class, loc);
+      return std::make_shared<WhileStmt>(new_cond, new_body);
+    }
+
+    // For other node types, return as-is (can be extended as needed)
+    return node;
+  }
+
   static ASTNodePtr handle_lambda_expression(
+      ClassTypePtr lambda_class,  // Lambda class is already created in grammar rules
       const std::vector<CaptureInfo>& captures,
       const std::string& lambda_var_name,
       const std::vector<QualifiedType>& param_types,
@@ -1800,31 +1912,14 @@ static void check_array_bounds(const TypePtr &array_type,
       const ASTNodePtr& body,
       const yy::location& loc)
   {
-    // Generate unique anonymous class name
-    static size_t lambda_counter = 0;
-    std::ostringstream lambda_class_name;
-    lambda_class_name << "<lambda@" << symbol_table.get_current_scope_id() << ":" << (lambda_counter++) << ">";
-
-    // Create the anonymous class type
-    auto lambda_class = std::static_pointer_cast<ClassType>(
-        unwrap_type_or_error(
-            type_factory.make<ClassType>(lambda_class_name.str(), nullptr, Access::PRIVATE, true),
-            "lambda class creation",
-            loc.begin.line,
-            loc.begin.column
-        )
-    );
-
     if (!lambda_class) {
-      parser_add_error(loc.begin.line, loc.begin.column, "failed to create lambda class type");
+      parser_add_error(loc.begin.line, loc.begin.column, "lambda class is null");
       return nullptr;
     }
 
-    // Enter class scope for adding members
-    symbol_table.enter_scope();
-    parser_state.push_ctx(ContextKind::CLASS);
+    // Lambda class and its scope are already set up in grammar rules before parsing body
+    // We just need to save the current state
     auto saved_class = parser_state.current_class_type;
-    parser_state.current_class_type = lambda_class;
     parser_state.current_access = Access::PRIVATE;
 
     // Step 1: Add capture variables as private members
@@ -1863,10 +1958,11 @@ static void check_array_bounds(const TypePtr &array_type,
     );
 
     std::optional<std::string> ctor_mangled_name;
+    SymbolPtr ctor_sym_ptr = nullptr;
     if (ctor_fn) {
       FunctionMeta ctor_meta(FunctionKind::CONSTRUCTOR, capture_member_names, lambda_class);
       auto ctor_mangled = mangle_function_name(
-          lambda_class_name.str(),
+          lambda_class->debug_name(),  // Get name from the already-created lambda class
           *std::static_pointer_cast<FunctionType>(ctor_fn),
           ctor_meta,
           *lambda_class
@@ -1884,6 +1980,85 @@ static void check_array_bounds(const TypePtr &array_type,
             QualifiedType(ctor_fn, Qualifier::NONE),
             loc,
             std::optional<FunctionMeta>{ctor_meta});
+
+        // Look up the constructor symbol for FunctionDef creation
+        auto ctor_sym_opt = symbol_table.lookup_symbol(*ctor_mangled);
+        if (ctor_sym_opt.has_value()) {
+          ctor_sym_ptr = ctor_sym_opt.value();
+
+          // Enter a scope for constructor body
+          symbol_table.enter_scope();
+
+          // Add constructor parameters to the scope
+          // Parameters are named after the members: cap_x, cap_y, cap_z
+          std::vector<SymbolPtr> ctor_param_symbols;
+          for (size_t i = 0; i < capture_member_names.size(); ++i) {
+            add_symbol_if_valid(capture_member_names[i], capture_member_types[i], loc);
+            auto param_sym = symbol_table.lookup_symbol(capture_member_names[i]);
+            if (param_sym.has_value()) {
+              ctor_param_symbols.push_back(param_sym.value());
+            }
+          }
+
+          // Create constructor body: assign each parameter to its corresponding member
+          // Constructor body: this->cap_x = cap_x; this->cap_y = cap_y; etc.
+          std::vector<ASTNodePtr> ctor_statements;
+
+          for (size_t i = 0; i < capture_member_names.size(); ++i) {
+            // Look up parameter symbol
+            auto param_sym_opt = symbol_table.lookup_symbol(capture_member_names[i]);
+            if (!param_sym_opt.has_value()) continue;
+
+            // Create 'this' expression
+            TypePtr this_ptr_type = apply_pointer_levels_or_error(
+                QualifiedType(lambda_class, Qualifier::NONE),
+                1,
+                "lambda constructor 'this'",
+                loc.begin.line,
+                loc.begin.column
+            ).type;
+            auto this_expr = std::make_shared<ThisExpr>(this_ptr_type);
+
+            // Create member access: this->cap_x
+            auto member_access = std::make_shared<MemberExpr>(
+                Operator::MEMBER_ACCESS_PTR,
+                this_expr,
+                capture_member_names[i],
+                capture_member_types[i].type
+            );
+
+            // Create parameter identifier
+            auto param_expr = std::make_shared<IdentifierExpr>(
+                param_sym_opt.value(),
+                capture_member_types[i].type
+            );
+
+            // Create assignment: this->cap_x = cap_x
+            auto assignment = std::make_shared<AssignmentExpr>(
+                Operator::ASSIGN,
+                member_access,
+                param_expr,
+                capture_member_types[i].type
+            );
+
+            ctor_statements.push_back(assignment);
+          }
+
+          // Create constructor body as a block statement
+          ASTNodePtr ctor_body = std::make_shared<BlockStmt>(ctor_statements);
+
+          // Create FunctionDef for the constructor
+          auto ctor_func_def = std::make_shared<FunctionDef>(
+              ctor_sym_ptr,
+              void_type,
+              ctor_param_symbols,
+              ctor_body
+          );
+          parsed_class_methods.push_back(ctor_func_def);
+
+          // Exit the constructor body scope
+          symbol_table.exit_scope();
+        }
       }
     }
 
@@ -1924,35 +2099,34 @@ static void check_array_bounds(const TypePtr &array_type,
         // Create function definition for operator()
         auto op_sym = symbol_table.lookup_symbol(*op_mangled);
         if (op_sym.has_value()) {
+          // param_symbols should be ONLY the actual lambda parameters, NOT captures
+          // current_function_parameters has: [capture_0, capture_1, ..., param_0, param_1, ...]
+          // We need to skip the first captures.size() symbols
           std::vector<SymbolPtr> param_symbols;
-          for (const auto& param_name : param_names) {
-            auto param_sym = symbol_table.lookup_symbol(param_name);
-            if (param_sym.has_value()) {
-              param_symbols.push_back(param_sym.value());
-            }
+          size_t num_captures = captures.size();
+
+          if (current_function_parameters.size() > num_captures) {
+            param_symbols.insert(param_symbols.end(),
+                               current_function_parameters.begin() + num_captures,
+                               current_function_parameters.end());
           }
 
+          // Body is already transformed - capture references were replaced with this->cap_x during parsing
           auto func_def = std::make_shared<FunctionDef>(op_sym.value(), return_type, param_symbols, body);
           parsed_class_methods.push_back(func_def);
         }
       }
     }
 
-    // Look up constructor symbol before exiting class scope
-    SymbolPtr ctor_sym_ptr = nullptr;
-    if (ctor_mangled_name.has_value()) {
-      auto ctor_sym_opt = symbol_table.lookup_symbol(*ctor_mangled_name);
-      if (ctor_sym_opt.has_value()) {
-        ctor_sym_ptr = ctor_sym_opt.value();
-      }
-    }
+    // Clear current_function_parameters after creating lambda methods
+    current_function_parameters.clear();
 
-    // Exit class scope
+    // Exit the class scope (entered in grammar rules) so lambda variable is added to outer scope
     parser_state.current_class_type = saved_class;
     parser_state.pop_ctx();
     symbol_table.exit_scope();
 
-    // Step 4: Create variable with lambda class type
+    // Step 4: Create variable with lambda class type (now in outer scope)
     QualifiedType lambda_type(lambda_class, Qualifier::NONE);
     add_symbol_if_valid(lambda_var_name, lambda_type, loc);
 
@@ -2268,28 +2442,28 @@ static void check_array_bounds(const TypePtr &array_type,
   }
 
   // Helper function to recursively validate designated initializers
-  static void validate_designated_initializers(const std::vector<ASTNodePtr>& initializers, 
+  static void validate_designated_initializers(const std::vector<ASTNodePtr>& initializers,
                                                TypePtr target_type,
                                                int line, int column) {
     if (!target_type) return;
-    
+
     target_type = strip_typedefs(target_type);
     if (target_type->kind != TypeKind::RECORD && target_type->kind != TypeKind::CLASS) {
       return; // Only validate struct/class types
     }
-    
+
     for (const auto& init : initializers) {
       if (!init || init->type != ASTNodeType::DESIGNATED_INITIALIZER_EXPR) {
         continue;
       }
-      
+
       auto* desig = static_cast<DesignatedInitializerExpr*>(init.get());
-      
+
       // Validate member path exists in the type
       TypePtr current_type = target_type;
       for (size_t i = 0; i < desig->member_path.size(); ++i) {
         const std::string& member = desig->member_path[i];
-        
+
         if (current_type->kind == TypeKind::RECORD) {
           auto record = std::static_pointer_cast<RecordType>(current_type);
           if (record->fields.find(member) == record->fields.end()) {
@@ -2314,7 +2488,7 @@ static void check_array_bounds(const TypePtr &array_type,
           return; // Stop validation on error
         }
       }
-      
+
       // Recursively validate nested initializers (BLOCK_STMT)
       if (desig->value && desig->value->type == ASTNodeType::BLOCK_STMT) {
         auto block = std::static_pointer_cast<BlockStmt>(desig->value);
@@ -2635,10 +2809,41 @@ primary_expression
       {
         // At this point, an indentifier can be a variable name, function name, or enum name.
 
-        // Check if we're in a member function and this could be a class member FIRST
+        // FIRST: Check if we're in a lambda body and this identifier is a capture
+        // If so, replace it with this->cap_<name> member access
+        bool found_as_lambda_capture = false;
+        if (parser_state.in_lambda_body && parser_state.current_lambda_class) {
+          for (const auto& capture : parser_state.current_lambda_captures) {
+            if (capture.capture_name == $1) {
+              // This is a lambda capture - create this->cap_<name> access
+              TypePtr this_ptr_type = apply_pointer_levels_or_error(
+                  QualifiedType(parser_state.current_lambda_class, Qualifier::NONE),
+                  1,
+                  "lambda operator() 'this'",
+                  @1.begin.line,
+                  @1.begin.column
+              ).type;
+              auto this_expr = std::make_shared<ThisExpr>(this_ptr_type);
+
+              std::string member_name = "cap_" + capture.capture_name;
+              TypePtr capture_type = get_expression_type(capture.init_expr, @1, "lambda capture type");
+
+              $$ = std::make_shared<MemberExpr>(
+                  Operator::MEMBER_ACCESS_PTR,
+                  this_expr,
+                  member_name,
+                  capture_type
+              );
+              found_as_lambda_capture = true;
+              break;
+            }
+          }
+        }
+
+        // Check if we're in a member function and this could be a class member SECOND
         // This takes precedence over regular symbol lookup to ensure members are accessed via 'this'
         bool found_as_member = false;
-        if (is_in_member_function_of_class() && parser_state.current_class_type) {
+        if (!found_as_lambda_capture && is_in_member_function_of_class() && parser_state.current_class_type) {
           ClassTypePtr searching_class = parser_state.current_class_type;
           ClassTypePtr current_class = parser_state.current_class_type;
 
@@ -2705,7 +2910,7 @@ primary_expression
             }
           }
 
-        if (!found_as_member) {
+        if (!found_as_member && !found_as_lambda_capture) {
           // Variable name case - regular symbol lookup
           auto sym_opt = symbol_table.lookup_symbol($1);
           if(sym_opt.has_value()){
@@ -2784,8 +2989,34 @@ primary_expression
         auto& captures_and_name = $1;
         std::vector<CaptureInfo> captures = captures_and_name.first;
         TypePtr return_type = $6;
-        prepare_parameters_for_scope($3.types, $3.names);
+        // Add captures as temporary symbols so parser can resolve them (FIRST)
         prepare_captures_for_scope(captures, @1);
+        // Then add actual parameters (SECOND)
+        prepare_parameters_for_scope($3.types, $3.names);
+
+        // Create lambda class early so we can use it during body parsing
+        std::ostringstream lambda_class_name;
+        lambda_class_name << "_lambda_" << symbol_table.get_current_scope_id() << "_" << (parser_state.global_lambda_counter++) << "_";
+        auto lambda_class = std::static_pointer_cast<ClassType>(
+            unwrap_type_or_error(
+                type_factory.make<ClassType>(lambda_class_name.str(), nullptr, Access::PRIVATE, true),
+                "lambda class creation",
+                @1.begin.line,
+                @1.begin.column
+            )
+        );
+
+        // Enter class scope
+        symbol_table.enter_scope();
+        parser_state.push_ctx(ContextKind::CLASS);
+        parser_state.current_class_type = lambda_class;
+        parser_state.current_access = Access::PRIVATE;
+
+        // Set lambda state so identifier lookup knows to transform captures
+        parser_state.in_lambda_body = true;
+        parser_state.current_lambda_captures = captures;
+        parser_state.current_lambda_class = lambda_class;
+
         parser_state.push_function(return_type);
       }
       compound_statement
@@ -2798,7 +3029,12 @@ primary_expression
         TypePtr return_type = $6;
         ASTNodePtr body = $8;
 
-        $$ = handle_lambda_expression(captures, lambda_name, params.types, params.names, params.variadic, return_type, body, @1);
+        $$ = handle_lambda_expression(parser_state.current_lambda_class, captures, lambda_name, params.types, params.names, params.variadic, return_type, body, @1);
+
+        // Reset lambda state
+        parser_state.in_lambda_body = false;
+        parser_state.current_lambda_captures.clear();
+        parser_state.current_lambda_class = nullptr;
 
         parser_state.pop_function();
       }
@@ -2808,7 +3044,32 @@ primary_expression
         auto& captures_and_name = $1;
         std::vector<CaptureInfo> captures = captures_and_name.first;
         TypePtr return_type = $5;
+        // Add captures as temporary symbols so parser can resolve them
         prepare_captures_for_scope(captures, @1);
+
+        // Create lambda class early
+        std::ostringstream lambda_class_name;
+        lambda_class_name << "_lambda_" << symbol_table.get_current_scope_id() << "_" << (parser_state.global_lambda_counter++) << "_";
+        auto lambda_class = std::static_pointer_cast<ClassType>(
+            unwrap_type_or_error(
+                type_factory.make<ClassType>(lambda_class_name.str(), nullptr, Access::PRIVATE, true),
+                "lambda class creation",
+                @1.begin.line,
+                @1.begin.column
+            )
+        );
+
+        // Enter class scope
+        symbol_table.enter_scope();
+        parser_state.push_ctx(ContextKind::CLASS);
+        parser_state.current_class_type = lambda_class;
+        parser_state.current_access = Access::PRIVATE;
+
+        // Set lambda state
+        parser_state.in_lambda_body = true;
+        parser_state.current_lambda_captures = captures;
+        parser_state.current_lambda_class = lambda_class;
+
         parser_state.push_function(return_type);
       }
       compound_statement
@@ -2822,7 +3083,12 @@ primary_expression
 
         std::vector<QualifiedType> empty_types;
         std::vector<std::string> empty_names;
-        $$ = handle_lambda_expression(captures, lambda_name, empty_types, empty_names, false, return_type, body, @1);
+        $$ = handle_lambda_expression(parser_state.current_lambda_class, captures, lambda_name, empty_types, empty_names, false, return_type, body, @1);
+
+        // Reset lambda state
+        parser_state.in_lambda_body = false;
+        parser_state.current_lambda_captures.clear();
+        parser_state.current_lambda_class = nullptr;
 
         parser_state.pop_function();
       }
@@ -2832,6 +3098,30 @@ primary_expression
         TypePtr return_type = $6;
         prepare_parameters_for_scope($3.types, $3.names);
         parser_state.push_function(return_type);
+
+        // Create lambda class early (no captures, but we still need the class)
+        std::ostringstream lambda_class_name;
+        lambda_class_name << "_lambda_" << symbol_table.get_current_scope_id() << "_" << (parser_state.global_lambda_counter++) << "_";
+
+        auto lambda_class = std::static_pointer_cast<ClassType>(
+            unwrap_type_or_error(
+                type_factory.make<ClassType>(lambda_class_name.str(), nullptr, Access::PRIVATE, true),
+                "lambda class creation",
+                @1.begin.line,
+                @1.begin.column
+            )
+        );
+
+        // Enter class scope
+        symbol_table.enter_scope();
+        parser_state.push_ctx(ContextKind::CLASS);
+        parser_state.current_class_type = lambda_class;
+        parser_state.current_access = Access::PRIVATE;
+
+        // Set lambda state (no captures, but still mark we're in lambda body)
+        parser_state.in_lambda_body = true;
+        parser_state.current_lambda_captures.clear();
+        parser_state.current_lambda_class = lambda_class;
       }
       compound_statement
       {
@@ -2841,9 +3131,16 @@ primary_expression
         std::string lambda_name = captures_and_name.second;
         ParamListInfo params = $3;
         TypePtr return_type = $6;
-        ASTNodePtr body = $8;
+        ASTNodePtr body = $8;  // mid-rule at position 7, compound_statement at position 8
 
-        $$ = handle_lambda_expression(captures, lambda_name, params.types, params.names, params.variadic, return_type, body, @1);
+        $$ = handle_lambda_expression(parser_state.current_lambda_class, captures, lambda_name, params.types, params.names, params.variadic, return_type, body, @1);
+
+        // handle_lambda_expression exits class scope and adds variable to outer scope
+
+        // Reset lambda state
+        parser_state.in_lambda_body = false;
+        parser_state.current_lambda_captures.clear();
+        parser_state.current_lambda_class = nullptr;
 
         parser_state.pop_function();
       }
@@ -2852,6 +3149,30 @@ primary_expression
         // Set up function context with no parameters
         TypePtr return_type = $5;
         parser_state.push_function(return_type);
+
+        // Create lambda class early (no captures, no params)
+        std::ostringstream lambda_class_name;
+        lambda_class_name << "_lambda_" << symbol_table.get_current_scope_id() << "_" << (parser_state.global_lambda_counter++) << "_";
+
+        auto lambda_class = std::static_pointer_cast<ClassType>(
+            unwrap_type_or_error(
+                type_factory.make<ClassType>(lambda_class_name.str(), nullptr, Access::PRIVATE, true),
+                "lambda class creation",
+                @1.begin.line,
+                @1.begin.column
+            )
+        );
+
+        // Enter class scope
+        symbol_table.enter_scope();
+        parser_state.push_ctx(ContextKind::CLASS);
+        parser_state.current_class_type = lambda_class;
+        parser_state.current_access = Access::PRIVATE;
+
+        // Set lambda state (no captures, but still mark we're in lambda body)
+        parser_state.in_lambda_body = true;
+        parser_state.current_lambda_captures.clear();
+        parser_state.current_lambda_class = lambda_class;
       }
       compound_statement
       {
@@ -2860,11 +3181,18 @@ primary_expression
         std::vector<CaptureInfo> captures = captures_and_name.first;
         std::string lambda_name = captures_and_name.second;
         TypePtr return_type = $5;
-        ASTNodePtr body = $7;
+        ASTNodePtr body = $7;  // mid-rule at position 6, compound_statement at position 7
 
         std::vector<QualifiedType> empty_types;
         std::vector<std::string> empty_names;
-        $$ = handle_lambda_expression(captures, lambda_name, empty_types, empty_names, false, return_type, body, @1);
+        $$ = handle_lambda_expression(parser_state.current_lambda_class, captures, lambda_name, empty_types, empty_names, false, return_type, body, @1);
+
+        // handle_lambda_expression exits class scope and adds variable to outer scope
+
+        // Reset lambda state
+        parser_state.in_lambda_body = false;
+        parser_state.current_lambda_captures.clear();
+        parser_state.current_lambda_class = nullptr;
 
         parser_state.pop_function();
       }
