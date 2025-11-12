@@ -1,0 +1,46 @@
+// Test edge cases for stack frame offset handling
+// Verifies correct behavior at the boundary of 12-bit signed immediate range
+
+int printf(char* fmt, ...);
+
+int main() {
+    // Test 1: Offset exactly at boundary (2047 is max imm12)
+    int small_arr[512];  // 512 * 4 = 2048 bytes, last element at offset 2044
+
+    printf("Test 1: Offset at boundary...\n");
+    small_arr[0] = 1;
+    small_arr[511] = 2;  // offset = 511 * 4 = 2044 (within imm12)
+    printf("small_arr[0] = %d, small_arr[511] = %d\n", small_arr[0], small_arr[511]);
+
+    // Test 2: Offset just beyond boundary (2048 is beyond imm12)
+    int med_arr[513];  // 513 * 4 = 2052 bytes
+
+    printf("Test 2: Offset just beyond boundary...\n");
+    med_arr[0] = 3;
+    med_arr[512] = 4;  // offset = 512 * 4 = 2048 (beyond imm12!)
+    printf("med_arr[0] = %d, med_arr[512] = %d\n", med_arr[0], med_arr[512]);
+
+    // Test 3: Very large offset
+    int large_arr[1000];  // 1000 * 4 = 4000 bytes
+
+    printf("Test 3: Very large offset...\n");
+    large_arr[0] = 5;
+    large_arr[999] = 6;  // offset = 999 * 4 = 3996 (way beyond imm12!)
+    printf("large_arr[0] = %d, large_arr[999] = %d\n", large_arr[0], large_arr[999]);
+
+    // Test 4: Regular local variable access
+    int test_val = 42;
+    printf("Test 4: Regular local variable = %d\n", test_val);
+
+    // Verify all values
+    if (small_arr[0] == 1 && small_arr[511] == 2 &&
+        med_arr[0] == 3 && med_arr[512] == 4 &&
+        large_arr[0] == 5 && large_arr[999] == 6 &&
+        test_val == 42) {
+        printf("\nALL TESTS PASSED!\n");
+        return 0;
+    }
+
+    printf("\nTEST FAILED!\n");
+    return 1;
+}

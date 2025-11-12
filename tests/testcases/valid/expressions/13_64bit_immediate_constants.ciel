@@ -1,0 +1,52 @@
+// Test handling of full 64-bit immediate constants
+// In this language, int is 64-bit, and we're targeting RV64
+
+int printf(char* fmt, ...);
+
+int main() {
+    // Small 12-bit immediates (fit in ADDI immediate field)
+    int small1 = 100;
+    int small2 = 2047;   // Max 12-bit signed positive
+    int small3 = -2048;  // Min 12-bit signed negative
+
+    // Medium 32-bit immediates (require LUI + ADDI)
+    int med1 = 5000;
+    int med2 = 100000;
+    int med3 = 2147483647;   // INT32_MAX
+    int med4 = -2147483648;  // INT32_MIN
+
+    // Large 64-bit immediates (require multiple instructions)
+    int large1 = 4294967296;      // 2^32 (0x100000000)
+    int large2 = 1311768467294899695;  // Large 64-bit (0x123456789ABCDEF)
+    int large3 = -4294967296;     // -2^32
+    int large4 = 9223372036854775807;  // INT64_MAX (0x7FFFFFFFFFFFFFFF)
+
+    printf("Small: %lld, %lld, %lld\n", small1, small2, small3);
+    printf("Medium: %lld, %lld, %lld, %lld\n", med1, med2, med3, med4);
+    printf("Large: %lld, %lld\n", large1, large2);
+    printf("Large: %lld, %lld\n", large3, large4);
+
+    // Verify all values
+    if (small1 != 100 || small2 != 2047 || small3 != -2048) {
+        printf("FAILED: Small constants\n");
+        return 1;
+    }
+
+    if (med1 != 5000 || med2 != 100000 || med3 != 2147483647 || med4 != -2147483648) {
+        printf("FAILED: Medium constants\n");
+        return 2;
+    }
+
+    if (large1 != 4294967296 || large2 != 1311768467294899695) {
+        printf("FAILED: Large positive constants\n");
+        return 3;
+    }
+
+    if (large3 != -4294967296 || large4 != 9223372036854775807) {
+        printf("FAILED: Large negative/max constants\n");
+        return 4;
+    }
+
+    printf("SUCCESS: All 64-bit constants handled correctly!\n");
+    return 0;
+}

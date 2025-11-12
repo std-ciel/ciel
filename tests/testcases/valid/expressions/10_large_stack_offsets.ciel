@@ -1,0 +1,40 @@
+// Test large stack frame offsets beyond immediate range
+// This tests the codegen's ability to handle offsets that don't fit in RISC-V's 12-bit immediate field
+
+int printf(char* fmt, ...);
+
+int main() {
+    // Create a large array on the stack that will have offsets beyond immediate range
+    // RISC-V I-type instructions have 12-bit signed immediate: range -2048 to 2047
+    // Each int is 4 bytes, so 600 elements = 2400 bytes
+    // Index 0: offset 0
+    // Index 500: offset 2000 (within range: -2048 to 2047)
+    // Index 512: offset 2048 (beyond immediate range!)
+    int arr[600];
+
+    printf("Testing large offset handling...\n");
+
+    // Access element at offset 0
+    arr[0] = 42;
+    printf("arr[0] = %d\n", arr[0]);
+
+    // Access element at offset 2000 (500 * 4 = 2000, within imm12)
+    arr[500] = 100;
+    printf("arr[500] = %d\n", arr[500]);
+
+    // Access element at offset 2048 (512 * 4 = 2048, beyond imm12!)
+    arr[512] = 200;
+    printf("arr[512] = %d\n", arr[512]);
+
+    // Access element at offset 2396 (599 * 4 = 2396, well beyond imm12!)
+    arr[599] = 300;
+    printf("arr[599] = %d\n", arr[599]);
+
+    // Verify values
+    if (arr[0] == 42 && arr[500] == 100 && arr[512] == 200 && arr[599] == 300) {
+        printf("SUCCESS: All values correct!\n");
+        return 0;  // Success
+    }
+    printf("FAILURE: Values don't match!\n");
+    return 1;  // Failure
+}

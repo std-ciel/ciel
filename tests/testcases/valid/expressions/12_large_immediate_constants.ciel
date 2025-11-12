@@ -1,0 +1,45 @@
+// Test handling of large immediate constants that don't fit in 12-bit signed immediate
+// RISC-V I-type instructions have 12-bit signed immediate: range -2048 to 2047
+
+int printf(char* fmt, ...);
+
+int main() {
+    // Small constants (fit in 12-bit immediate)
+    int small1 = 100;
+    int small2 = -100;
+    int small3 = 2047;   // Max positive 12-bit signed
+    int small4 = -2048;  // Min negative 12-bit signed
+
+    // Large constants (beyond 12-bit immediate range)
+    int large1 = 5000;     // Requires LUI + ADDI
+    int large2 = -5000;    // Requires LUI + ADDI
+    int large3 = 100000;   // Requires LUI + ADDI
+    int large4 = -100000;  // Requires LUI + ADDI
+
+    // Very large constants (require full 32-bit representation)
+    int huge1 = 2147483647;  // INT_MAX (0x7FFFFFFF)
+    int huge2 = -2147483648; // INT_MIN (0x80000000)
+
+    printf("Small constants: %d, %d, %d, %d\n", small1, small2, small3, small4);
+    printf("Large constants: %d, %d, %d, %d\n", large1, large2, large3, large4);
+    printf("Huge constants: %d, %d\n", huge1, huge2);
+
+    // Verify values
+    if (small1 != 100 || small2 != -100 || small3 != 2047 || small4 != -2048) {
+        printf("FAILED: Small constants incorrect\n");
+        return 1;
+    }
+
+    if (large1 != 5000 || large2 != -5000 || large3 != 100000 || large4 != -100000) {
+        printf("FAILED: Large constants incorrect\n");
+        return 2;
+    }
+
+    if (huge1 != 2147483647 || huge2 != -2147483648) {
+        printf("FAILED: Huge constants incorrect\n");
+        return 3;
+    }
+
+    printf("SUCCESS: All constants handled correctly!\n");
+    return 0;
+}
