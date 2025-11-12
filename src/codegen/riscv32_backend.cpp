@@ -127,10 +127,19 @@ void InstructionSelector::store_param_from_register(PhysReg source_reg,
                                                     int32_t stack_offset,
                                                     MachineOpcode store_op)
 {
-    mfn_.add_instruction(
-        MachineInstr(store_op)
-            .add_operand(RegOperand(source_reg))
-            .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
+    if (is_valid_imm12(stack_offset)) {
+        mfn_.add_instruction(
+            MachineInstr(store_op)
+                .add_operand(RegOperand(source_reg))
+                .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
+    } else {
+        VirtReg addr = add_offset_to_phys_reg(PhysReg::S0_FP, stack_offset);
+        mfn_.add_instruction(MachineInstr(store_op)
+                                 .add_use(addr)
+                                 .add_operand(RegOperand(source_reg))
+                                 .add_operand(VRegOperand(addr))
+                                 .add_operand(ImmOperand(0)));
+    }
 }
 
 void InstructionSelector::store_param_from_stack(int32_t source_stack_offset,
@@ -139,16 +148,9 @@ void InstructionSelector::store_param_from_stack(int32_t source_stack_offset,
                                                  MachineOpcode store_op)
 {
     const auto tmp = mfn_.get_next_vreg();
-    mfn_.add_instruction(
-        MachineInstr(load_op)
-            .add_def(tmp)
-            .add_operand(VRegOperand(tmp))
-            .add_operand(MemOperand(PhysReg::S0_FP, source_stack_offset)));
-    mfn_.add_instruction(
-        MachineInstr(store_op)
-            .add_use(tmp)
-            .add_operand(VRegOperand(tmp))
-            .add_operand(MemOperand(PhysReg::S0_FP, dest_stack_offset)));
+
+    emit_load_from_fp(tmp, source_stack_offset, load_op);
+    emit_store_to_fp(tmp, dest_stack_offset, store_op);
 }
 
 void InstructionSelector::handle_implicit_this_param(const TACOperand &param,
@@ -216,16 +218,9 @@ void InstructionSelector::handle_regular_param(const TACOperand &param,
         const auto load_op = get_load_opcode(param.type, is_float);
         const auto store_op = get_store_opcode(param.type, is_float);
 
-        mfn_.add_instruction(
-            MachineInstr(load_op)
-                .add_def(tmp)
-                .add_operand(VRegOperand(tmp))
-                .add_operand(MemOperand(PhysReg::S0_FP, stack_offset)));
-        mfn_.add_instruction(
-            MachineInstr(store_op)
-                .add_use(tmp)
-                .add_operand(VRegOperand(tmp))
-                .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+        // Load from incoming stack parameters and store to local variable slot
+        emit_load_from_fp(tmp, stack_offset, load_op);
+        emit_store_to_fp(tmp, offset, store_op);
     }
 }
 
@@ -406,24 +401,10 @@ void InstructionSelector::copy_aggregate_words(VirtReg dst_base,
     const uint32_t num_words = (size_bytes + WORD_SIZE - 1) / WORD_SIZE;
 
     for (uint32_t word = 0; word < num_words; ++word) {
-        const auto offset = static_cast<int32_t>(word * WORD_SIZE);
+        const auto offset = static_cast<int64_t>(word * WORD_SIZE);
 
-        const auto get_address_with_offset = [&](VirtReg base) {
-            if (offset == 0)
-                return base;
-
-            const auto result = mfn_.get_next_vreg();
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(result)
-                                     .add_use(base)
-                                     .add_operand(VRegOperand(result))
-                                     .add_operand(VRegOperand(base))
-                                     .add_operand(ImmOperand(offset)));
-            return result;
-        };
-
-        const auto src_addr = get_address_with_offset(src_base);
-        const auto dst_addr = get_address_with_offset(dst_base);
+        const auto src_addr = add_offset_to_reg(src_base, offset);
+        const auto dst_addr = add_offset_to_reg(dst_base, offset);
 
         const auto temp = mfn_.get_next_vreg();
         mfn_.add_instruction(MachineInstr(MachineOpcode::LD)
@@ -493,13 +474,7 @@ void InstructionSelector::select_addr_of(const TACInstruction &instr)
         if (sym->get_storage_class() == StorageClass::AUTO) {
 
             int32_t offset = get_local_variable_offset(sym);
-            VirtReg addr_vreg = mfn_.get_next_vreg();
-
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(addr_vreg)
-                                     .add_operand(VRegOperand(addr_vreg))
-                                     .add_operand(RegOperand(PhysReg::S0_FP))
-                                     .add_operand(ImmOperand(offset)));
+            VirtReg addr_vreg = add_offset_to_phys_reg(PhysReg::S0_FP, offset);
 
             store_result(addr_vreg, instr.result);
         } else {
@@ -968,12 +943,7 @@ void InstructionSelector::select_call(const TACInstruction &instr)
         uint32_t ret_size = get_type_size(return_type);
         int32_t sret_offset = mfn_.get_frame().allocate_slot(ret_size, 8);
 
-        sret_slot_ptr = mfn_.get_next_vreg();
-        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                 .add_def(sret_slot_ptr)
-                                 .add_operand(VRegOperand(sret_slot_ptr))
-                                 .add_operand(RegOperand(PhysReg::S0_FP))
-                                 .add_operand(ImmOperand(sret_offset)));
+        sret_slot_ptr = add_offset_to_phys_reg(PhysReg::S0_FP, sret_offset);
     }
 
     bool has_implicit_this =
@@ -1004,12 +974,8 @@ void InstructionSelector::select_call(const TACInstruction &instr)
 
             VirtReg src_addr = param_vreg;
 
-            VirtReg dst_addr = mfn_.get_next_vreg();
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(dst_addr)
-                                     .add_operand(VRegOperand(dst_addr))
-                                     .add_operand(RegOperand(PhysReg::S0_FP))
-                                     .add_operand(ImmOperand(agg_copy_offset)));
+            VirtReg dst_addr =
+                add_offset_to_phys_reg(PhysReg::S0_FP, agg_copy_offset);
 
             copy_aggregate_words(dst_addr, src_addr, agg_size);
 
@@ -1159,8 +1125,7 @@ void InstructionSelector::select_call(const TACInstruction &instr)
                 // Integer constant: LI then SD
                 int64_t const_val = std::get<int64_t>(original_operand.value);
                 VirtReg temp_vreg = mfn_.get_next_vreg();
-                mfn_.add_instruction(
-                    make_li(temp_vreg, static_cast<int32_t>(const_val)));
+                mfn_.add_instruction(make_li(temp_vreg, const_val));
                 mfn_.add_instruction(
                     MachineInstr(MachineOpcode::SD)
                         .add_use(temp_vreg)
@@ -1576,30 +1541,16 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
                     return ptr;
 
                 // Add the member offset to the loaded pointer
-                mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                         .add_def(member_addr)
-                                         .add_use(ptr)
-                                         .add_operand(VRegOperand(member_addr))
-                                         .add_operand(VRegOperand(ptr))
-                                         .add_operand(ImmOperand(offset)));
+                member_addr = add_offset_to_reg(ptr, offset);
             } else {
                 // For non-pointer local variables, compute address directly
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::ADDI)
-                        .add_def(member_addr)
-                        .add_operand(VRegOperand(member_addr))
-                        .add_operand(RegOperand(PhysReg::S0_FP))
-                        .add_operand(ImmOperand(local_offset + offset)));
+                member_addr = add_offset_to_phys_reg(PhysReg::S0_FP,
+                                                     local_offset + offset);
             }
         } else {
             const VirtReg global_addr = mfn_.get_next_vreg();
             mfn_.add_instruction(make_la(global_addr, sym->get_name()));
-            mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                     .add_def(member_addr)
-                                     .add_use(global_addr)
-                                     .add_operand(VRegOperand(member_addr))
-                                     .add_operand(VRegOperand(global_addr))
-                                     .add_operand(ImmOperand(offset)));
+            member_addr = add_offset_to_reg(global_addr, offset);
         }
     } else {
         const std::string temp_str = std::get<std::string>(operand.value);
@@ -1615,33 +1566,14 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
                 offset_it != temp_to_offset_.end()) {
                 // Already allocated on stack, compute address
                 int32_t temp_offset = offset_it->second;
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::ADDI)
-                        .add_def(member_addr)
-                        .add_operand(VRegOperand(member_addr))
-                        .add_operand(RegOperand(PhysReg::S0_FP))
-                        .add_operand(ImmOperand(temp_offset + offset)));
+                member_addr = add_offset_to_phys_reg(PhysReg::S0_FP,
+                                                     temp_offset + offset);
             } else if (auto vreg_it = temp_to_vreg_.find(temp_str);
                        vreg_it != temp_to_vreg_.end()) {
                 // Temporary holds an address (e.g., from LOAD_MEMBER)
                 // Use it as the base address
                 VirtReg base_addr = vreg_it->second;
-                if (offset == 0) {
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::MV)
-                            .add_def(member_addr)
-                            .add_use(base_addr)
-                            .add_operand(VRegOperand(member_addr))
-                            .add_operand(VRegOperand(base_addr)));
-                } else {
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::ADDI)
-                            .add_def(member_addr)
-                            .add_use(base_addr)
-                            .add_operand(VRegOperand(member_addr))
-                            .add_operand(VRegOperand(base_addr))
-                            .add_operand(ImmOperand(offset)));
-                }
+                member_addr = add_offset_to_reg(base_addr, offset);
             } else {
                 // First time seeing this aggregate temporary - allocate stack
                 // space
@@ -1652,31 +1584,13 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
                 temp_to_offset_[temp_str] = temp_offset;
 
                 // Compute address
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::ADDI)
-                        .add_def(member_addr)
-                        .add_operand(VRegOperand(member_addr))
-                        .add_operand(RegOperand(PhysReg::S0_FP))
-                        .add_operand(ImmOperand(temp_offset + offset)));
+                member_addr = add_offset_to_phys_reg(PhysReg::S0_FP,
+                                                     temp_offset + offset);
             }
         } else {
             // Scalar temporary - use virtual register
             const VirtReg temp_addr = get_or_create_vreg_for_temp(temp_str);
-
-            if (offset == 0) {
-                mfn_.add_instruction(MachineInstr(MachineOpcode::MV)
-                                         .add_def(member_addr)
-                                         .add_use(temp_addr)
-                                         .add_operand(VRegOperand(member_addr))
-                                         .add_operand(VRegOperand(temp_addr)));
-            } else {
-                mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
-                                         .add_def(member_addr)
-                                         .add_use(temp_addr)
-                                         .add_operand(VRegOperand(member_addr))
-                                         .add_operand(VRegOperand(temp_addr))
-                                         .add_operand(ImmOperand(offset)));
-            }
+            member_addr = add_offset_to_reg(temp_addr, offset);
         }
     }
 
@@ -1778,7 +1692,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             return vreg;
         } else {
             int64_t val = std::get<int64_t>(operand.value);
-            mfn_.add_instruction(make_li(vreg, static_cast<int32_t>(val)));
+            mfn_.add_instruction(make_li(vreg, val));
             return vreg;
         }
     }
@@ -1803,22 +1717,12 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                     int32_t offset = get_local_variable_offset(sym);
                     VirtReg vreg = mfn_.get_next_vreg();
 
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::LD)
-                            .add_def(vreg)
-                            .add_operand(VRegOperand(vreg))
-                            .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                    emit_load_from_fp(vreg, offset, MachineOpcode::LD);
                     return vreg;
                 } else {
                     int32_t offset = get_local_variable_offset(sym);
-                    VirtReg vreg = mfn_.get_next_vreg();
-
-                    mfn_.add_instruction(
-                        MachineInstr(MachineOpcode::ADDI)
-                            .add_def(vreg)
-                            .add_operand(VRegOperand(vreg))
-                            .add_operand(RegOperand(PhysReg::S0_FP))
-                            .add_operand(ImmOperand(offset)));
+                    VirtReg vreg =
+                        add_offset_to_phys_reg(PhysReg::S0_FP, offset);
                     return vreg;
                 }
             } else {
@@ -1833,11 +1737,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                     float_vregs_.insert(vreg);
                 }
 
-                mfn_.add_instruction(
-                    MachineInstr(load_op)
-                        .add_def(vreg)
-                        .add_operand(VRegOperand(vreg))
-                        .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+                emit_load_from_fp(vreg, offset, load_op);
                 return vreg;
             }
         } else {
@@ -1889,12 +1789,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
             // Check if this is an aggregate type - return address instead of
             // loading
             if (temp_type && is_aggregate_type(temp_type)) {
-                mfn_.add_instruction(
-                    MachineInstr(MachineOpcode::ADDI)
-                        .add_def(vreg)
-                        .add_operand(VRegOperand(vreg))
-                        .add_operand(RegOperand(PhysReg::S0_FP))
-                        .add_operand(ImmOperand(offset)));
+                vreg = add_offset_to_phys_reg(PhysReg::S0_FP, offset);
                 return vreg;
             }
 
@@ -1905,11 +1800,7 @@ VirtReg InstructionSelector::load_operand(const TACOperand &operand)
                 float_vregs_.insert(vreg);
             }
 
-            mfn_.add_instruction(
-                MachineInstr(load_op)
-                    .add_def(vreg)
-                    .add_operand(VRegOperand(vreg))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            emit_load_from_fp(vreg, offset, load_op);
             return vreg;
         }
 
@@ -1991,11 +1882,7 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
             bool is_float = float_vregs_.contains(vreg);
             MachineOpcode store_op = get_store_opcode(dest.type, is_float);
 
-            mfn_.add_instruction(
-                MachineInstr(store_op)
-                    .add_use(vreg)
-                    .add_operand(VRegOperand(vreg))
-                    .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+            emit_store_to_fp(vreg, offset, store_op);
         } else {
             // Global variable (STATIC storage class)
             VirtReg addr_vreg = mfn_.get_next_vreg();
@@ -2159,6 +2046,128 @@ int32_t InstructionSelector::get_local_variable_offset(SymbolPtr sym)
     }
 
     return allocate_local_variable(sym);
+}
+
+VirtReg InstructionSelector::add_offset_to_reg(VirtReg base, int64_t offset)
+{
+    if (offset == 0) {
+        return base;
+    }
+
+    VirtReg result = mfn_.get_next_vreg();
+
+    if (is_valid_imm12(offset)) {
+        // Offset fits in immediate field, use ADDI directly
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                 .add_def(result)
+                                 .add_use(base)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(VRegOperand(base))
+                                 .add_operand(ImmOperand(offset)));
+    } else {
+        // Offset doesn't fit, need to load it into a register first
+        VirtReg offset_reg = mfn_.get_next_vreg();
+        mfn_.add_instruction(make_li(offset_reg, offset));
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADD)
+                                 .add_def(result)
+                                 .add_use(base)
+                                 .add_use(offset_reg)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(VRegOperand(base))
+                                 .add_operand(VRegOperand(offset_reg)));
+    }
+
+    return result;
+}
+
+VirtReg InstructionSelector::add_offset_to_phys_reg(PhysReg base,
+                                                    int64_t offset)
+{
+    VirtReg result = mfn_.get_next_vreg();
+
+    if (offset == 0) {
+        // Just move from physical register to virtual register
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                 .add_def(result)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(RegOperand(base))
+                                 .add_operand(ImmOperand(0)));
+    } else if (is_valid_imm12(offset)) {
+        // Offset fits in immediate field, use ADDI directly
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                 .add_def(result)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(RegOperand(base))
+                                 .add_operand(ImmOperand(offset)));
+    } else {
+        // Offset doesn't fit, need to load it into a register first
+        VirtReg offset_reg = mfn_.get_next_vreg();
+        mfn_.add_instruction(make_li(offset_reg, offset));
+
+        // Move base to a vreg first
+        VirtReg base_vreg = mfn_.get_next_vreg();
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADDI)
+                                 .add_def(base_vreg)
+                                 .add_operand(VRegOperand(base_vreg))
+                                 .add_operand(RegOperand(base))
+                                 .add_operand(ImmOperand(0)));
+
+        mfn_.add_instruction(MachineInstr(MachineOpcode::ADD)
+                                 .add_def(result)
+                                 .add_use(base_vreg)
+                                 .add_use(offset_reg)
+                                 .add_operand(VRegOperand(result))
+                                 .add_operand(VRegOperand(base_vreg))
+                                 .add_operand(VRegOperand(offset_reg)));
+    }
+
+    return result;
+}
+
+void InstructionSelector::emit_load_from_fp(VirtReg dst,
+                                            int64_t offset,
+                                            MachineOpcode load_op)
+{
+    if (is_valid_imm12(offset)) {
+        // Offset fits in immediate field
+        mfn_.add_instruction(
+            MachineInstr(load_op)
+                .add_def(dst)
+                .add_operand(VRegOperand(dst))
+                .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+    } else {
+        // Offset doesn't fit, compute address first
+        VirtReg addr = add_offset_to_phys_reg(PhysReg::S0_FP, offset);
+        mfn_.add_instruction(MachineInstr(load_op)
+                                 .add_def(dst)
+                                 .add_use(addr)
+                                 .add_operand(VRegOperand(dst))
+                                 .add_operand(VRegOperand(addr))
+                                 .add_operand(ImmOperand(0)));
+    }
+}
+
+void InstructionSelector::emit_store_to_fp(VirtReg src,
+                                           int64_t offset,
+                                           MachineOpcode store_op)
+{
+    if (is_valid_imm12(offset)) {
+        // Offset fits in immediate field
+        mfn_.add_instruction(
+            MachineInstr(store_op)
+                .add_use(src)
+                .add_operand(VRegOperand(src))
+                .add_operand(MemOperand(PhysReg::S0_FP, offset)));
+    } else {
+        // Offset doesn't fit, compute address first
+        VirtReg addr = add_offset_to_phys_reg(PhysReg::S0_FP, offset);
+        mfn_.add_instruction(MachineInstr(store_op)
+                                 .add_use(src)
+                                 .add_use(addr)
+                                 .add_operand(VRegOperand(src))
+                                 .add_operand(VRegOperand(addr))
+                                 .add_operand(ImmOperand(0)));
+    }
 }
 
 RiscV32Backend::RiscV32Backend(const TACProgram &program,
@@ -2520,27 +2529,55 @@ void RiscV32Backend::emit_prologue(std::ostream &os,
         return;
     }
 
+    auto emit_sd_with_offset = [&](std::string_view reg, int32_t offset) {
+        if (offset >= MIN_IMM12 && offset <= MAX_IMM12) {
+            os << "    sd " << reg << ", " << offset << "(sp)\n";
+        } else {
+            // Offset doesn't fit in immediate, use temp register
+            os << "    li t0, " << offset << "\n";
+            os << "    add t0, sp, t0\n";
+            os << "    sd " << reg << ", 0(t0)\n";
+        }
+    };
+
+    auto emit_addi_with_offset = [&](std::string_view dst,
+                                     std::string_view src,
+                                     int32_t offset) {
+        if (offset >= MIN_IMM12 && offset <= MAX_IMM12) {
+            os << "    addi " << dst << ", " << src << ", " << offset << "\n";
+        } else {
+            // Offset doesn't fit in immediate, use temp register
+            os << "    li t0, " << offset << "\n";
+            os << "    add " << dst << ", " << src << ", t0\n";
+        }
+    };
+
     // Allocate stack frame
-    os << "    addi sp, sp, -" << frame_size << "\n";
+    emit_addi_with_offset("sp", "sp", -frame_size);
 
     // Save return address (8 bytes in RV64)
-    os << "    sd ra, " << (frame_size + frame.get_ra_offset()) << "(sp)\n";
+    emit_sd_with_offset("ra", frame_size + frame.get_ra_offset());
 
     // Save frame pointer (8 bytes in RV64)
-    os << "    sd s0, " << (frame_size + frame.get_fp_offset()) << "(sp)\n";
+    emit_sd_with_offset("s0", frame_size + frame.get_fp_offset());
 
     // Set up frame pointer
-    os << "    addi s0, sp, " << frame_size << "\n";
+    emit_addi_with_offset("s0", "sp", frame_size);
 
     // Save callee-saved registers (8 bytes each in RV64)
     for (auto reg : frame.get_used_callee_regs()) {
         int32_t offset = frame.get_callee_save_offset(reg);
         if (reg >= PhysReg::FT0 && reg <= PhysReg::FA7) {
-            os << "    fsd " << get_reg_name(reg) << ", "
-               << (frame_size + offset) << "(sp)\n";
+            if (offset >= MIN_IMM12 && offset <= MAX_IMM12) {
+                os << "    fsd " << get_reg_name(reg) << ", "
+                   << (frame_size + offset) << "(sp)\n";
+            } else {
+                os << "    li t0, " << (frame_size + offset) << "\n";
+                os << "    add t0, sp, t0\n";
+                os << "    fsd " << get_reg_name(reg) << ", 0(t0)\n";
+            }
         } else {
-            os << "    sd " << get_reg_name(reg) << ", "
-               << (frame_size + offset) << "(sp)\n";
+            emit_sd_with_offset(get_reg_name(reg), frame_size + offset);
         }
     }
 }
@@ -2556,26 +2593,54 @@ void RiscV32Backend::emit_epilogue(std::ostream &os,
         return;
     }
 
+    auto emit_ld_with_offset = [&](std::string_view reg, int32_t offset) {
+        if (offset >= MIN_IMM12 && offset <= MAX_IMM12) {
+            os << "    ld " << reg << ", " << offset << "(sp)\n";
+        } else {
+            // Offset doesn't fit in immediate, use temp register
+            os << "    li t0, " << offset << "\n";
+            os << "    add t0, sp, t0\n";
+            os << "    ld " << reg << ", 0(t0)\n";
+        }
+    };
+
+    auto emit_addi_with_offset = [&](std::string_view dst,
+                                     std::string_view src,
+                                     int32_t offset) {
+        if (offset >= MIN_IMM12 && offset <= MAX_IMM12) {
+            os << "    addi " << dst << ", " << src << ", " << offset << "\n";
+        } else {
+            // Offset doesn't fit in immediate, use temp register
+            os << "    li t0, " << offset << "\n";
+            os << "    add " << dst << ", " << src << ", t0\n";
+        }
+    };
+
     // Restore callee-saved registers
     for (auto reg : frame.get_used_callee_regs()) {
         int32_t offset = frame.get_callee_save_offset(reg);
         if (reg >= PhysReg::FT0 && reg <= PhysReg::FA7) {
-            os << "    fld " << get_reg_name(reg) << ", "
-               << (frame_size + offset) << "(sp)\n";
+            if (offset >= MIN_IMM12 && offset <= MAX_IMM12) {
+                os << "    fld " << get_reg_name(reg) << ", "
+                   << (frame_size + offset) << "(sp)\n";
+            } else {
+                os << "    li t0, " << (frame_size + offset) << "\n";
+                os << "    add t0, sp, t0\n";
+                os << "    fld " << get_reg_name(reg) << ", 0(t0)\n";
+            }
         } else {
-            os << "    ld " << get_reg_name(reg) << ", "
-               << (frame_size + offset) << "(sp)\n";
+            emit_ld_with_offset(get_reg_name(reg), frame_size + offset);
         }
     }
 
     // Restore frame pointer (8 bytes in RV64)
-    os << "    ld s0, " << (frame_size + frame.get_fp_offset()) << "(sp)\n";
+    emit_ld_with_offset("s0", frame_size + frame.get_fp_offset());
 
     // Restore return address (8 bytes in RV64)
-    os << "    ld ra, " << (frame_size + frame.get_ra_offset()) << "(sp)\n";
+    emit_ld_with_offset("ra", frame_size + frame.get_ra_offset());
 
     // Deallocate stack frame
-    os << "    addi sp, sp, " << frame_size << "\n";
+    emit_addi_with_offset("sp", "sp", frame_size);
 
     // Return
     os << "    ret\n";

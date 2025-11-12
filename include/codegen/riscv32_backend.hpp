@@ -21,6 +21,11 @@ inline constexpr size_t MAX_FLOAT_REGS = 8;
 inline constexpr size_t POINTER_SIZE = 8;
 inline constexpr size_t WORD_SIZE = 8;
 
+// RISC-V I-type instructions have 12-bit signed immediate field
+// Valid range: -2048 to 2047
+inline constexpr int32_t MIN_IMM12 = -2048;
+inline constexpr int32_t MAX_IMM12 = 2047;
+
 class RiscV32Backend;
 
 class MachineFunction {
@@ -204,6 +209,18 @@ class InstructionSelector {
 
     MachineOpcode get_load_opcode(TypePtr type, bool is_float) const;
     MachineOpcode get_store_opcode(TypePtr type, bool is_float) const;
+
+    [[nodiscard]] constexpr bool is_valid_imm12(int64_t value) const noexcept
+    {
+        return value >= MIN_IMM12 && value <= MAX_IMM12;
+    }
+
+    VirtReg add_offset_to_reg(VirtReg base, int64_t offset);
+
+    VirtReg add_offset_to_phys_reg(PhysReg base, int64_t offset);
+
+    void emit_load_from_fp(VirtReg dst, int64_t offset, MachineOpcode load_op);
+    void emit_store_to_fp(VirtReg src, int64_t offset, MachineOpcode store_op);
 
     MachineFunction &mfn_;
     TypeFactory &types_;
