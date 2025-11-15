@@ -1,0 +1,25 @@
+int printf(char *fmt, ...);
+
+int compute_value() {
+    return 100;
+}
+
+int get_double(int x) {
+    return x * 2;
+}
+
+int global_a = compute_value();
+int global_b = get_double(25);
+
+int main() {
+    printf("global_a = %d\n", global_a);
+    printf("global_b = %d\n", global_b);
+
+    if (global_a == 100 && global_b == 50) {
+        printf("SUCCESS: Function call initialization works!\n");
+        return 0;
+    } else {
+        printf("FAIL: Expected a=100, b=50 but got a=%d, b=%d\n", global_a, global_b);
+        return 1;
+    }
+}

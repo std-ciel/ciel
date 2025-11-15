@@ -1,0 +1,26 @@
+int printf(char *fmt, ...);
+
+// This should detect forward reference error
+// int a = b + 10;  // b not yet declared - should error
+// int b = 5;
+
+// For now, test case that should work: forward declarations
+int get_value();
+
+int global_x = get_value();
+int b=global_x;
+int get_value() {
+    return b;
+}
+
+int main() {
+    printf("global_x = %d\n", global_x);
+
+    if (global_x == b) {
+        printf("SUCCESS: Forward function declaration works!\n");
+        return 0;
+    } else {
+        printf("FAIL: Expected 123 but got %d\n", global_x);
+        return 1;
+    }
+}

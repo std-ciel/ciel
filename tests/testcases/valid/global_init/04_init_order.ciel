@@ -1,0 +1,24 @@
+int printf(char *fmt, ...);
+
+int get_base() {
+    return 10;
+}
+
+int global_a = get_base();
+int global_b = global_a + 5;
+int global_c = global_b * 2;
+
+int main() {
+    printf("global_a = %d\n", global_a);
+    printf("global_b = %d\n", global_b);
+    printf("global_c = %d\n", global_c);
+
+    if (global_a == 10 && global_b == 15 && global_c == 30) {
+        printf("SUCCESS: Initialization order is correct!\n");
+        return 0;
+    } else {
+        printf("FAIL: Expected a=10, b=15, c=30 but got a=%d, b=%d, c=%d\n",
+               global_a, global_b, global_c);
+        return 1;
+    }
+}

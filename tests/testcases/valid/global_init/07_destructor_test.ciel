@@ -1,0 +1,25 @@
+int printf(char *fmt, ...);
+void exit(int code);
+
+class Resource {
+public:
+    int id;
+    
+    Resource(int i) {
+        id = i;
+        printf("Resource(%d) constructed\n", id);
+    }
+    
+    ~Resource() {
+        printf("Resource(%d) destructor called - exiting with 0\n", id);
+        exit(0);
+    }
+};
+
+class Resource global_resource{42};
+
+int main() {
+    printf("In main: global_resource.id = %d\n", global_resource.id);
+    printf("Returning 1 from main (destructor should override this)\n");
+    return 1;
+}

@@ -1,0 +1,33 @@
+int printf(char *fmt, ...);
+
+class Counter {
+public:
+    int value;
+
+    Counter(int v) {
+        value = v;
+        printf("Counter(%d) constructed\n", v);
+    }
+
+    ~Counter() {
+        printf("Counter(%d) destroyed\n", value);
+    }
+
+    int get_value() {
+        return value;
+    }
+};
+
+class Counter global_counter{77};
+
+int main() {
+    printf("In main: global_counter.value = %d\n", global_counter.get_value());
+
+    if (global_counter.get_value() == 77) {
+        printf("SUCCESS: Constructor initialization works!\n");
+        return 0;
+    } else {
+        printf("FAIL: Expected 77 but got %d\n", global_counter.get_value());
+        return 1;
+    }
+}

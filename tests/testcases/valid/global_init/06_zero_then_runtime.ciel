@@ -1,0 +1,28 @@
+int printf(char *fmt, ...);
+
+int counter = 0;
+
+int increment_counter() {
+    counter = counter + 1;
+    return counter;
+}
+
+int global_a = increment_counter();
+int global_b = increment_counter();
+int global_c = increment_counter();
+
+int main() {
+    printf("global_a = %d\n", global_a);
+    printf("global_b = %d\n", global_b);
+    printf("global_c = %d\n", global_c);
+    printf("counter = %d\n", counter);
+
+    if (global_a == 1 && global_b == 2 && global_c == 3 && counter == 3) {
+        printf("SUCCESS: Zero-init then runtime-init works!\n");
+        return 0;
+    } else {
+        printf("FAIL: Expected a=1, b=2, c=3, counter=3 but got a=%d, b=%d, c=%d, counter=%d\n",
+               global_a, global_b, global_c, counter);
+        return 1;
+    }
+}

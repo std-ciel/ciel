@@ -1,0 +1,26 @@
+int printf(char *fmt, ...);
+
+int compute() {
+    return 99;
+}
+
+int const_init = 50;
+int expr_init = 20 + 30;
+int func_init = compute();
+float float_const = 3.14;
+
+int main() {
+    printf("const_init = %d\n", const_init);
+    printf("expr_init = %d\n", expr_init);
+    printf("func_init = %d\n", func_init);
+    printf("float_const = %f\n", float_const);
+    
+    if (const_init == 50 && expr_init == 50 && func_init == 99 && 
+        float_const > 3.13 && float_const < 3.15) {
+        printf("SUCCESS: Mixed initializers work!\n");
+        return 0;
+    } else {
+        printf("FAIL: Unexpected values\n");
+        return 1;
+    }
+}

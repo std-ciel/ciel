@@ -1,0 +1,21 @@
+int printf(char *fmt, ...);
+
+int compute_value() {
+    return 42;
+}
+
+int global_x = 10 + 32;
+int global_y = global_x - 2;
+
+int main() {
+    printf("global_x = %d\n", global_x);
+    printf("global_y = %d\n", global_y);
+
+    if (global_x == 42 && global_y == 40) {
+        printf("SUCCESS: Expression initialization works!\n");
+        return 0;
+    } else {
+        printf("FAIL: Expected x=42, y=40 but got x=%d, y=%d\n", global_x, global_y);
+        return 1;
+    }
+}
