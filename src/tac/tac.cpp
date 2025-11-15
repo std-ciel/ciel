@@ -461,6 +461,19 @@ void TACProgram::print() const
         }
     }
 
+    if (!global_initializers.empty()) {
+        std::cout << "\nGlobal Initializers (runtime):\n";
+        for (const auto &init : global_initializers) {
+            std::cout << std::setw(4) << std::right << global_line_number++
+                      << ": " << init.symbol->get_name() << " : "
+                      << init.symbol->get_type().debug_name();
+            if (init.needs_destructor) {
+                std::cout << " [needs destructor]";
+            }
+            std::cout << "\n";
+        }
+    }
+
     for (const auto &func : functions) {
         func->print(global_line_number);
     }

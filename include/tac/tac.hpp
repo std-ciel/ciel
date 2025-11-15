@@ -233,11 +233,23 @@ struct StringLiteral {
     }
 };
 
+// Global initializer entry for non-constant initializers
+struct GlobalInitializer {
+    SymbolPtr symbol;
+    bool needs_destructor;
+
+    GlobalInitializer(SymbolPtr sym, bool needs_dtor = false)
+        : symbol(std::move(sym)), needs_destructor(needs_dtor)
+    {
+    }
+};
+
 // Complete TAC Program
 struct TACProgram {
     std::vector<TACFunctionPtr> functions;
     std::vector<SymbolPtr> global_variables;
     std::vector<StringLiteral> string_literals;
+    std::vector<GlobalInitializer> global_initializers;
 
     void add_function(TACFunctionPtr func)
     {
@@ -252,6 +264,11 @@ struct TACProgram {
     void add_string_literal(const std::string &label, const std::string &value)
     {
         string_literals.emplace_back(label, value);
+    }
+
+    void add_global_initializer(SymbolPtr sym, bool needs_dtor = false)
+    {
+        global_initializers.emplace_back(sym, needs_dtor);
     }
 
     void print() const;

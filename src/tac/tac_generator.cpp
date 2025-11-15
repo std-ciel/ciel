@@ -1,7 +1,9 @@
 #include "tac/tac_generator.hpp"
 #include "parser/parser_helper.hpp"
+#include "symbol_table/mangling.hpp"
 #include "symbol_table/type.hpp"
 #include <algorithm>
+#include <functional>
 
 TACGenerator::TACGenerator()
     : symbol_table(get_symbol_table()), type_factory(get_type_factory())
@@ -1638,7 +1640,7 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                     program.add_global(symbol);
 
                     if (assign->value) {
-                        // Extract constant value from the initializer
+                        // Check if initializer is a constant literal
                         if (assign->value->type == ASTNodeType::LITERAL_EXPR) {
                             auto lit = std::static_pointer_cast<LiteralExpr>(
                                 assign->value);
@@ -1673,17 +1675,245 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                                     std::to_string(string_literal_counter++);
                                 program.add_string_literal(str_label,
                                                            str_value);
-                                // Store the label in the symbol's initializer
                                 symbol->set_initializer(str_value);
                             }
+                        } else {
+                            // Non-constant initializer - needs runtime init
+                            symbol->set_init_expression(assign->value);
+                            program.add_global_initializer(symbol, false);
                         }
+                    }
+                }
+            } else if (stmt && stmt->type == ASTNodeType::CALL_EXPR) {
+                // Constructor call for global class object
+                auto call = std::static_pointer_cast<CallExpr>(stmt);
 
-                        // TODO: Handle more complex initializers
+                if (!call->arguments.empty() &&
+                    call->arguments[0]->type == ASTNodeType::UNARY_EXPR) {
+                    auto unary =
+                        std::static_pointer_cast<UnaryExpr>(call->arguments[0]);
+                    if (unary->op == Operator::ADDRESS_OF &&
+                        unary->operand->type == ASTNodeType::IDENTIFIER_EXPR) {
+                        auto id_expr = std::static_pointer_cast<IdentifierExpr>(
+                            unary->operand);
+                        auto symbol = id_expr->symbol;
+
+                        program.add_global(symbol);
+
+                        // Store constructor call as init expression
+                        symbol->set_init_expression(stmt);
+
+                        // Check if this type has a destructor by checking
+                        // function_meta Destructor lookup will be done during
+                        // init/fini generation
+                        bool needs_dtor =
+                            (symbol->get_type().type->kind == TypeKind::CLASS);
+
+                        program.add_global_initializer(symbol, needs_dtor);
                     }
                 }
             }
         }
     }
+}
+
+bool TACGenerator::is_constructor_call(ASTNodePtr expr) const
+{
+    if (!expr || expr->type != ASTNodeType::CALL_EXPR) {
+        return false;
+    }
+
+    const auto call = std::static_pointer_cast<CallExpr>(expr);
+
+    if (const auto func_meta =
+            call->callee ? call->callee->get_function_meta() : std::nullopt) {
+        return func_meta->function_kind == FunctionKind::CONSTRUCTOR;
+    }
+
+    return false;
+}
+
+SymbolPtr TACGenerator::find_destructor_for_class(const std::string &class_name)
+{
+    const auto &global_symbols =
+        symbol_table.get_symbols_in_scope(GLOBAL_SCOPE_ID);
+
+    const auto class_type_it =
+        std::ranges::find_if(global_symbols, [&](const auto &pair) {
+            const auto &[_, sym] = pair;
+            return sym->get_type().type->kind == TypeKind::CLASS &&
+                   std::static_pointer_cast<ClassType>(sym->get_type().type)
+                           ->name == class_name;
+        });
+
+    if (class_type_it == global_symbols.end()) {
+        return nullptr;
+    }
+
+    const auto class_type = std::static_pointer_cast<ClassType>(
+        class_type_it->second->get_type().type);
+
+    const auto void_type = type_factory.get_builtin_type("void");
+    if (!void_type) {
+        return nullptr;
+    }
+
+    const auto fn_type_result = type_factory.make<FunctionType>(
+        QualifiedType(*void_type, Qualifier::NONE),
+        std::vector<QualifiedType>{},
+        false);
+
+    if (!fn_type_result.is_ok()) {
+        return nullptr;
+    }
+
+    const FunctionMeta meta(FunctionKind::DESTRUCTOR, {}, class_type);
+    if (const auto mangled = mangle_function_name(
+            "~" + class_name,
+            *std::static_pointer_cast<FunctionType>(fn_type_result.value()),
+            meta,
+            *class_type)) {
+        if (const auto dtor_sym = symbol_table.lookup_operator(*mangled)) {
+            return *dtor_sym;
+        }
+    }
+
+    return nullptr;
+}
+
+void TACGenerator::check_forward_references_in_initializer(SymbolPtr symbol,
+                                                           ASTNodePtr init_expr)
+{
+    if (!init_expr || !symbol) {
+        return;
+    }
+
+    const std::function<void(ASTNodePtr)> visit_node =
+        [this, &symbol, &visit_node](ASTNodePtr node) {
+            if (!node)
+                return;
+
+            if (node->type == ASTNodeType::IDENTIFIER_EXPR) {
+                const auto id_expr =
+                    std::static_pointer_cast<IdentifierExpr>(node);
+                if (id_expr->symbol && id_expr->symbol != symbol &&
+                    id_expr->symbol->get_scope_id() == GLOBAL_SCOPE_ID &&
+                    !id_expr->symbol->get_function_meta().has_value() &&
+                    !id_expr->symbol->has_initializer() &&
+                    !id_expr->symbol->has_init_expression()) {
+
+                    record_error("Warning: potential forward reference to '" +
+                                 id_expr->symbol->get_name() +
+                                 "' in initializer for '" + symbol->get_name() +
+                                 "'");
+                }
+                return;
+            }
+
+            if (node->type == ASTNodeType::BINARY_EXPR) {
+                const auto bin = std::static_pointer_cast<BinaryExpr>(node);
+                visit_node(bin->left);
+                visit_node(bin->right);
+            } else if (node->type == ASTNodeType::UNARY_EXPR) {
+                visit_node(std::static_pointer_cast<UnaryExpr>(node)->operand);
+            } else if (node->type == ASTNodeType::CALL_EXPR) {
+                std::ranges::for_each(
+                    std::static_pointer_cast<CallExpr>(node)->arguments,
+                    visit_node);
+            }
+        };
+
+    visit_node(init_expr);
+}
+
+void TACGenerator::generate_global_init_function()
+{
+    if (program.global_initializers.empty()) {
+        return;
+    }
+
+    generate_runtime_function("__ciel_global_init", [this]() {
+        for (const auto &init_info : program.global_initializers) {
+            const auto &symbol = init_info.symbol;
+            const auto &init_expr = symbol->get_init_expression();
+
+            if (!init_expr)
+                continue;
+
+            check_forward_references_in_initializer(symbol, init_expr);
+
+            if (is_constructor_call(init_expr)) {
+                generate_expression(init_expr);
+            } else {
+                const auto value = generate_expression(init_expr);
+                emit(
+                    std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                     TACOperand::symbol(symbol),
+                                                     value));
+            }
+        }
+    });
+}
+
+void TACGenerator::generate_global_fini_function()
+{
+
+    const bool has_destructors = std::ranges::any_of(
+        program.global_initializers,
+        [](const auto &init_info) { return init_info.needs_destructor; });
+
+    if (!has_destructors) {
+        return;
+    }
+
+    generate_runtime_function("__ciel_global_fini", [this]() {
+        // Generate destructor calls in reverse order (LIFO)
+        for (auto it = program.global_initializers.rbegin();
+             it != program.global_initializers.rend();
+             ++it) {
+            const auto &init_info = *it;
+            if (!init_info.needs_destructor)
+                continue;
+
+            const auto &symbol = init_info.symbol;
+            const auto symbol_type = symbol->get_type().type;
+
+            if (symbol_type->kind != TypeKind::CLASS)
+                continue;
+
+            const auto class_type =
+                std::static_pointer_cast<ClassType>(symbol_type);
+            const auto dtor_symbol =
+                find_destructor_for_class(class_type->name);
+
+            if (!dtor_symbol)
+                continue;
+
+            const auto ptr_type =
+                type_factory
+                    .make<PointerType>(
+                        QualifiedType(symbol_type, Qualifier::NONE))
+                    .value();
+
+            const auto global_addr = new_temp(ptr_type);
+
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::ADDR_OF,
+                TACOperand::temporary(global_addr, ptr_type),
+                TACOperand::symbol(symbol)));
+
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::PARAM,
+                TACOperand(),
+                TACOperand::temporary(global_addr, ptr_type)));
+
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::CALL,
+                TACOperand(),
+                TACOperand::symbol(dtor_symbol),
+                TACOperand::constant_int(1, nullptr)));
+        }
+    });
 }
 
 Result<bool, std::vector<TACErrorInfo>>
@@ -1740,6 +1970,10 @@ TACGenerator::generate(const std::vector<ASTNodePtr> &translation_unit)
             generate_function(method_def);
         }
     }
+
+    // Fourth pass: Generate global init and fini functions
+    generate_global_init_function();
+    generate_global_fini_function();
 
     if (!errors.empty()) {
         return std::vector<TACErrorInfo>(errors);

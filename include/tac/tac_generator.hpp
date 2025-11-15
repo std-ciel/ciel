@@ -66,6 +66,60 @@ class TACGenerator {
 
     void generate_function(std::shared_ptr<FunctionDef> func_def);
     void generate_global_declaration(ASTNodePtr node);
+    void generate_global_init_function();
+    void generate_global_fini_function();
+
+    bool is_constructor_call(ASTNodePtr expr) const;
+    SymbolPtr find_destructor_for_class(const std::string &class_name);
+    void check_forward_references_in_initializer(SymbolPtr symbol,
+                                                 ASTNodePtr init_expr);
+
+    template <typename BodyGenerator>
+    void generate_runtime_function(const std::string &name,
+                                   BodyGenerator &&body_gen)
+    {
+        const auto void_type = type_factory.get_builtin_type("void");
+        if (!void_type) {
+            record_error("Failed to get void type for " + name);
+            return;
+        }
+
+        auto func = std::make_shared<TACFunction>(name,
+                                                  name,
+                                                  *void_type,
+                                                  GLOBAL_SCOPE_ID,
+                                                  symbol_table);
+        func->add_block(std::make_shared<TACBasicBlock>());
+
+        struct StateGuard {
+            TACFunctionPtr &current_func;
+            TACBasicBlockPtr &current_blk;
+            TACFunctionPtr saved_func;
+            TACBasicBlockPtr saved_blk;
+
+            StateGuard(TACFunctionPtr &cf,
+                       TACBasicBlockPtr &cb,
+                       TACFunctionPtr new_func)
+                : current_func(cf), current_blk(cb), saved_func(cf),
+                  saved_blk(cb)
+            {
+                current_func = new_func;
+                current_blk = new_func->basic_blocks.back();
+            }
+
+            ~StateGuard()
+            {
+                current_func = saved_func;
+                current_blk = saved_blk;
+            }
+        } guard(current_function, current_block, func);
+
+        emit(std::make_shared<TACInstruction>(TACOpcode::ENTER));
+        body_gen();
+        emit(std::make_shared<TACInstruction>(TACOpcode::RETURN));
+
+        program.add_function(func);
+    }
 
     // NEW: Generate TAC for entire translation unit
     Result<bool, std::vector<TACErrorInfo>>
