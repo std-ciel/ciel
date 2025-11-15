@@ -53,11 +53,11 @@ add_library(ciel_parser STATIC
     src/passes/layout_pass.cpp
     src/tac/tac.cpp
     src/tac/tac_generator.cpp
-    src/codegen/riscv32_instruction.cpp
-    src/codegen/riscv32_frame.cpp
-    src/codegen/riscv32_regalloc.cpp
-    src/codegen/riscv32_backend.cpp
-    src/codegen/riscv32_codegen.cpp
+    src/codegen/riscv64_instruction.cpp
+    src/codegen/riscv64_frame.cpp
+    src/codegen/riscv64_regalloc.cpp
+    src/codegen/riscv64_backend.cpp
+    src/codegen/riscv64_codegen.cpp
 )
 
 target_include_directories(ciel_parser PUBLIC

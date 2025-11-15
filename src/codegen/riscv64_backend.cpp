@@ -1,12 +1,12 @@
-#include "codegen/riscv32_backend.hpp"
-#include "codegen/riscv32_regalloc.hpp"
+#include "codegen/riscv64_backend.hpp"
+#include "codegen/riscv64_regalloc.hpp"
 #include <algorithm>
 #include <cstring>
 #include <ostream>
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 MachineFunction::MachineFunction(const TACFunction &tac_fn, TypeFactory &types)
     : name_(tac_fn.mangled_name), frame_(tac_fn.mangled_name), next_vreg_(1),
@@ -118,7 +118,7 @@ void MachineFunction::build_cfg()
 
 InstructionSelector::InstructionSelector(MachineFunction &mfn,
                                          TypeFactory &types,
-                                         RiscV32Backend &backend)
+                                         RiscV64Backend &backend)
     : mfn_(mfn), types_(types), backend_(backend)
 {
 }
@@ -2170,7 +2170,7 @@ void InstructionSelector::emit_store_to_fp(VirtReg src,
     }
 }
 
-RiscV32Backend::RiscV32Backend(const TACProgram &program,
+RiscV64Backend::RiscV64Backend(const TACProgram &program,
                                SymbolTable &symtab,
                                TypeFactory &types)
     : program_(program), symtab_(symtab), types_(types),
@@ -2179,7 +2179,7 @@ RiscV32Backend::RiscV32Backend(const TACProgram &program,
     lower_functions();
 }
 
-std::string RiscV32Backend::add_float_constant(double value)
+std::string RiscV64Backend::add_float_constant(double value)
 {
 
     uint64_t bits;
@@ -2196,7 +2196,7 @@ std::string RiscV32Backend::add_float_constant(double value)
 }
 
 std::string
-RiscV32Backend::add_jump_table(const std::vector<std::string> &labels)
+RiscV64Backend::add_jump_table(const std::vector<std::string> &labels)
 {
     std::string table_label =
         ".LJUMPTABLE" + std::to_string(next_jump_table_id_++);
@@ -2204,7 +2204,7 @@ RiscV32Backend::add_jump_table(const std::vector<std::string> &labels)
     return table_label;
 }
 
-void RiscV32Backend::lower_functions()
+void RiscV64Backend::lower_functions()
 {
     for (const auto &tac_fn : program_.functions) {
         try {
@@ -2228,7 +2228,7 @@ void RiscV32Backend::lower_functions()
     }
 }
 
-void RiscV32Backend::emit(std::ostream &os)
+void RiscV64Backend::emit(std::ostream &os)
 {
     emit_preamble(os);
     emit_libc_aliases(os);
@@ -2239,13 +2239,13 @@ void RiscV32Backend::emit(std::ostream &os)
     emit_text(os);
 }
 
-void RiscV32Backend::emit_preamble(std::ostream &os) const
+void RiscV64Backend::emit_preamble(std::ostream &os) const
 {
     os << "    .option nopic\n";
     os << "    .attribute arch, \"rv64imfd\"\n";
 }
 
-void RiscV32Backend::emit_libc_aliases(std::ostream &os) const
+void RiscV64Backend::emit_libc_aliases(std::ostream &os) const
 {
     // Emit .set directives to alias mangled function names to unmangled C names
     // This allows linking with the C runtime library (libc)
@@ -2310,7 +2310,7 @@ void RiscV32Backend::emit_libc_aliases(std::ostream &os) const
     os << "    .set _Z4exiti, exit\n";
 }
 
-void RiscV32Backend::emit_rodata(std::ostream &os) const
+void RiscV64Backend::emit_rodata(std::ostream &os) const
 {
     bool has_data = !program_.string_literals.empty() ||
                     !float_constants_.empty() || !jump_tables_.empty();
@@ -2378,7 +2378,7 @@ void RiscV32Backend::emit_rodata(std::ostream &os) const
     }
 }
 
-void RiscV32Backend::emit_globals(std::ostream &os) const
+void RiscV64Backend::emit_globals(std::ostream &os) const
 {
     if (program_.global_variables.empty()) {
         return;
@@ -2483,7 +2483,7 @@ void RiscV32Backend::emit_globals(std::ostream &os) const
     }
 }
 
-void RiscV32Backend::emit_init_array(std::ostream &os) const
+void RiscV64Backend::emit_init_array(std::ostream &os) const
 {
     bool has_init_function = false;
     for (const auto &func : program_.functions) {
@@ -2502,7 +2502,7 @@ void RiscV32Backend::emit_init_array(std::ostream &os) const
     os << "    .dword __ciel_global_init\n";
 }
 
-void RiscV32Backend::emit_fini_array(std::ostream &os) const
+void RiscV64Backend::emit_fini_array(std::ostream &os) const
 {
     bool has_fini_function = false;
     for (const auto &func : program_.functions) {
@@ -2521,7 +2521,7 @@ void RiscV32Backend::emit_fini_array(std::ostream &os) const
     os << "    .dword __ciel_global_fini\n";
 }
 
-void RiscV32Backend::emit_text(std::ostream &os)
+void RiscV64Backend::emit_text(std::ostream &os)
 {
     os << "\n    .section .text\n";
 
@@ -2530,7 +2530,7 @@ void RiscV32Backend::emit_text(std::ostream &os)
     }
 }
 
-void RiscV32Backend::emit_function(std::ostream &os, MachineFunction &mfn)
+void RiscV64Backend::emit_function(std::ostream &os, MachineFunction &mfn)
 {
     try {
         // For the main function, use "main" as the label name instead of the
@@ -2559,7 +2559,7 @@ void RiscV32Backend::emit_function(std::ostream &os, MachineFunction &mfn)
     }
 }
 
-void RiscV32Backend::emit_prologue(std::ostream &os,
+void RiscV64Backend::emit_prologue(std::ostream &os,
                                    const MachineFunction &mfn) const
 {
     const auto &frame = mfn.get_frame();
@@ -2622,7 +2622,7 @@ void RiscV32Backend::emit_prologue(std::ostream &os,
     }
 }
 
-void RiscV32Backend::emit_epilogue(std::ostream &os,
+void RiscV64Backend::emit_epilogue(std::ostream &os,
                                    const MachineFunction &mfn) const noexcept
 {
     const auto &frame = mfn.get_frame();
@@ -2686,7 +2686,7 @@ void RiscV32Backend::emit_epilogue(std::ostream &os,
     os << "    ret\n";
 }
 
-void RiscV32Backend::emit_instruction(std::ostream &os,
+void RiscV64Backend::emit_instruction(std::ostream &os,
                                       const MachineInstr &instr,
                                       const MachineFunction &mfn) const
 {
@@ -2700,6 +2700,6 @@ void RiscV32Backend::emit_instruction(std::ostream &os,
     instr.emit(os);
 }
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel

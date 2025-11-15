@@ -1,8 +1,8 @@
-#ifndef CIEL_CODEGEN_RISCV32_BACKEND_HPP
-#define CIEL_CODEGEN_RISCV32_BACKEND_HPP
+#ifndef CIEL_CODEGEN_RISCV64_BACKEND_HPP
+#define CIEL_CODEGEN_RISCV64_BACKEND_HPP
 
-#include "codegen/riscv32_frame.hpp"
-#include "codegen/riscv32_instruction.hpp"
+#include "codegen/riscv64_frame.hpp"
+#include "codegen/riscv64_instruction.hpp"
 #include "symbol_table/symbol_table.hpp"
 #include "symbol_table/type_factory.hpp"
 #include "tac/tac.hpp"
@@ -14,7 +14,7 @@
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 inline constexpr size_t MAX_INT_REGS = 8;
 inline constexpr size_t MAX_FLOAT_REGS = 8;
@@ -26,7 +26,7 @@ inline constexpr size_t WORD_SIZE = 8;
 inline constexpr int32_t MIN_IMM12 = -2048;
 inline constexpr int32_t MAX_IMM12 = 2047;
 
-class RiscV32Backend;
+class RiscV64Backend;
 
 class MachineFunction {
   public:
@@ -115,7 +115,7 @@ class InstructionSelector {
   public:
     InstructionSelector(MachineFunction &mfn,
                         TypeFactory &types,
-                        RiscV32Backend &backend);
+                        RiscV64Backend &backend);
 
     void select(const TACFunction &tac_fn);
 
@@ -224,7 +224,7 @@ class InstructionSelector {
 
     MachineFunction &mfn_;
     TypeFactory &types_;
-    RiscV32Backend &backend_;
+    RiscV64Backend &backend_;
 
     std::unordered_map<std::string, VirtReg> temp_to_vreg_;
 
@@ -250,11 +250,11 @@ class InstructionSelector {
     VirtReg sret_ptr_vreg_ = INVALID_VREG;
 };
 
-/// RV32 backend: orchestrates instruction selection, register allocation,
+/// RV64 backend: orchestrates instruction selection, register allocation,
 /// emission
-class RiscV32Backend {
+class RiscV64Backend {
   public:
-    RiscV32Backend(const TACProgram &program,
+    RiscV64Backend(const TACProgram &program,
                    SymbolTable &symtab,
                    TypeFactory &types);
 
@@ -320,8 +320,8 @@ class RiscV32Backend {
     uint32_t next_jump_table_id_ = 0;
 };
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel
 
-#endif // CIEL_CODEGEN_RISCV32_BACKEND_HPP
+#endif // CIEL_CODEGEN_RISCV64_BACKEND_HPP

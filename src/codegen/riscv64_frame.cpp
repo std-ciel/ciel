@@ -1,10 +1,10 @@
-#include "codegen/riscv32_frame.hpp"
+#include "codegen/riscv64_frame.hpp"
 #include <algorithm>
 #include <stdexcept>
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 int32_t FrameLayout::allocate_slot(uint32_t size, uint32_t alignment)
 {
@@ -125,6 +125,6 @@ int32_t FrameLayout::get_callee_save_offset(PhysReg reg) const
     return it->second;
 }
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel

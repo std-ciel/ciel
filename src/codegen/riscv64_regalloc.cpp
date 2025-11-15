@@ -1,5 +1,5 @@
-#include "codegen/riscv32_regalloc.hpp"
-#include "codegen/riscv32_backend.hpp"
+#include "codegen/riscv64_regalloc.hpp"
+#include "codegen/riscv64_backend.hpp"
 #include <algorithm>
 #include <iostream>
 #include <ranges>
@@ -7,7 +7,7 @@
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 LinearScanAllocator::LinearScanAllocator(MachineFunction &mfn) : mfn_(mfn)
 {
@@ -697,6 +697,6 @@ LocationInfo LinearScanAllocator::get_location(VirtReg vreg) const
     throw std::runtime_error("Virtual register has no location");
 }
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel

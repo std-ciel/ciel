@@ -1,5 +1,5 @@
-#ifndef CIEL_CODEGEN_RISCV32_REGISTER_HPP
-#define CIEL_CODEGEN_RISCV32_REGISTER_HPP
+#ifndef CIEL_CODEGEN_RISCV64_REGISTER_HPP
+#define CIEL_CODEGEN_RISCV64_REGISTER_HPP
 
 #include <array>
 #include <cstdint>
@@ -7,9 +7,9 @@
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
-/// Physical register enumeration for RV32I
+/// Physical register enumeration for RV64I
 enum class PhysReg : uint8_t {
     // Zero register (hardwired to 0)
     ZERO = 0,
@@ -65,7 +65,7 @@ enum class PhysReg : uint8_t {
     T5 = 30,
     T6 = 31,
 
-    // Floating-point registers (F extension, RV32F)
+    // Floating-point registers (F extension, RV64F)
     // Temporary FP registers (caller-saved)
     FT0 = 32,
     FT1 = 33,
@@ -316,8 +316,8 @@ get_fp_spill_temps() noexcept
     return {PhysReg::FT0, PhysReg::FT1, PhysReg::FT2};
 }
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel
 
-#endif // CIEL_CODEGEN_RISCV32_REGISTER_HPP
+#endif // CIEL_CODEGEN_RISCV64_REGISTER_HPP

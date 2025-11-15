@@ -1,12 +1,12 @@
-#include "codegen/riscv32_instruction.hpp"
-#include "codegen/riscv32_register.hpp"
+#include "codegen/riscv64_instruction.hpp"
+#include "codegen/riscv64_register.hpp"
 #include <algorithm>
 #include <ostream>
 #include <variant>
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 void MachineInstr::replace_vreg(VirtReg vreg, PhysReg preg)
 {
@@ -306,6 +306,6 @@ void MachineInstr::emit(std::ostream &os) const
     os << "\n";
 }
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel

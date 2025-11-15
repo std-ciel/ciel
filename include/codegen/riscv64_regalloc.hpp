@@ -1,7 +1,7 @@
-#ifndef CIEL_CODEGEN_RISCV32_REGALLOC_HPP
-#define CIEL_CODEGEN_RISCV32_REGALLOC_HPP
+#ifndef CIEL_CODEGEN_RISCV64_REGALLOC_HPP
+#define CIEL_CODEGEN_RISCV64_REGALLOC_HPP
 
-#include "codegen/riscv32_register.hpp"
+#include "codegen/riscv64_register.hpp"
 #include <cstdint>
 #include <optional>
 #include <set>
@@ -12,7 +12,7 @@
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 enum class RegClass { INTEGER, FLOAT };
 
@@ -138,8 +138,8 @@ class LinearScanAllocator {
     static inline bool debug_mode_ = false;
 };
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel
 
-#endif // CIEL_CODEGEN_RISCV32_REGALLOC_HPP
+#endif // CIEL_CODEGEN_RISCV64_REGALLOC_HPP

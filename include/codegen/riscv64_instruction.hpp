@@ -1,7 +1,7 @@
-#ifndef CIEL_CODEGEN_RISCV32_INSTRUCTION_HPP
-#define CIEL_CODEGEN_RISCV32_INSTRUCTION_HPP
+#ifndef CIEL_CODEGEN_RISCV64_INSTRUCTION_HPP
+#define CIEL_CODEGEN_RISCV64_INSTRUCTION_HPP
 
-#include "riscv32_register.hpp"
+#include "riscv64_register.hpp"
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -10,9 +10,9 @@
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
-/// Machine instruction opcodes for RV32IM
+/// Machine instruction opcodes for RV64IM
 enum class MachineOpcode {
     // Pseudo-instructions
     NOP,
@@ -395,8 +395,8 @@ struct MachineBasicBlock {
     }
 };
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel
 
-#endif // CIEL_CODEGEN_RISCV32_INSTRUCTION_HPP
+#endif // CIEL_CODEGEN_RISCV64_INSTRUCTION_HPP

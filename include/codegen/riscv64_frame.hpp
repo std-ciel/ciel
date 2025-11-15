@@ -1,7 +1,7 @@
-#ifndef CIEL_CODEGEN_RISCV32_FRAME_HPP
-#define CIEL_CODEGEN_RISCV32_FRAME_HPP
+#ifndef CIEL_CODEGEN_RISCV64_FRAME_HPP
+#define CIEL_CODEGEN_RISCV64_FRAME_HPP
 
-#include "riscv32_register.hpp"
+#include "riscv64_register.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -9,7 +9,7 @@
 
 namespace ciel {
 namespace codegen {
-namespace riscv32 {
+namespace riscv64 {
 
 /// Stack slot for a virtual register or temporary
 struct StackSlot {
@@ -20,7 +20,7 @@ struct StackSlot {
 };
 
 /// Frame layout manager for a function
-/// Manages stack allocation following RV32 ABI:
+/// Manages stack allocation following RV64 ABI:
 /// - 16-byte stack alignment at call sites
 /// - Frame pointer (s0) points to saved s0 location
 /// - Layout (high to low address):
@@ -112,8 +112,8 @@ class FrameLayout {
     std::unordered_map<PhysReg, int32_t> callee_save_offsets_;
 };
 
-} // namespace riscv32
+} // namespace riscv64
 } // namespace codegen
 } // namespace ciel
 
-#endif // CIEL_CODEGEN_RISCV32_FRAME_HPP
+#endif // CIEL_CODEGEN_RISCV64_FRAME_HPP
