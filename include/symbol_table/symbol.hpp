@@ -7,6 +7,9 @@
 #include <string>
 #include <variant>
 
+class ASTNode;
+using ASTNodePtr = std::shared_ptr<ASTNode>;
+
 using ScopeID = size_t;
 
 enum class StorageClass { STATIC, REGISTER, AUTO };
@@ -109,7 +112,7 @@ class Symbol {
         stack_offset = offset;
     }
 
-    // Initializer value for global variables
+    // Initializer value for global variables (constant values)
     using InitializerValue =
         std::variant<std::monostate, int64_t, double, std::string>;
 
@@ -128,6 +131,34 @@ class Symbol {
         initializer_value = std::move(value);
     }
 
+    // Non-constant initializer expression (for runtime initialization)
+    bool has_init_expression() const
+    {
+        return init_expression != nullptr;
+    }
+
+    const ASTNodePtr &get_init_expression() const
+    {
+        return init_expression;
+    }
+
+    void set_init_expression(ASTNodePtr expr)
+    {
+        init_expression = std::move(expr);
+    }
+
+    // Check if this global needs runtime initialization
+    bool needs_runtime_init() const
+    {
+        return init_expression != nullptr;
+    }
+
+    // Check if this is a constant initializer (can be emitted to .data)
+    bool has_constant_initializer() const
+    {
+        return has_initializer() && !needs_runtime_init();
+    }
+
   private:
     std::string name;
     QualifiedType type;
@@ -135,8 +166,9 @@ class Symbol {
     ScopeID scope_id;
     ScopeID parent_scope;
     std::optional<FunctionMeta> function_meta;
-    std::optional<int32_t> stack_offset; // Stack offset for local variables
+    std::optional<int32_t> stack_offset;
     InitializerValue initializer_value;
+    ASTNodePtr init_expression;
 };
 
 using SymbolPtr = std::shared_ptr<Symbol>;
