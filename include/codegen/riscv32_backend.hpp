@@ -278,6 +278,12 @@ class RiscV32Backend {
     /// Emit .bss/.data sections (global variables)
     void emit_globals(std::ostream &os) const;
 
+    /// Emit .init_array section (global initializers)
+    void emit_init_array(std::ostream &os) const;
+
+    /// Emit .fini_array section (global finalizers)
+    void emit_fini_array(std::ostream &os) const;
+
     /// Emit .text section (functions)
     void emit_text(std::ostream &os);
 

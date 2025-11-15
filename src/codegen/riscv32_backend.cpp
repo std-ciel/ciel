@@ -2234,6 +2234,8 @@ void RiscV32Backend::emit(std::ostream &os)
     emit_libc_aliases(os);
     emit_rodata(os);
     emit_globals(os);
+    emit_init_array(os);
+    emit_fini_array(os);
     emit_text(os);
 }
 
@@ -2479,6 +2481,44 @@ void RiscV32Backend::emit_globals(std::ostream &os) const
             os << "    .zero " << size << "\n";
         }
     }
+}
+
+void RiscV32Backend::emit_init_array(std::ostream &os) const
+{
+    bool has_init_function = false;
+    for (const auto &func : program_.functions) {
+        if (func->mangled_name == "__ciel_global_init") {
+            has_init_function = true;
+            break;
+        }
+    }
+
+    if (!has_init_function) {
+        return;
+    }
+
+    os << "\n    .section .init_array,\"aw\",@init_array\n";
+    os << "    .balign 8\n";
+    os << "    .dword __ciel_global_init\n";
+}
+
+void RiscV32Backend::emit_fini_array(std::ostream &os) const
+{
+    bool has_fini_function = false;
+    for (const auto &func : program_.functions) {
+        if (func->mangled_name == "__ciel_global_fini") {
+            has_fini_function = true;
+            break;
+        }
+    }
+
+    if (!has_fini_function) {
+        return;
+    }
+
+    os << "\n    .section .fini_array,\"aw\",@fini_array\n";
+    os << "    .balign 8\n";
+    os << "    .dword __ciel_global_fini\n";
 }
 
 void RiscV32Backend::emit_text(std::ostream &os)
