@@ -126,6 +126,9 @@
     ClassTypePtr current_lambda_class;
     size_t global_lambda_counter = 0;  // Global counter for unique lambda class names
 
+    // Track for-loop scope to prevent double-scoping in compound statements
+    bool for_loop_body_next = false;
+
     void push_ctx(ContextKind k) { ctx_stack.push_back(k); if(k != ContextKind::GLOBAL) current_storage = StorageClass::AUTO; }
     void pop_ctx() {
       if (!ctx_stack.empty()) {
@@ -2756,7 +2759,11 @@ static void check_array_bounds(const TypePtr &array_type,
 
 open_brace
     : OPEN_BRACE_OP {
-        symbol_table.enter_scope();
+        // For loop bodies don't create a new scope - they share the for loop's scope
+        if (!parser_state.for_loop_body_next) {
+          symbol_table.enter_scope();
+        }
+        parser_state.for_loop_body_next = false;
         parser_state.push_ctx(ContextKind::BLOCK);
 
         // Save pending parameter names before they're cleared
@@ -2790,9 +2797,17 @@ open_brace
 close_brace
   : CLOSE_BRACE_OP {
       ScopeID exiting_scope = symbol_table.get_current_scope_id();
-      symbol_table.exit_scope();
+      // Don't exit scope if this was a for-loop body (for-loop will exit it)
+      bool is_for_loop_body = parser_state.ctx_stack.size() >= 2 &&
+                              parser_state.ctx_stack[parser_state.ctx_stack.size() - 1] == ContextKind::BLOCK &&
+                              parser_state.ctx_stack[parser_state.ctx_stack.size() - 2] == ContextKind::LOOP;
+      if (!is_for_loop_body) {
+        symbol_table.exit_scope();
+      }
       parser_state.pop_ctx();
-      check_forward_declarations(exiting_scope);
+      if (!is_for_loop_body) {
+        check_forward_declarations(exiting_scope);
+      }
     }
   ;
 
@@ -6102,7 +6117,7 @@ iteration_statement
         parser_state.pop_ctx();
     }
     | for_start expression_statement expression_statement CLOSE_PAREN_OP
-    { parser_state.push_ctx(ContextKind::LOOP); }
+    { parser_state.push_ctx(ContextKind::LOOP); parser_state.for_loop_body_next = true; }
       statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
@@ -6113,7 +6128,7 @@ iteration_statement
         symbol_table.exit_scope();
     }
     | for_start expression_statement expression_statement expression CLOSE_PAREN_OP
-    { parser_state.push_ctx(ContextKind::LOOP); }
+    { parser_state.push_ctx(ContextKind::LOOP); parser_state.for_loop_body_next = true; }
       statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
@@ -6125,7 +6140,7 @@ iteration_statement
         symbol_table.exit_scope();
     }
     | for_start declaration expression_statement CLOSE_PAREN_OP
-    { parser_state.push_ctx(ContextKind::LOOP); }
+    { parser_state.push_ctx(ContextKind::LOOP); parser_state.for_loop_body_next = true; }
       statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
@@ -6136,7 +6151,7 @@ iteration_statement
         symbol_table.exit_scope();
     }
     | for_start declaration expression_statement expression CLOSE_PAREN_OP
-    { parser_state.push_ctx(ContextKind::LOOP); }
+    { parser_state.push_ctx(ContextKind::LOOP); parser_state.for_loop_body_next = true; }
       statement
     {
         if ($3) ensure_condition_is_bool($3, @3, "for");
