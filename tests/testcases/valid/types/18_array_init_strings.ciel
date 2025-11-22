@@ -1,0 +1,27 @@
+// Test char array initialization with string literals
+
+int main() {
+    // Char array with string literal (explicit size)
+    char str1[10] = "Hello";
+
+    // Char array with string literal (inferred size)
+    char str2[] = "World";
+
+    // Char array with explicit char initialization
+    char str3[] = {'T', 'e', 's', 't', '\0'};
+
+    // Validate first characters
+    if (str1[0] != 'H') return 1;
+    if (str1[4] != 'o') return 2;
+    if (str1[5] != '\0') return 3;
+
+    if (str2[0] != 'W') return 4;
+    if (str2[4] != 'd') return 5;
+    if (str2[5] != '\0') return 6;
+
+    if (str3[0] != 'T') return 7;
+    if (str3[3] != 't') return 8;
+    if (str3[4] != '\0') return 9;
+
+    return 0;
+}

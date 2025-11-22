@@ -1,0 +1,32 @@
+// Test partial array initialization (remaining elements should be zero-initialized)
+
+int main() {
+    // Partial initialization - remaining elements should be zero
+    int arr[5] = {1, 2};
+
+    if (arr[0] != 1) return 1;
+    if (arr[1] != 2) return 2;
+    if (arr[2] != 0) return 3;
+    if (arr[3] != 0) return 4;
+    if (arr[4] != 0) return 5;
+
+    // Partial string initialization
+    char str[10] = "Hi";
+
+    if (str[0] != 'H') return 6;
+    if (str[1] != 'i') return 7;
+    if (str[2] != '\0') return 8;
+    if (str[3] != '\0') return 9;
+
+    // Partial 2D array initialization
+    int matrix[2][3] = {{1, 2}};
+
+    if (matrix[0][0] != 1) return 10;
+    if (matrix[0][1] != 2) return 11;
+    if (matrix[0][2] != 0) return 12;
+    if (matrix[1][0] != 0) return 13;
+    if (matrix[1][1] != 0) return 14;
+    if (matrix[1][2] != 0) return 15;
+
+    return 0;
+}

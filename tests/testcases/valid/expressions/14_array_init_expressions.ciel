@@ -1,0 +1,32 @@
+// Test array initialization with expressions
+
+int main() {
+    // Array with constant expressions
+    int base = 10;
+    int arr1[] = {1, 2, 3, 4, 5};
+    
+    // Access and modify
+    arr1[2] = 30;
+    int val = arr1[2];
+    
+    if (val != 30) return 1;
+    
+    // Array in loop
+    int sum = 0;
+    for (int i = 0; i < 5; i++) {
+        sum = sum + arr1[i];
+    }
+    
+    // sum should be 1 + 2 + 30 + 4 + 5 = 42
+    if (sum != 42) return 2;
+    
+    // Char array operations
+    char str[] = "ABC";
+    str[1] = 'X';
+    
+    if (str[0] != 'A') return 3;
+    if (str[1] != 'X') return 4;
+    if (str[2] != 'C') return 5;
+    
+    return 0;
+}

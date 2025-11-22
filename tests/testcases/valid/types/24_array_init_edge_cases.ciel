@@ -1,0 +1,28 @@
+// Test edge cases for array initialization
+
+int main() {
+    // Single element array
+    int single[] = {42};
+    if (single[0] != 42) return 1;
+    
+    // Large array with partial init
+    int large[100] = {1, 2, 3};
+    if (large[0] != 1) return 2;
+    if (large[2] != 3) return 3;
+    
+    // Empty string
+    char empty[] = "";
+    if (empty[0] != '\0') return 4;
+    
+    // String with special characters
+    char special[] = "Hello\nWorld\t!";
+    if (special[0] != 'H') return 5;
+    if (special[5] != '\n') return 6;
+    
+    // Mixed float types
+    float mixed[] = {1.0, 2.5, 3.14159};
+    if (mixed[0] != 1.0) return 7;
+    if (mixed[2] != 3.14159) return 8;
+    
+    return 0;
+}

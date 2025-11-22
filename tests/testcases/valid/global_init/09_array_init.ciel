@@ -1,0 +1,18 @@
+// Test global array initialization
+int printf(char *fmt, ...);
+
+int global_int_arr[] = {10, 20, 30, 40};
+char global_str[] = "Global";
+float global_floats[4] = {1.1, 2.2, 3.3, 4.4};
+
+int main() {
+    printf("global_int_arr[1] = %d\n", global_int_arr[1]);
+    printf("global_str[3] = %c\n", global_str[3]);
+    printf("global_floats[2] = %f\n", global_floats[2]);
+    
+    if (global_int_arr[1] != 20) return 1;
+    if (global_str[3] != 'b') return 2;
+    if (global_floats[2] != 3.3) return 3;
+    
+    return 0;
+}

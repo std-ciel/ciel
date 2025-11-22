@@ -1,0 +1,75 @@
+// Comprehensive test for array initialization features
+// Tests:
+// - 1D array initialization
+// - Multi-dimensional array initialization
+// - String literal decomposition to char arrays
+// - Array size inference
+// - Mixed local and global arrays
+
+// Global arrays
+int global_1d[5] = {10, 20, 30, 40, 50};
+int global_2d[2][3] = {{1, 2, 3}, {4, 5, 6}};
+char global_str[] = "Hello";
+
+int main() {
+    // ===== 1D Arrays =====
+
+    // 1D array with explicit size
+    int arr1[3] = {1, 2, 3};
+    if (arr1[0] != 1) return 1;
+    if (arr1[2] != 3) return 2;
+
+    // 1D array with inferred size
+    int arr2[] = {5, 10, 15, 20};
+    if (arr2[1] != 10) return 3;
+    if (arr2[3] != 20) return 4;
+
+    // ===== String Literal Decomposition =====
+
+    // String literal to char array (explicit size)
+    char str1[6] = "World";
+    if (str1[0] != 'W') return 5;
+    if (str1[4] != 'd') return 6;
+    if (str1[5] != '\0') return 7;
+
+    // String literal to char array (inferred size)
+    char str2[] = "Test";
+    if (str2[0] != 'T') return 8;
+    if (str2[3] != 't') return 9;
+    if (str2[4] != '\0') return 10;
+
+    // ===== Multi-dimensional Arrays =====
+
+    // 2D array
+    int matrix[2][3] = {{100, 200, 300}, {400, 500, 600}};
+    if (matrix[0][0] != 100) return 11;
+    if (matrix[0][2] != 300) return 12;
+    if (matrix[1][1] != 500) return 13;
+
+    // 2D char array
+    char grid[3][2] = {{'A', 'B'}, {'C', 'D'}, {'E', 'F'}};
+    if (grid[0][0] != 'A') return 14;
+    if (grid[1][1] != 'D') return 15;
+    if (grid[2][0] != 'E') return 16;
+
+    // 3D array
+    int cube[2][2][2] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}};
+    if (cube[0][0][0] != 1) return 17;
+    if (cube[0][1][1] != 4) return 18;
+    if (cube[1][0][0] != 5) return 19;
+    if (cube[1][1][1] != 8) return 20;
+
+    // ===== Global Arrays =====
+
+    if (global_1d[0] != 10) return 21;
+    if (global_1d[4] != 50) return 22;
+
+    if (global_2d[0][1] != 2) return 23;
+    if (global_2d[1][2] != 6) return 24;
+
+    if (global_str[0] != 'H') return 25;
+    if (global_str[4] != 'o') return 26;
+    if (global_str[5] != '\0') return 27;
+
+    return 0;
+}

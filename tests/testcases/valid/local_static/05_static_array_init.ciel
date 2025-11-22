@@ -1,0 +1,27 @@
+// Test static array initialization
+
+int get_value(int index) {
+    static int arr[] = {10, 20, 30, 40, 50};
+    return arr[index];
+}
+
+int get_char(int index) {
+    static char str[] = "Static";
+    return str[index];
+}
+
+int main() {
+    int val1 = get_value(0);
+    int val2 = get_value(4);
+
+    if (val1 != 10) return 1;
+    if (val2 != 50) return 2;
+
+    int ch1 = get_char(0);
+    int ch2 = get_char(5);
+
+    if (ch1 != 'S') return 3;
+    if (ch2 != 'c') return 4;
+
+    return 0;
+}

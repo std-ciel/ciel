@@ -1,0 +1,23 @@
+// Test basic array initialization with braces
+
+int main() {
+    // Integer array with full initialization
+    int arr1[5] = {1, 2, 3, 4, 5};
+
+    // Integer array with partial initialization
+    int arr2[10] = {10, 20, 30};
+
+    // Integer array with size inference
+    int arr3[] = {100, 200, 300, 400};
+
+    // Float array initialization
+    float temps[3] = {98.6, 37.0, 36.5};
+
+    // Validate values
+    if (arr1[0] != 1 || arr1[4] != 5) return 1;
+    if (arr2[0] != 10 || arr2[2] != 30) return 2;
+    if (arr3[0] != 100 || arr3[3] != 400) return 3;
+    if (temps[0] != 98.6 || temps[2] != 36.5) return 4;
+
+    return 0;
+}
