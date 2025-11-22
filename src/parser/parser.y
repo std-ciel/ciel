@@ -2364,8 +2364,16 @@ static void check_array_bounds(const TypePtr &array_type,
       return std::make_shared<CallExpr>(ctor_symbol, ctor_args, fn_type->return_type.type);
     }
 
-    // For non-class types, use BlockStmt to hold the initializer list
     return std::make_shared<BlockStmt>(initializer_list);
+  }
+
+  static ASTNodePtr transform_string_to_char_array_init(const std::string& str_value, TypePtr char_type) {
+    std::vector<ASTNodePtr> char_initializers;
+    for (char c : str_value) {
+      char_initializers.push_back(std::make_shared<LiteralExpr>(c, char_type));
+    }
+    char_initializers.push_back(std::make_shared<LiteralExpr>('\0', char_type));
+    return std::make_shared<BlockStmt>(char_initializers);
   }
 
   static ASTNodePtr handle_assignment_operator(
@@ -4630,29 +4638,45 @@ init_declarator
       {
         $$ = $1;
         $$.initializer = $4;
-        const DeclaratorInfo &di = $1;
+        DeclaratorInfo &di = $1;
         QualifiedType base = parser_state.saved_decl_base_type;
         if (base.type) {
-          // Functions cannot have initializers in declarations
           if (di.is_function) {
             parser_add_error(@2.begin.line, @2.begin.column,
                            "function '" + di.name + "' cannot have an initializer");
           } else {
-            // Strip typedefs from the base type before using it
             QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
-            // The order of applying pointer and array depends on declarator syntax:
+            auto char_type = type_factory.lookup("char");
+            if (!di.array_dims.empty() && char_type.has_value() && 
+                final_t.type->kind == TypeKind::BUILTIN &&
+                std::static_pointer_cast<BuiltinType>(final_t.type)->builtin_kind == BuiltinTypeKind::CHAR &&
+                $4 && $4->type == ASTNodeType::LITERAL_EXPR) {
+              auto lit = std::static_pointer_cast<LiteralExpr>($4);
+              if (std::holds_alternative<std::string>(lit->value)) {
+                std::string str_value = std::get<std::string>(lit->value);
+                $$.initializer = transform_string_to_char_array_init(str_value, char_type.value());
+                if (di.array_dims.back() == 0) {
+                  di.array_dims.back() = str_value.size() + 1;
+                }
+              }
+            }
 
-            if(di.pointer_parenthesized) {
-              // Case: int (*p)[3] - apply arrays first, then pointers
-              if(!di.array_dims.empty()){
+            if (!di.array_dims.empty() && di.array_dims.back() == 0 && $$.initializer && 
+                $$.initializer->type == ASTNodeType::BLOCK_STMT) {
+              auto block = std::static_pointer_cast<BlockStmt>($$.initializer);
+              di.array_dims.back() = block->statements.size();
+            }
+
+            if (di.pointer_parenthesized) {
+              if (!di.array_dims.empty()) {
                 final_t = apply_array_dimensions_or_error(final_t,
                                                          di.array_dims,
                                                          "initializer array declarator",
                                                          @1.begin.line,
                                                          @1.begin.column);
               }
-              if(di.pointer_levels > 0){
+              if (di.pointer_levels > 0) {
                 final_t = apply_pointer_levels_or_error(final_t,
                                                        di.pointer_levels,
                                                        "initializer pointer declarator",
@@ -4660,15 +4684,14 @@ init_declarator
                                                        @1.begin.column);
               }
             } else {
-              // Case: int *p[3] - apply pointers first, then arrays
-              if(di.pointer_levels > 0){
+              if (di.pointer_levels > 0) {
                 final_t = apply_pointer_levels_or_error(final_t,
                                                        di.pointer_levels,
                                                        "initializer pointer declarator",
                                                        @1.begin.line,
                                                        @1.begin.column);
               }
-              if(!di.array_dims.empty()){
+              if (!di.array_dims.empty()) {
                 final_t = apply_array_dimensions_or_error(final_t,
                                                          di.array_dims,
                                                          "initializer array declarator",
@@ -4677,7 +4700,7 @@ init_declarator
               }
             }
 
-            if(di.pointer_levels == 0 && di.array_dims.empty()) {
+            if (di.pointer_levels == 0 && di.array_dims.empty()) {
               check_complete_type(final_t.type, @1, TypeUsageContext::VARIABLE_DECLARATION);
             }
 
@@ -4685,9 +4708,6 @@ init_declarator
 
             if (!parser_state.ctx_stack.empty() && parser_state.ctx_stack.back() == ContextKind::CLASS && parser_state.current_class_type) {
               if (!di.name.empty()) {
-                // auto mi = MemberInfo{final_t, parser_state.current_access, false};
-                // std::static_pointer_cast<ClassType>(parser_state.current_class_type)->add_member(di.name, mi);
-                // TODO: handle auto default constructors, currently disallowed
                 parser_add_error(@1.begin.line, @1.begin.column,
                                  "initializer in class member declarations is not supported yet");
               }

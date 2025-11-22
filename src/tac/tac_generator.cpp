@@ -780,6 +780,21 @@ TACOperand TACGenerator::generate_unary_op(std::shared_ptr<UnaryExpr> expr)
 TACOperand
 TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 {
+    if (expr->value->type == ASTNodeType::BLOCK_STMT &&
+        expr->target->type == ASTNodeType::IDENTIFIER_EXPR) {
+        auto target_id = std::static_pointer_cast<IdentifierExpr>(expr->target);
+        auto target_type = strip_typedefs(target_id->expr_type);
+
+        if (target_type && target_type->kind == TypeKind::ARRAY) {
+            auto block = std::static_pointer_cast<BlockStmt>(expr->value);
+            auto base = TACOperand::symbol(target_id->symbol, target_id->expr_type);
+
+            generate_array_initialization(base, target_type, block->statements);
+
+            return base;
+        }
+    }
+
     auto value = generate_expression(expr->value);
 
     // Handle member assignment
@@ -1626,7 +1641,6 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
         if (block->statements.empty())
             return;
 
-        // Process each global variable initialization
         for (const auto &stmt : block->statements) {
             if (stmt && stmt->type == ASTNodeType::ASSIGNMENT_EXPR) {
                 auto assign = std::static_pointer_cast<AssignmentExpr>(stmt);
@@ -1640,12 +1654,16 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                     program.add_global(symbol);
 
                     if (assign->value) {
-                        // Check if initializer is a constant literal
-                        if (assign->value->type == ASTNodeType::LITERAL_EXPR) {
+                        auto target_type = strip_typedefs(id_expr->expr_type);
+
+                        if (target_type && target_type->kind == TypeKind::ARRAY &&
+                            assign->value->type == ASTNodeType::BLOCK_STMT) {
+                            symbol->set_init_expression(assign->value);
+                            program.add_global_initializer(symbol, false);
+                        } else if (assign->value->type == ASTNodeType::LITERAL_EXPR) {
                             auto lit = std::static_pointer_cast<LiteralExpr>(
                                 assign->value);
 
-                            // Convert LiteralValue to Symbol::InitializerValue
                             if (std::holds_alternative<int64_t>(lit->value)) {
                                 symbol->set_initializer(
                                     std::get<int64_t>(lit->value));
@@ -1678,7 +1696,6 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                                 symbol->set_initializer(str_value);
                             }
                         } else {
-                            // Non-constant initializer - needs runtime init
                             symbol->set_init_expression(assign->value);
                             program.add_global_initializer(symbol, false);
                         }
@@ -1844,6 +1861,16 @@ void TACGenerator::generate_global_init_function()
 
             if (is_constructor_call(init_expr)) {
                 generate_expression(init_expr);
+            } else if (init_expr->type == ASTNodeType::BLOCK_STMT) {
+                auto target_type = strip_typedefs(symbol->get_type().type);
+                if (target_type && target_type->kind == TypeKind::ARRAY) {
+                    auto array_type = std::static_pointer_cast<ArrayType>(target_type);
+                    auto block = std::static_pointer_cast<BlockStmt>(init_expr);
+                    auto base = TACOperand::symbol(symbol, symbol->get_type().type);
+
+                    // Use the recursive helper for both 1D and multi-dimensional arrays
+                    generate_array_initialization(base, array_type, block->statements, 0);
+                }
             } else {
                 const auto value = generate_expression(init_expr);
                 emit(
@@ -2123,6 +2150,52 @@ void TACGenerator::generate_statement(ASTNodePtr node)
             generate_expression(node);
         }
         break;
+    }
+}
+
+void TACGenerator::generate_array_initialization(
+    const TACOperand &base_addr,
+    TypePtr array_type,
+    const std::vector<ASTNodePtr> &initializers,
+    size_t base_offset)
+{
+    if (!array_type || array_type->kind != TypeKind::ARRAY) {
+        record_error("generate_array_initialization called on non-array type");
+        return;
+    }
+
+    auto arr_type = std::static_pointer_cast<ArrayType>(array_type);
+    auto element_type = strip_typedefs(arr_type->element_type.type);
+    size_t element_size = get_type_size(element_type);
+
+    for (size_t i = 0; i < initializers.size(); ++i) {
+        auto &init = initializers[i];
+        size_t current_offset = base_offset + (i * element_size);
+
+        if (init->type == ASTNodeType::BLOCK_STMT &&
+            element_type->kind == TypeKind::ARRAY) {
+            auto nested_block = std::static_pointer_cast<BlockStmt>(init);
+            generate_array_initialization(base_addr, element_type,
+                                        nested_block->statements, current_offset);
+        } else {
+            auto element_value = generate_expression(init);
+
+            if (current_offset == 0) {
+                emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                      base_addr, element_value));
+            } else {
+                auto offset_op = TACOperand::constant_int(
+                    static_cast<int64_t>(current_offset), nullptr);
+
+                auto addr_temp = new_temp(nullptr);
+                auto addr = TACOperand::temporary(addr_temp, nullptr);
+                emit(std::make_shared<TACInstruction>(TACOpcode::ADD, addr,
+                                                      base_addr, offset_op));
+
+                emit(std::make_shared<TACInstruction>(TACOpcode::STORE, addr,
+                                                      element_value));
+            }
+        }
     }
 }
 

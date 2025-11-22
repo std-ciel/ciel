@@ -47,6 +47,11 @@ class TACGenerator {
     void generate_block_stmt(std::shared_ptr<BlockStmt> stmt);
     void generate_switch_stmt(std::shared_ptr<SwitchStmt> stmt);
 
+    void generate_array_initialization(const TACOperand &base_addr,
+                                       TypePtr array_type,
+                                       const std::vector<ASTNodePtr> &initializers,
+                                       size_t base_offset = 0);
+
     void record_error(const std::string &message);
 
     TACOpcode operator_to_tac_opcode(Operator op);
