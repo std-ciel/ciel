@@ -1,0 +1,87 @@
+int printf(char* fmt, ...);
+
+struct A{
+    int a;
+    struct B{
+        int b;
+    } b;
+};
+
+typedef int v;
+typedef struct A A_s;
+
+typedef struct C{
+    struct A* a_ptr;
+    v val;
+} C_s;
+
+typedef class D{
+public:
+    int x;
+    A_s a_member;
+    C_s c_member;
+    D(){
+        x = 0;
+    }
+} D_c;
+
+typedef struct {
+    D_c d_member;
+    A_s a_member;
+} E_s;
+
+typedef E_s* E_p;
+
+int main() {
+    A_s a_instance;
+    a_instance.a = 10;
+    a_instance.b.b = 20;
+    printf("a: %d, b.b: %d\n", a_instance.a, a_instance.b.b);
+
+    C_s c_instance;
+    c_instance.a_ptr = &a_instance;
+    c_instance.val = 30;
+
+    c_instance.a_ptr->a = 40;  // Accessing A's member via pointer in C_s
+    c_instance.a_ptr->b.b = 50;
+    printf("C_s val: %d, A_s a via pointer: %d\n", c_instance.val, c_instance.a_ptr->a);
+    printf("a_instance.a: %d, a_instance.b.b: %d\n", a_instance.a, a_instance.b.b);
+
+    D_c d_instance{};
+    d_instance.x = 60;
+    d_instance.a_member.a = 70;
+    d_instance.a_member.b.b = 80;
+    d_instance.c_member.a_ptr = &a_instance;
+    d_instance.c_member.val = 90;
+
+    printf("D_c x: %d, a_member.a: %d, a_member.b.b: %d\n", d_instance.x, d_instance.a_member.a, d_instance.a_member.b.b);
+    printf("c_member val: %d, a_ptr->a: %d\n", d_instance.c_member.val, d_instance.c_member.a_ptr->a);
+
+    E_s e_instance;
+    e_instance.a_member.a = 100;
+    e_instance.a_member.b.b = 110;
+    e_instance.d_member.x = 120;
+    e_instance.d_member.a_member.a = 130;
+    e_instance.d_member.a_member.b.b = 140;
+    e_instance.d_member.c_member.a_ptr = &a_instance;
+    e_instance.d_member.c_member.val = 150;
+
+    printf("E_s a_member.a: %d, a_member.b.b: %d\n", e_instance.a_member.a, e_instance.a_member.b.b);
+    printf("E_s d_member.x: %d, d_member.a_member.a: %d, d_member.a_member.b.b: %d\n",
+           e_instance.d_member.x, e_instance.d_member.a_member.a, e_instance.d_member.a_member.b.b);
+    printf("E_s d_member.c_member.val: %d, d_member.c_member.a_ptr->a: %d\n",
+           e_instance.d_member.c_member.val, e_instance.d_member.c_member.a_ptr->a);
+
+
+    E_p e_ptr = &e_instance;
+    printf("Access via pointer - E_s a_member.a: %d, a_member.b.b: %d\n",
+           e_ptr->a_member.a, e_ptr->a_member.b.b);
+    printf("Access via pointer - E_s d_member.x: %d, d_member.a_member.a: %d, d_member.a_member.b.b: %d\n",
+           e_ptr->d_member.x, e_ptr->d_member.a_member.a, e_ptr->d_member.a_member.b.b);
+    printf("Access via pointer - E_s d_member.c_member.val: %d, d_member.c_member.a_ptr->a: %d\n",
+           e_ptr->d_member.c_member.val, e_ptr->d_member.c_member.a_ptr->a);
+
+
+
+    return 0;
+}
