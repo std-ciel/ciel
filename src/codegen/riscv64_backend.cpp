@@ -1598,12 +1598,17 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
     } else {
         const std::string temp_str = std::get<std::string>(operand.value);
 
-        // For member access, use base_type; otherwise use type
-        TypePtr temp_type =
-            operand.base_type ? operand.base_type : operand.type;
+        // Determine if the base temporary holds an aggregate
+        // - If operand has member_name, base refers to aggregate, check
+        // base_type
+        // - Otherwise, check the operand's type directly
+        TypePtr base_temp_type = operand.base_type;
+        if (!base_temp_type) {
+            base_temp_type = operand.type;
+        }
 
-        // Check if this temporary has an aggregate type
-        if (temp_type && is_aggregate_type(temp_type)) {
+        // Check if this base temporary has an aggregate type
+        if (base_temp_type && is_aggregate_type(base_temp_type)) {
             // Check if already allocated on stack
             if (auto offset_it = temp_to_offset_.find(temp_str);
                 offset_it != temp_to_offset_.end()) {
@@ -1620,7 +1625,7 @@ VirtReg InstructionSelector::compute_member_address(const TACOperand &operand,
             } else {
                 // First time seeing this aggregate temporary - allocate stack
                 // space
-                uint32_t size = get_type_size(temp_type);
+                uint32_t size = get_type_size(base_temp_type);
                 uint32_t alignment = std::min(size, 4u);
                 int32_t temp_offset =
                     mfn_.get_frame().allocate_slot(size, alignment);
@@ -1947,9 +1952,10 @@ void InstructionSelector::store_result(VirtReg vreg, const TACOperand &dest)
 
 uint32_t InstructionSelector::get_type_size(TypePtr type) const
 {
-    if (!type || !type->has_layout())
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical || !canonical->has_layout())
         return 4;
-    return type->layout.size;
+    return canonical->layout.size;
 }
 
 bool InstructionSelector::is_signed_type(TypePtr type) const
@@ -1957,9 +1963,13 @@ bool InstructionSelector::is_signed_type(TypePtr type) const
     if (!type)
         return true;
 
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return true;
+
     // Check if it's a builtin integer type
-    if (type->kind == TypeKind::BUILTIN) {
-        auto builtin = std::static_pointer_cast<BuiltinType>(type);
+    if (canonical->kind == TypeKind::BUILTIN) {
+        auto builtin = std::static_pointer_cast<BuiltinType>(canonical);
         switch (builtin->builtin_kind) {
         case BuiltinTypeKind::INT:
         case BuiltinTypeKind::CHAR:
@@ -1978,8 +1988,12 @@ bool InstructionSelector::is_float_type(TypePtr type) const
     if (!type)
         return false;
 
-    if (type->kind == TypeKind::BUILTIN) {
-        auto builtin = std::static_pointer_cast<BuiltinType>(type);
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical)
+        return false;
+
+    if (canonical->kind == TypeKind::BUILTIN) {
+        auto builtin = std::static_pointer_cast<BuiltinType>(canonical);
         return builtin->builtin_kind == BuiltinTypeKind::FLOAT;
     }
     return false;
@@ -1987,11 +2001,18 @@ bool InstructionSelector::is_float_type(TypePtr type) const
 
 bool InstructionSelector::is_aggregate_type(TypePtr type) const
 {
-    if (!type)
+    if (!type) {
         return false;
+    }
 
-    return type->kind == TypeKind::RECORD || type->kind == TypeKind::ARRAY ||
-           type->kind == TypeKind::CLASS;
+    TypePtr canonical = strip_typedefs(type);
+    if (!canonical) {
+        return false;
+    }
+
+    return canonical->kind == TypeKind::RECORD ||
+           canonical->kind == TypeKind::ARRAY ||
+           canonical->kind == TypeKind::CLASS;
 }
 
 MachineOpcode InstructionSelector::get_load_opcode(TypePtr type,

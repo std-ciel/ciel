@@ -1628,6 +1628,42 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
         return array_addr;
     }
 
+    // Check if member is an aggregate type (struct/union/class)
+    // If so, we need to return its address, not load it
+    TypePtr canonical_member_type = strip_typedefs(member_type);
+    bool member_is_aggregate = canonical_member_type &&
+                               (canonical_member_type->kind == TypeKind::RECORD ||
+                                canonical_member_type->kind == TypeKind::CLASS);
+
+    // For aggregate members accessed through pointers, return address not value
+    if (base_is_pointer && member_is_aggregate) {
+        // Create a pointer type to the member
+        auto ptr_result = type_factory.get_pointer(QualifiedType{member_type});
+        if (ptr_result.is_err()) {
+            record_error("Failed to create pointer type for aggregate member");
+            return TACOperand();
+        }
+        TypePtr ptr_type = ptr_result.value();
+
+        if (offset == 0) {
+            std::string temp_name = new_temp(ptr_type);
+            TACOperand result = TACOperand::temporary(temp_name, ptr_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                  result,
+                                                  actual_base));
+            return result;
+        } else {
+            std::string addr_temp = new_temp(ptr_type);
+            TACOperand addr = TACOperand::temporary(addr_temp, ptr_type);
+            emit(std::make_shared<TACInstruction>(
+                TACOpcode::ADD,
+                addr,
+                actual_base,
+                TACOperand::constant_int(offset, nullptr)));
+            return addr;
+        }
+    }
+
     // Create temporary for result
     std::string temp_name = new_temp(member_type);
     TACOperand result = TACOperand::temporary(temp_name, member_type);
@@ -1648,7 +1684,7 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
             TACOperand::constant_int(offset, nullptr)));
         emit(std::make_shared<TACInstruction>(TACOpcode::LOAD, result, addr));
     } else {
-        // Normal member access on struct variable
+        // Normal member access on struct/class variable (not through pointer)
         TACOperand member_op = TACOperand::member_access(actual_base,
                                                          member_name,
                                                          offset,

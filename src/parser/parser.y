@@ -2424,6 +2424,18 @@ static void check_array_bounds(const TypePtr &array_type,
         return nullptr;
       }
 
+      // Check constructor access control
+      std::optional<Access> ctor_access = get_method_access(class_type, ctor_symbol->get_name());
+      if (ctor_access.has_value()) {
+        if (!is_member_accessible(class_type, ctor_access.value(), parser_state.current_class_type)) {
+          std::string access_str = (ctor_access.value() == Access::PRIVATE) ? "private" :
+                                   (ctor_access.value() == Access::PROTECTED) ? "protected" : "public";
+          parser_add_error(brace_loc.begin.line, brace_loc.begin.column,
+                          "constructor '" + class_name + "' is " + access_str + " and not accessible in this context");
+          return nullptr;
+        }
+      }
+
       // Create identifier expression for the object
       auto object_id_expr = std::make_shared<IdentifierExpr>(
           obj_symbol.value(),
@@ -3673,6 +3685,7 @@ postfix_expression
       }
       else if($1->type == ASTNodeType::ENUM_IDENTIFIER_EXPR){
           TypePtr enum_type = get_expression_type($1, @1, "enum member access");
+          enum_type = strip_typedefs(enum_type);
 
           if(enum_type && enum_type->kind == TypeKind::ENUM){
 
@@ -3696,6 +3709,8 @@ postfix_expression
           }
       }
       else{
+          // Strip typedefs to get the actual underlying type
+          base_type = strip_typedefs(base_type);
           if (is_class_type(base_type)) {
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
             ClassTypePtr original_class_type = class_type;
@@ -3785,6 +3800,8 @@ postfix_expression
       else {
         TypePtr base_type = dereference_pointer(ptr_type, @1, "arrow operator");
         if (base_type) {
+          // Strip typedefs to get the actual underlying type
+          base_type = strip_typedefs(base_type);
           if(is_class_type(base_type)){
             auto class_type = std::static_pointer_cast<ClassType>(base_type);
             ClassTypePtr original_class_type = class_type;

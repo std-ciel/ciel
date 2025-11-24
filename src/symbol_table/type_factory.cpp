@@ -323,11 +323,17 @@ TypeFactory::dereference_pointer(TypePtr pointer_type)
             TypeFactoryError::INVALID_TYPE);
     }
 
-    if (pointer_type->kind != TypeKind::POINTER) {
+    TypePtr canonical = strip_typedefs(pointer_type);
+    if (!canonical) {
         return Result<TypePtr, TypeFactoryError>(
             TypeFactoryError::INVALID_TYPE);
     }
 
-    auto ptr_type = std::static_pointer_cast<PointerType>(pointer_type);
+    if (canonical->kind != TypeKind::POINTER) {
+        return Result<TypePtr, TypeFactoryError>(
+            TypeFactoryError::INVALID_TYPE);
+    }
+
+    auto ptr_type = std::static_pointer_cast<PointerType>(canonical);
     return Result<TypePtr, TypeFactoryError>(ptr_type->pointee.type);
 }
