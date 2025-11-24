@@ -1288,7 +1288,35 @@ TACOperand TACGenerator::generate_call(std::shared_ptr<CallExpr> expr)
     std::vector<TACOperand> args;
     args.reserve(expr->arguments.size());
     for (const auto &arg : expr->arguments) {
-        args.push_back(generate_expression(arg));
+        auto arg_operand = generate_expression(arg);
+
+        if (arg->type == ASTNodeType::IDENTIFIER_EXPR) {
+            auto arg_type_result = get_expression_type(arg);
+            if (arg_type_result.is_ok()) {
+                TypePtr arg_type = strip_typedefs(arg_type_result.value());
+                if (arg_type && arg_type->kind == TypeKind::ARRAY) {
+                    auto array_type =
+                        std::static_pointer_cast<ArrayType>(arg_type);
+                    auto ptr_result =
+                        type_factory.get_pointer(array_type->element_type);
+                    if (ptr_result.is_ok()) {
+                        TypePtr ptr_type = ptr_result.value();
+                        auto addr_temp = new_temp(ptr_type);
+                        auto addr_operand =
+                            TACOperand::temporary(addr_temp, ptr_type);
+
+                        emit(
+                            std::make_shared<TACInstruction>(TACOpcode::ADDR_OF,
+                                                             addr_operand,
+                                                             arg_operand));
+
+                        arg_operand = addr_operand;
+                    }
+                }
+            }
+        }
+
+        args.push_back(arg_operand);
     }
 
     for (const auto &arg : args) {
