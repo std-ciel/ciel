@@ -7,6 +7,7 @@
 #include "codegen/riscv64_codegen.hpp"
 #include "codegen/riscv64_regalloc.hpp"
 #include "common/error_printer.hpp"
+#include "driver/driver.hpp"
 #include "lexer/lexer.hpp"
 #include "lexer_errors.hpp"
 #include "parser.hpp"
@@ -74,6 +75,25 @@ int main(int argc, char *argv[])
         .default_value(std::string(""))
         .nargs(0, 1);
 
+    program.add_argument("-c", "--compile-only")
+        .help("Compile to object file without linking")
+        .default_value(false)
+        .implicit_value(true);
+
+    program.add_argument("-o", "--output")
+        .help("Output file path")
+        .default_value(std::string("a.out"));
+
+    program.add_argument("-v", "--verbose")
+        .help("Enable verbose output for compilation steps")
+        .default_value(false)
+        .implicit_value(true);
+
+    program.add_argument("--keep-temps")
+        .help("Keep temporary files (assembly, object files)")
+        .default_value(false)
+        .implicit_value(true);
+
     try {
         program.parse_args(argc, argv);
     } catch (const std::runtime_error &err) {
@@ -86,8 +106,10 @@ int main(int argc, char *argv[])
     bool lexer_only = program.get<bool>("--lexer-only");
     bool parser_only = program.get<bool>("--parser-only");
     bool irgen_only = program.get<bool>("--irgen-only");
+    bool compile_only = program.get<bool>("--compile-only");
+    bool verbose = program.get<bool>("--verbose");
+    bool keep_temps = program.get<bool>("--keep-temps");
 
-    // Validate mutually exclusive options
     int exclusive_count =
         (lexer_only ? 1 : 0) + (parser_only ? 1 : 0) + (irgen_only ? 1 : 0);
     if (exclusive_count > 1) {
@@ -103,17 +125,17 @@ int main(int argc, char *argv[])
     std::string filename = program.get<std::string>("input_file");
 
     if (filename.empty()) {
-        std::cout << "Ciel interactive mode. Enter your code and press Ctrl+D "
-                     "(EOF) when finished.\n";
-        lexer.switch_streams(&std::cin, &std::cout);
-    } else {
-        file.open(filename);
-        if (!file.is_open()) {
-            std::cerr << "Error: Could not open file " << filename << std::endl;
-            return 1;
-        }
-        lexer.switch_streams(&file, &std::cout);
+        std::cerr << "Error: No input file provided" << std::endl;
+        std::cerr << program;
+        return 1;
     }
+
+    file.open(filename);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << filename << std::endl;
+        return 1;
+    }
+    lexer.switch_streams(&file, &std::cout);
 
     // Lexer-only mode: just tokenize
     if (lexer_only) {
@@ -261,27 +283,26 @@ int main(int argc, char *argv[])
     std::cout << "TAC generation completed successfully\n\n";
     tac_gen.get_program().print();
 
-    // IR generation-only mode: stop here
     if (irgen_only) {
         lexer_clear_tokens();
         return 0;
     }
 
-    if (program.is_used("--emit-asm")) {
-        try {
-            std::cout << "\n┌─────────────────────────┐\n";
-            std::cout << "│ RISC-V CODE GENERATION  │\n";
-            std::cout << "└─────────────────────────┘\n";
+    std::cout << "\n┌─────────────────────────┐\n";
+    std::cout << "│ RISC-V CODE GENERATION  │\n";
+    std::cout << "└─────────────────────────┘\n";
 
-            ciel::codegen::riscv64::LinearScanAllocator::set_debug_mode(
-                debug_mode);
+    ciel::codegen::riscv64::LinearScanAllocator::set_debug_mode(debug_mode);
 
-            ciel::codegen::riscv64::RiscV64Codegen codegen(
-                tac_gen.get_program(),
-                get_symbol_table(),
-                get_type_factory());
+    ciel::codegen::riscv64::RiscV64Codegen codegen(tac_gen.get_program(),
+                                                   get_symbol_table(),
+                                                   get_type_factory());
 
-            std::string asm_output = program.get<std::string>("--emit-asm");
+    try {
+        std::string asm_output = program.get<std::string>("--emit-asm");
+        std::string output_path = program.get<std::string>("--output");
+
+        if (program.is_used("--emit-asm")) {
             if (asm_output.empty()) {
                 std::cout << "Code generation completed successfully\n"
                           << std::endl;
@@ -292,11 +313,55 @@ int main(int argc, char *argv[])
                           << std::endl;
                 std::cout << "Assembly written to: " << asm_output << std::endl;
             }
-        } catch (const std::exception &e) {
-            std::cerr << "\nCode generation error: " << e.what() << std::endl;
+            lexer_clear_tokens();
+            return 0;
+        }
+
+        ciel::driver::Driver driver;
+        std::filesystem::path temp_asm =
+            std::filesystem::temp_directory_path() /
+            ("ciel_" + std::to_string(std::time(nullptr)) + ".s");
+
+        codegen.emit_to_file(temp_asm.string());
+
+        std::cout << "Code generation completed successfully" << std::endl;
+
+        ciel::driver::CompilationOptions opts;
+        opts.input_file = temp_asm;
+        opts.verbose = verbose;
+        opts.keep_temps = keep_temps;
+
+        if (compile_only) {
+            opts.output_type = ciel::driver::OutputType::OBJECT;
+            opts.output_file = output_path.empty() ? "a.o" : output_path;
+        } else {
+            opts.output_type = ciel::driver::OutputType::EXECUTABLE;
+            opts.output_file = output_path.empty() ? "a.out" : output_path;
+        }
+
+        std::cout << "\n┌─────────────────────────┐\n";
+        std::cout << "│ ASSEMBLING AND LINKING  │\n";
+        std::cout << "└─────────────────────────┘\n";
+
+        auto result = driver.compile(opts);
+        if (result.is_err()) {
+            std::cerr << "\nCompilation error: " << result.error() << std::endl;
+            if (!keep_temps)
+                std::filesystem::remove(temp_asm);
             lexer_clear_tokens();
             return 1;
         }
+
+        std::cout << "Compilation completed successfully" << std::endl;
+        std::cout << "Output written to: " << opts.output_file << std::endl;
+
+        if (!keep_temps)
+            std::filesystem::remove(temp_asm);
+
+    } catch (const std::exception &e) {
+        std::cerr << "\nCode generation error: " << e.what() << std::endl;
+        lexer_clear_tokens();
+        return 1;
     }
 
     lexer_clear_tokens();

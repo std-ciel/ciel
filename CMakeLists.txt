@@ -59,6 +59,7 @@ add_library(ciel_parser STATIC
     src/codegen/riscv64_peephole.cpp
     src/codegen/riscv64_backend.cpp
     src/codegen/riscv64_codegen.cpp
+    src/driver/driver.cpp
 )
 
 target_include_directories(ciel_parser PUBLIC
@@ -70,6 +71,8 @@ target_include_directories(ciel_parser PUBLIC
     ${CMAKE_SOURCE_DIR}/include/tac
     ${CMAKE_SOURCE_DIR}/include/ast
     ${CMAKE_SOURCE_DIR}/include/codegen
+    ${CMAKE_SOURCE_DIR}/include/driver
+    ${CMAKE_SOURCE_DIR}/include/common
     ${CMAKE_CURRENT_BINARY_DIR})
 
 target_compile_definitions(ciel_parser PUBLIC )
