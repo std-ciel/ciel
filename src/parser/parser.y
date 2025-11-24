@@ -1548,6 +1548,61 @@ static void check_array_bounds(const TypePtr &array_type,
     {"!=",1}
   };
 
+  static ASTNodePtr try_implicit_conversion(ASTNodePtr expr, TypePtr target_type, const yy::location& loc) {
+    TypePtr expr_type = get_expression_type(expr, loc, "implicit conversion");
+    if (!expr_type || !target_type) return nullptr;
+
+    expr_type = strip_typedefs(expr_type);
+    target_type = strip_typedefs(target_type);
+
+    if (are_types_equal(expr_type, target_type)) return expr;
+
+    // Check for numeric promotions/conversions
+    if (expr_type->kind == TypeKind::BUILTIN && target_type->kind == TypeKind::BUILTIN) {
+      auto from = std::static_pointer_cast<BuiltinType>(expr_type);
+      auto to = std::static_pointer_cast<BuiltinType>(target_type);
+
+      bool allowed = false;
+
+      // char -> int/unsigned/float
+      if (from->builtin_kind == BuiltinTypeKind::CHAR) {
+        if (to->builtin_kind == BuiltinTypeKind::INT ||
+            to->builtin_kind == BuiltinTypeKind::UNSIGNED ||
+            to->builtin_kind == BuiltinTypeKind::FLOAT) {
+          allowed = true;
+        }
+      }
+      // int -> unsigned/float
+      else if (from->builtin_kind == BuiltinTypeKind::INT) {
+        if (to->builtin_kind == BuiltinTypeKind::UNSIGNED ||
+            to->builtin_kind == BuiltinTypeKind::FLOAT) {
+          allowed = true;
+        }
+      }
+      // unsigned -> float/int
+      else if (from->builtin_kind == BuiltinTypeKind::UNSIGNED) {
+        if (to->builtin_kind == BuiltinTypeKind::FLOAT ||
+            to->builtin_kind == BuiltinTypeKind::INT) {
+          allowed = true;
+        }
+      }
+
+      if (allowed) {
+        return std::make_shared<CastExpr>(target_type, expr);
+      }
+    }
+
+    // Pointer conversions (T* -> void*)
+    if (is_pointer_type(expr_type) && is_pointer_type(target_type)) {
+      auto to_ptr = std::static_pointer_cast<PointerType>(target_type);
+      if (is_void_type(to_ptr->pointee.type)) {
+        return std::make_shared<CastExpr>(target_type, expr);
+      }
+    }
+
+    return nullptr;
+  }
+
   static ASTNodePtr handle_binary_operator(
       ASTNodePtr left,
       ASTNodePtr right,
@@ -1590,7 +1645,26 @@ static void check_array_bounds(const TypePtr &array_type,
     }
 
     // Validate builtin types
-    if (type_validator(left_type, right_type)) {
+    bool valid = type_validator(left_type, right_type);
+
+    if (!valid) {
+       // Try implicit conversion
+       auto converted_right = try_implicit_conversion(right, left_type, right_loc);
+       if (converted_right && type_validator(left_type, left_type)) {
+           right = converted_right;
+           right_type = left_type;
+           valid = true;
+       } else {
+           auto converted_left = try_implicit_conversion(left, right_type, left_loc);
+           if (converted_left && type_validator(right_type, right_type)) {
+               left = converted_left;
+               left_type = right_type;
+               valid = true;
+           }
+       }
+    }
+
+    if (valid) {
       if (operator_returns_bool[op_symbol]) {
         // For relational operators, result type is bool
         TypePtr bool_type = require_builtin("bool", op_loc, op_name + " operator");
@@ -2376,6 +2450,8 @@ static void check_array_bounds(const TypePtr &array_type,
     return std::make_shared<BlockStmt>(char_initializers);
   }
 
+
+
   static ASTNodePtr handle_assignment_operator(
       ASTNodePtr lhs,
       ASTNodePtr rhs,
@@ -2395,6 +2471,13 @@ static void check_array_bounds(const TypePtr &array_type,
     }
 
     TypePtr lhs_type = get_expression_type(lhs, lhs_loc, op_name + " left operand");
+
+    // Handle BlockStmt (array/struct initialization) specially
+    if (rhs && rhs->type == ASTNodeType::BLOCK_STMT) {
+      if (!lhs_type) return nullptr;
+      return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type, is_static_assignment);
+    }
+
     TypePtr rhs_type = get_expression_type(rhs, rhs_loc, op_name + " right operand");
 
     if (!lhs_type || !rhs_type) {
@@ -2443,10 +2526,17 @@ static void check_array_bounds(const TypePtr &array_type,
         return nullptr;
       }
     } else if (!are_types_equal(lhs_type, rhs_type)) {
-        parser_add_error(op_loc.begin.line,
-                         op_loc.begin.column,
-                         op_name + ": incompatible types for assignment ('" + lhs_type->debug_name() + "' and '" + rhs_type->debug_name() + "')");
-        return nullptr;
+        // Try implicit conversion
+        ASTNodePtr converted_rhs = try_implicit_conversion(rhs, lhs_type, rhs_loc);
+        if (converted_rhs) {
+            rhs = converted_rhs;
+            rhs_type = lhs_type;
+        } else {
+            parser_add_error(op_loc.begin.line,
+                             op_loc.begin.column,
+                             op_name + ": incompatible types for assignment ('" + lhs_type->debug_name() + "' and '" + rhs_type->debug_name() + "')");
+            return nullptr;
+        }
     }
 
     return std::make_shared<AssignmentExpr>(op_enum, lhs, rhs, lhs_type, is_static_assignment);
@@ -4648,7 +4738,7 @@ init_declarator
             QualifiedType final_t = QualifiedType{strip_typedefs(base.type), base.qualifier};
 
             auto char_type = type_factory.lookup("char");
-            if (!di.array_dims.empty() && char_type.has_value() && 
+            if (!di.array_dims.empty() && char_type.has_value() &&
                 final_t.type->kind == TypeKind::BUILTIN &&
                 std::static_pointer_cast<BuiltinType>(final_t.type)->builtin_kind == BuiltinTypeKind::CHAR &&
                 $4 && $4->type == ASTNodeType::LITERAL_EXPR) {
@@ -4662,7 +4752,7 @@ init_declarator
               }
             }
 
-            if (!di.array_dims.empty() && di.array_dims.back() == 0 && $$.initializer && 
+            if (!di.array_dims.empty() && di.array_dims.back() == 0 && $$.initializer &&
                 $$.initializer->type == ASTNodeType::BLOCK_STMT) {
               auto block = std::static_pointer_cast<BlockStmt>($$.initializer);
               di.array_dims.back() = block->statements.size();
@@ -6257,9 +6347,15 @@ jump_statement
         if (is_void_type(fn_ret)) {
           parser_add_error(@1.begin.line, @1.begin.column, "return with a value in function returning 'void'");
           $$ = nullptr; // TODO: replace with error node
-        } else if (fn_ret != expr_ret) {
-          parser_add_error(@2.begin.line, @2.begin.column, "return type mismatch: function expects '" + (fn_ret ? fn_ret->debug_name() : std::string("invalid")) + "', but returning expression of type '" + (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
-          $$ = nullptr; // TODO: replace with error node
+        } else if (!are_types_equal(fn_ret, expr_ret)) {
+          auto converted = try_implicit_conversion($2, fn_ret, @2);
+          if (converted) {
+            auto destructors = generate_all_scope_destructors(@1);
+            $$ = std::make_shared<RetExpr>(converted, fn_ret, destructors);
+          } else {
+            parser_add_error(@2.begin.line, @2.begin.column, "return type mismatch: function expects '" + (fn_ret ? fn_ret->debug_name() : std::string("invalid")) + "', but returning expression of type '" + (expr_ret ? expr_ret->debug_name() : std::string("invalid")) + "'");
+            $$ = nullptr; // TODO: replace with error node
+          }
         } else {
           auto destructors = generate_all_scope_destructors(@1);
           $$ = std::make_shared<RetExpr>($2, expr_type, destructors);
