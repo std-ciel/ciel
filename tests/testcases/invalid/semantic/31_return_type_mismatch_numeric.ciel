@@ -1,10 +1,10 @@
 // Error: return type mismatch (different numeric types)
-float compute() {
-    int x = 42;
-    return x;  // Error: returning int, but function expects float
+int compute() {
+    float x = 42.0;
+    return x;  // Error: returning float, but function expects int
 }
 
 int main() {
-    float result = compute();
+    int result = compute();
     return 0;
 }
