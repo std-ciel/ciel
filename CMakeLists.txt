@@ -56,6 +56,7 @@ add_library(ciel_parser STATIC
     src/codegen/riscv64_instruction.cpp
     src/codegen/riscv64_frame.cpp
     src/codegen/riscv64_regalloc.cpp
+    src/codegen/riscv64_peephole.cpp
     src/codegen/riscv64_backend.cpp
     src/codegen/riscv64_codegen.cpp
 )

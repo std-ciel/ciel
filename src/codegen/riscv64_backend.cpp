@@ -1,4 +1,6 @@
 #include "codegen/riscv64_backend.hpp"
+#include "codegen/riscv64_instruction.hpp"
+#include "codegen/riscv64_peephole.hpp"
 #include "codegen/riscv64_regalloc.hpp"
 #include <algorithm>
 #include <cstring>
@@ -917,9 +919,12 @@ void InstructionSelector::select_if_branch(const TACInstruction &instr)
                                      .add_use(cond)
                                      .add_use(zero_float));
 
-            MachineOpcode branch_opc = (instr.opcode == TACOpcode::IF_TRUE)
-                                           ? MachineOpcode::BEQ  // Branch if cmp_result (is_zero) is 0 (false) -> cond is not zero
-                                           : MachineOpcode::BNE; // Branch if cmp_result (is_zero) is 1 (true) -> cond is zero
+            MachineOpcode branch_opc =
+                (instr.opcode == TACOpcode::IF_TRUE)
+                    ? MachineOpcode::BEQ  // Branch if cmp_result (is_zero) is 0
+                                          // (false) -> cond is not zero
+                    : MachineOpcode::BNE; // Branch if cmp_result (is_zero) is 1
+                                          // (true) -> cond is zero
 
             mfn_.add_instruction(MachineInstr(branch_opc)
                                      .add_use(cmp_result)
@@ -2255,6 +2260,9 @@ void RiscV64Backend::lower_functions()
 
             LinearScanAllocator allocator(*mfn);
             allocator.run();
+
+            PeepholeOptimizer peephole(*mfn);
+            peephole.run();
 
             mfn->get_frame().finalize();
 
