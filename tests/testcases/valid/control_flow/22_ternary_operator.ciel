@@ -1,0 +1,41 @@
+int printf(char *format, ...);
+
+int main(){
+    // Test ternary operator with different types
+    int a = 5;
+    int b = 10;
+    float x = 2.5;
+    float y = 7.5;
+    int condition_int = 1; // true
+    float condition_float = 0.0; // false
+    // Ternary with int condition
+    int result1 = (condition_int) ? a : b; // should be 5
+    if (result1 != 5) { return 1; } 
+    int result2 = (!condition_int) ? a : b; // should be 10
+    if (result2 != 10) { return 2; }
+    // Ternary with float condition
+    float result3 = (condition_float) ? x : y; // should be 7.5
+    if (result3 != 7.5) { return 3; }
+    float result4 = (condition_float + 1.0) ? x : y; // should be 2.5
+    if (result4 != 2.5) { return 4; }
+    // Mixed types in ternary
+    float result5 = (condition_int) ? x : b; // should be 2.5
+    if (result5 != 2.5) { return 5; }
+    float result6 = (condition_float) ? a : y; // should be 7.5
+    if (result6 != 7.5) { return 6; }
+
+    // more complex expressions
+    int result7 = (a > b) ? (a + 10) : (b + 20); // should be 30
+    if (result7 != 30) { return 7; }
+    float result8 = (x < y) ? (x * 2.0) : (y / 2.0); // should be 5.0
+    if (result8 != 5.0) { return 8; }
+
+    // Nested ternary
+    int result9 = (condition_int) ? ((a < b) ? a : b) : ((a > b) ? a : b); // should be 5
+    if (result9 != 5) { return 9; }
+    float result10 = (condition_float) ? ((x > y) ? x : y) : ((x < y) ? x : y); // should be 2.5
+    if (result10 != 2.5) { return 10; }
+
+    printf("All ternary operator tests passed.\n"); 
+    return 0;
+}

@@ -3992,8 +3992,8 @@ unary_expression
     | LOGICAL_NOT_OP cast_expression
       {
         $$ = handle_unary_operator($2, @1, Operator::LOGICAL_NOT,
-                                   [](TypePtr t) { return is_bool_type(t); },
-                                   "a bool type");
+                                   [](TypePtr t) { return is_bool_type(t) || is_integral_type(t) || is_floating_type(t); },
+                                   "a bool, integral, or floating type");
       }
     | TILDE_OP cast_expression
       {
@@ -4419,21 +4419,37 @@ conditional_expression
         if(!condition_type || !true_type || !false_type) {
           $$ = nullptr;
         }
-        else if(!is_bool_type(condition_type) && !is_integral_type(condition_type)){
+        else if(!is_bool_type(condition_type) && !is_integral_type(condition_type) && !is_floating_type(condition_type)){
           parser_add_error(@2.begin.line,
                              @2.begin.column,
-                             "conditional condition must be a bool or integral type");
+                             "conditional condition must be a bool, integral, or floating type");
             $$ = nullptr;
         }
         else {
+          // First check if types are equal
           if (are_types_equal(true_type, false_type)) {
             $$ = std::make_shared<TernaryExpr>($1, $3, $5, true_type);
           }
-          else{
-            parser_add_error(@2.begin.line,
-                             @2.begin.column,
-                             "conditional true and false branches must be of the same type");
-            $$ = nullptr;
+          else {
+            // Try implicit conversion from false branch to true branch type
+            auto converted_false = try_implicit_conversion($5, true_type, @5);
+            if (converted_false) {
+              $$ = std::make_shared<TernaryExpr>($1, $3, converted_false, true_type);
+            }
+            else {
+              // Try implicit conversion from true branch to false branch type
+              auto converted_true = try_implicit_conversion($3, false_type, @3);
+              if (converted_true) {
+                $$ = std::make_shared<TernaryExpr>($1, converted_true, $5, false_type);
+              }
+              else {
+                // No valid conversion found
+                parser_add_error(@2.begin.line,
+                                 @2.begin.column,
+                                 "conditional true and false branches must be of the same type or implicitly convertible");
+                $$ = nullptr;
+              }
+            }
           }
         }
       }
