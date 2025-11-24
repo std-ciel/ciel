@@ -589,8 +589,8 @@
   static void ensure_condition_is_bool(const ASTNodePtr& expr, const yy::location& loc, const std::string& context) {
     auto t = get_expression_type(expr, loc, context);
     if (!t) return; // type error already reported
-    if (!is_bool_type(t)) {
-      parser_add_error(loc.begin.line, loc.begin.column, context + ": condition must be of type 'bool', got '" + t->debug_name() + "'");
+    if (!is_bool_type(t) && !is_integral_type(t) && !is_floating_type(t)) {
+      parser_add_error(loc.begin.line, loc.begin.column, context + ": condition must be of type 'bool', integral, or floating point, got '" + t->debug_name() + "'");
     }
   }
 
@@ -4402,10 +4402,10 @@ conditional_expression
         if(!condition_type || !true_type || !false_type) {
           $$ = nullptr;
         }
-        else if(!is_bool_type(condition_type)){
+        else if(!is_bool_type(condition_type) && !is_integral_type(condition_type)){
           parser_add_error(@2.begin.line,
                              @2.begin.column,
-                             "conditional condition must be a bool type");
+                             "conditional condition must be a bool or integral type");
             $$ = nullptr;
         }
         else {

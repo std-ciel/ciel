@@ -1,7 +1,8 @@
 // Error: if condition must be of type 'bool'
+struct S { int x; };
 int main() {
-    int x = 5;
-    if (x) {  // Error: x is int, not bool
+    struct S s;
+    if (s) {  // Error: s is struct, not bool, integral or float
         return 1;
     }
     return 0;

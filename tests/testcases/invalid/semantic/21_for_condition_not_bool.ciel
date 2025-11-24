@@ -1,8 +1,8 @@
-// Error: for loop condition must be of type 'bool'
+// Error: for condition must be of type 'bool'
+struct S { int x; };
 int main() {
-    int i;
-    for (i = 0; i; i = i + 1) {  // Error: i is int, not bool
-        // loop body
+    struct S s;
+    for (; s; ) {  // Error: s is struct, not bool, integral or float
     }
     return 0;
 }

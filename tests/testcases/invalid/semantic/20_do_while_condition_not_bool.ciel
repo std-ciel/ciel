@@ -1,8 +1,8 @@
 // Error: do-while condition must be of type 'bool'
+struct S { int x; };
 int main() {
-    int x = 5;
+    struct S s;
     do {
-        x = x - 1;
-    } while (x);  // Error: x is int, not bool
+    } while (s);  // Error: s is struct, not bool, integral or float
     return 0;
 }

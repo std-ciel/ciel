@@ -890,17 +890,55 @@ void InstructionSelector::select_if_branch(const TACInstruction &instr)
     if (instr.operand2.kind == TACOperand::Kind::LABEL) {
         std::string target = std::get<std::string>(instr.operand2.value);
 
-        // IF_TRUE: branch if cond != 0 (BNE with zero)
-        // IF_FALSE: branch if cond == 0 (BEQ with zero)
-        MachineOpcode branch_opc = (instr.opcode == TACOpcode::IF_TRUE)
-                                       ? MachineOpcode::BNE
-                                       : MachineOpcode::BEQ;
+        // Check if condition is floating point
+        bool is_float = false;
+        if (instr.operand1.type && is_floating_type(instr.operand1.type)) {
+            is_float = true;
+        }
 
-        mfn_.add_instruction(MachineInstr(branch_opc)
-                                 .add_use(cond)
-                                 .add_operand(VRegOperand(cond))
-                                 .add_operand(RegOperand(PhysReg::ZERO))
-                                 .add_operand(LabelOperand(target)));
+        if (is_float) {
+            // For float conditions, we need to compare with 0.0
+            // Create a zero float register
+            VirtReg zero_float = mfn_.get_next_vreg();
+
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FMV_D_X)
+                                     .add_def(zero_float)
+                                     .add_operand(VRegOperand(zero_float))
+                                     .add_operand(RegOperand(PhysReg::ZERO)));
+
+            // Now compare: FEQ.D rd, rs1, rs2
+            // rd = (rs1 == rs2) ? 1 : 0
+            VirtReg cmp_result = mfn_.get_next_vreg();
+            mfn_.add_instruction(MachineInstr(MachineOpcode::FEQ_D)
+                                     .add_def(cmp_result)
+                                     .add_operand(VRegOperand(cmp_result))
+                                     .add_operand(VRegOperand(cond))
+                                     .add_operand(VRegOperand(zero_float))
+                                     .add_use(cond)
+                                     .add_use(zero_float));
+
+            MachineOpcode branch_opc = (instr.opcode == TACOpcode::IF_TRUE)
+                                           ? MachineOpcode::BEQ  // Branch if cmp_result (is_zero) is 0 (false) -> cond is not zero
+                                           : MachineOpcode::BNE; // Branch if cmp_result (is_zero) is 1 (true) -> cond is zero
+
+            mfn_.add_instruction(MachineInstr(branch_opc)
+                                     .add_use(cmp_result)
+                                     .add_operand(VRegOperand(cmp_result))
+                                     .add_operand(RegOperand(PhysReg::ZERO))
+                                     .add_operand(LabelOperand(target)));
+
+        } else {
+
+            MachineOpcode branch_opc = (instr.opcode == TACOpcode::IF_TRUE)
+                                           ? MachineOpcode::BNE
+                                           : MachineOpcode::BEQ;
+
+            mfn_.add_instruction(MachineInstr(branch_opc)
+                                     .add_use(cond)
+                                     .add_operand(VRegOperand(cond))
+                                     .add_operand(RegOperand(PhysReg::ZERO))
+                                     .add_operand(LabelOperand(target)));
+        }
     }
 }
 

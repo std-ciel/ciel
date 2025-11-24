@@ -1,0 +1,49 @@
+// Test float conditions in control flow statements
+
+int main() {
+    float f = 1.5;
+    float z = 0.0;
+
+    // if
+    if (f) {
+        // ok
+    } else {
+        return 1;
+    }
+
+    if (z) {
+        return 2;
+    }
+
+    // while
+    float w = 6.0;
+    int count = 0;
+    while (w) {
+        w = w - 1.0;
+        count = count + 1;
+        if (count > 10) { return 3; }
+    }
+    if (count != 6) { return 4; }
+
+    // do-while
+    float d = 3.3;
+    count = 0;
+    do {
+        d = d - 1.1;
+        count = count + 1;
+    } while (d > 0.1); // This is a bool expression, let's test float directly
+
+    d = 2.0;
+    do {
+        d = d - 1.0;
+    } while (d);
+
+    // for
+    count = 0;
+    for (float i = 3.0; i; i = i - 1.0) {
+        count = count + 1;
+    }
+    if (count != 3) { return 5; }
+
+    return 0;
+}

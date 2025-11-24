@@ -1,6 +1,8 @@
-// Error: for loop with declaration initializer, condition not bool
+// Error: for loop condition must be of type 'bool'
+struct S { int x; };
 int main() {
-    for (int i = 0; i; i = i + 1) {  // Error: i is int, not bool
+    struct S s;
+    for (int i = 0; s; i = i + 1) {  // Error: s is struct, not bool, integral or float
         // loop body
     }
     return 0;
