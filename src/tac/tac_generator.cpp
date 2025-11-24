@@ -361,8 +361,14 @@ TACOperand TACGenerator::generate_expression(ASTNodePtr node)
             base_type = pointee_type;
         }
 
-        if (base.type) {
-            base_type = strip_typedefs(base.type);
+        if (member->object->type != ASTNodeType::IDENTIFIER_EXPR &&
+            member->object->type != ASTNodeType::THIS_EXPR &&
+            member->object->type != ASTNodeType::MEMBER_EXPR) {
+            // If base is an expression, we need to make sure we use the
+            // type of the expression result
+            if (base.type) {
+                base_type = strip_typedefs(base.type);
+            }
         }
 
         return generate_member_access(base, member->member_name, base_type);
@@ -691,8 +697,329 @@ TACOperand TACGenerator::generate_unary_op(std::shared_ptr<UnaryExpr> expr)
         expr->op == Operator::POST_INCREMENT ||
         expr->op == Operator::POST_DECREMENT) {
 
+        // Handle array subscript increment/decrement
+        if (expr->operand->type == ASTNodeType::BINARY_EXPR) {
+            auto binary = std::static_pointer_cast<BinaryExpr>(expr->operand);
+            if (binary->op == Operator::SUBSCRIPT_OP) {
+                auto base = generate_expression(binary->left);
+                auto index = generate_expression(binary->right);
+
+                // Calculate element size
+                size_t element_size = compute_type_size(expr->expr_type);
+
+                auto size_operand =
+                    TACOperand::constant_int(element_size, nullptr);
+                auto offset_temp = new_temp(nullptr);
+                auto offset = TACOperand::temporary(offset_temp, nullptr);
+
+                emit(std::make_shared<TACInstruction>(TACOpcode::MUL,
+                                                      offset,
+                                                      index,
+                                                      size_operand));
+
+                auto addr_temp = new_temp(nullptr);
+                auto addr = TACOperand::temporary(addr_temp, nullptr);
+                emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                                      addr,
+                                                      base,
+                                                      offset));
+
+                // Load current value
+                auto current_temp = new_temp(expr->expr_type);
+                auto current =
+                    TACOperand::temporary(current_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                                      current,
+                                                      addr));
+
+                auto one = TACOperand::constant_int(1, expr->expr_type);
+                TACOperand result;
+
+                if (expr->op == Operator::POST_INCREMENT ||
+                    expr->op == Operator::POST_DECREMENT) {
+                    // Post-increment/decrement
+                    auto old_value_temp = new_temp(expr->expr_type);
+                    auto old_value =
+                        TACOperand::temporary(old_value_temp, expr->expr_type);
+                    emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                          old_value,
+                                                          current));
+
+                    auto opcode = (expr->op == Operator::POST_INCREMENT)
+                                      ? TACOpcode::ADD
+                                      : TACOpcode::SUB;
+
+                    auto new_val_temp = new_temp(expr->expr_type);
+                    auto new_val =
+                        TACOperand::temporary(new_val_temp, expr->expr_type);
+                    emit(std::make_shared<TACInstruction>(opcode,
+                                                          new_val,
+                                                          current,
+                                                          one));
+
+                    emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                          addr,
+                                                          new_val));
+                    result = old_value;
+                } else {
+                    // Pre-increment/decrement
+                    auto opcode = (expr->op == Operator::INCREMENT)
+                                      ? TACOpcode::ADD
+                                      : TACOpcode::SUB;
+
+                    auto new_val_temp = new_temp(expr->expr_type);
+                    auto new_val =
+                        TACOperand::temporary(new_val_temp, expr->expr_type);
+                    emit(std::make_shared<TACInstruction>(opcode,
+                                                          new_val,
+                                                          current,
+                                                          one));
+
+                    emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                          addr,
+                                                          new_val));
+                    result = new_val;
+                }
+                return result;
+            }
+        }
+
+        // Handle member access increment/decrement
+        if (expr->operand->type == ASTNodeType::MEMBER_EXPR) {
+            auto member = std::static_pointer_cast<MemberExpr>(expr->operand);
+            auto base = generate_expression(member->object);
+
+            auto base_type_result = get_expression_type(member->object);
+            if (!base_type_result.is_ok()) {
+                record_error("Cannot determine base type for member access");
+                return TACOperand();
+            }
+            auto base_type = strip_typedefs(base_type_result.value());
+
+            // Handle pointer member access (ptr->member)
+            if (member->op == Operator::MEMBER_ACCESS_PTR) {
+                TypePtr pointee_type = base_type;
+                if (base_type->kind == TypeKind::POINTER) {
+                    auto ptr_type =
+                        std::static_pointer_cast<PointerType>(base_type);
+                    pointee_type = strip_typedefs(ptr_type->pointee.type);
+                }
+                base_type = pointee_type;
+            }
+
+            if (member->object->type != ASTNodeType::IDENTIFIER_EXPR &&
+                member->object->type != ASTNodeType::THIS_EXPR &&
+                member->object->type != ASTNodeType::MEMBER_EXPR) {
+                if (base.type) {
+                    base_type = strip_typedefs(base.type);
+                }
+            }
+
+            // Calculate offset
+            size_t offset = 0;
+            if (base_type->kind == TypeKind::RECORD) {
+                auto record_type =
+                    std::static_pointer_cast<RecordType>(base_type);
+                auto offset_opt =
+                    get_member_offset(record_type, member->member_name);
+                if (offset_opt.has_value())
+                    offset = offset_opt.value();
+            } else if (base_type->kind == TypeKind::CLASS) {
+                auto class_type =
+                    std::static_pointer_cast<ClassType>(base_type);
+                auto offset_opt =
+                    get_class_member_offset(class_type, member->member_name);
+                if (offset_opt.has_value())
+                    offset = offset_opt.value();
+            }
+
+            // Calculate address
+            TACOperand addr;
+            if (member->op == Operator::MEMBER_ACCESS_PTR) {
+                // ptr->member: addr = ptr + offset
+                auto addr_temp = new_temp(nullptr);
+                addr = TACOperand::temporary(addr_temp, nullptr);
+                emit(std::make_shared<TACInstruction>(
+                    TACOpcode::ADD,
+                    addr,
+                    base,
+                    TACOperand::constant_int(offset, nullptr)));
+            } else {
+                // obj.member: addr = &obj + offset
+                auto base_addr_temp = new_temp(nullptr);
+                auto base_addr = TACOperand::temporary(base_addr_temp, nullptr);
+                emit(std::make_shared<TACInstruction>(TACOpcode::ADDR_OF,
+                                                      base_addr,
+                                                      base));
+
+                auto addr_temp = new_temp(nullptr);
+                addr = TACOperand::temporary(addr_temp, nullptr);
+                emit(std::make_shared<TACInstruction>(
+                    TACOpcode::ADD,
+                    addr,
+                    base_addr,
+                    TACOperand::constant_int(offset, nullptr)));
+            }
+
+            // Load current value
+            auto current_temp = new_temp(expr->expr_type);
+            auto current = TACOperand::temporary(current_temp, expr->expr_type);
+            emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                                  current,
+                                                  addr));
+
+            int64_t inc_val = 1;
+            auto op_type_res = get_expression_type(expr->operand);
+            if (op_type_res.is_ok()) {
+                TypePtr op_type = strip_typedefs(op_type_res.value());
+                if (op_type && op_type->kind == TypeKind::POINTER) {
+                    auto ptr_type =
+                        std::static_pointer_cast<PointerType>(op_type);
+                    inc_val = compute_type_size(ptr_type->pointee.type);
+                }
+            }
+
+            auto one = TACOperand::constant_int(inc_val, expr->expr_type);
+            TACOperand result;
+
+            if (expr->op == Operator::POST_INCREMENT ||
+                expr->op == Operator::POST_DECREMENT) {
+                // Post-increment/decrement
+                auto old_value_temp = new_temp(expr->expr_type);
+                auto old_value =
+                    TACOperand::temporary(old_value_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                      old_value,
+                                                      current));
+
+                auto opcode = (expr->op == Operator::POST_INCREMENT)
+                                  ? TACOpcode::ADD
+                                  : TACOpcode::SUB;
+
+                auto new_val_temp = new_temp(expr->expr_type);
+                auto new_val =
+                    TACOperand::temporary(new_val_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(opcode,
+                                                      new_val,
+                                                      current,
+                                                      one));
+
+                emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                      addr,
+                                                      new_val));
+                result = old_value;
+            } else {
+                // Pre-increment/decrement
+                auto opcode = (expr->op == Operator::INCREMENT)
+                                  ? TACOpcode::ADD
+                                  : TACOpcode::SUB;
+
+                auto new_val_temp = new_temp(expr->expr_type);
+                auto new_val =
+                    TACOperand::temporary(new_val_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(opcode,
+                                                      new_val,
+                                                      current,
+                                                      one));
+
+                emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                      addr,
+                                                      new_val));
+                result = new_val;
+            }
+            return result;
+        }
+
+        // Handle pointer dereference increment/decrement
+        if (expr->operand->type == ASTNodeType::UNARY_EXPR) {
+            auto unary = std::static_pointer_cast<UnaryExpr>(expr->operand);
+            if (unary->op == Operator::POINTER_DEREF) {
+                auto addr = generate_expression(unary->operand);
+
+                // Load current value
+                auto current_temp = new_temp(expr->expr_type);
+                auto current =
+                    TACOperand::temporary(current_temp, expr->expr_type);
+                emit(std::make_shared<TACInstruction>(TACOpcode::LOAD,
+                                                      current,
+                                                      addr));
+
+                int64_t inc_val = 1;
+                auto op_type_res = get_expression_type(expr->operand);
+                if (op_type_res.is_ok()) {
+                    TypePtr op_type = strip_typedefs(op_type_res.value());
+                    if (op_type && op_type->kind == TypeKind::POINTER) {
+                        auto ptr_type =
+                            std::static_pointer_cast<PointerType>(op_type);
+                        inc_val = compute_type_size(ptr_type->pointee.type);
+                    }
+                }
+
+                auto one = TACOperand::constant_int(inc_val, expr->expr_type);
+                TACOperand result;
+
+                if (expr->op == Operator::POST_INCREMENT ||
+                    expr->op == Operator::POST_DECREMENT) {
+                    // Post-increment/decrement
+                    auto old_value_temp = new_temp(expr->expr_type);
+                    auto old_value =
+                        TACOperand::temporary(old_value_temp, expr->expr_type);
+                    emit(std::make_shared<TACInstruction>(TACOpcode::ASSIGN,
+                                                          old_value,
+                                                          current));
+
+                    auto opcode = (expr->op == Operator::POST_INCREMENT)
+                                      ? TACOpcode::ADD
+                                      : TACOpcode::SUB;
+
+                    auto new_val_temp = new_temp(expr->expr_type);
+                    auto new_val =
+                        TACOperand::temporary(new_val_temp, expr->expr_type);
+                    emit(std::make_shared<TACInstruction>(opcode,
+                                                          new_val,
+                                                          current,
+                                                          one));
+
+                    emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                          addr,
+                                                          new_val));
+                    result = old_value;
+                } else {
+                    // Pre-increment/decrement
+                    auto opcode = (expr->op == Operator::INCREMENT)
+                                      ? TACOpcode::ADD
+                                      : TACOpcode::SUB;
+
+                    auto new_val_temp = new_temp(expr->expr_type);
+                    auto new_val =
+                        TACOperand::temporary(new_val_temp, expr->expr_type);
+                    emit(std::make_shared<TACInstruction>(opcode,
+                                                          new_val,
+                                                          current,
+                                                          one));
+
+                    emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                          addr,
+                                                          new_val));
+                    result = new_val;
+                }
+                return result;
+            }
+        }
+
         auto operand = generate_expression(expr->operand);
-        auto one = TACOperand::constant_int(1, expr->expr_type);
+
+        int64_t inc_val = 1;
+        auto op_type_res = get_expression_type(expr->operand);
+        if (op_type_res.is_ok()) {
+            TypePtr op_type = strip_typedefs(op_type_res.value());
+            if (op_type && op_type->kind == TypeKind::POINTER) {
+                auto ptr_type = std::static_pointer_cast<PointerType>(op_type);
+                inc_val = compute_type_size(ptr_type->pointee.type);
+            }
+        }
+
+        auto one = TACOperand::constant_int(inc_val, expr->expr_type);
 
         TACOperand result;
         if (expr->op == Operator::POST_INCREMENT ||
@@ -787,7 +1114,8 @@ TACGenerator::generate_assignment(std::shared_ptr<AssignmentExpr> expr)
 
         if (target_type && target_type->kind == TypeKind::ARRAY) {
             auto block = std::static_pointer_cast<BlockStmt>(expr->value);
-            auto base = TACOperand::symbol(target_id->symbol, target_id->expr_type);
+            auto base =
+                TACOperand::symbol(target_id->symbol, target_id->expr_type);
 
             generate_array_initialization(base, target_type, block->statements);
 
@@ -1656,11 +1984,13 @@ void TACGenerator::generate_global_declaration(ASTNodePtr node)
                     if (assign->value) {
                         auto target_type = strip_typedefs(id_expr->expr_type);
 
-                        if (target_type && target_type->kind == TypeKind::ARRAY &&
+                        if (target_type &&
+                            target_type->kind == TypeKind::ARRAY &&
                             assign->value->type == ASTNodeType::BLOCK_STMT) {
                             symbol->set_init_expression(assign->value);
                             program.add_global_initializer(symbol, false);
-                        } else if (assign->value->type == ASTNodeType::LITERAL_EXPR) {
+                        } else if (assign->value->type ==
+                                   ASTNodeType::LITERAL_EXPR) {
                             auto lit = std::static_pointer_cast<LiteralExpr>(
                                 assign->value);
 
@@ -1864,12 +2194,18 @@ void TACGenerator::generate_global_init_function()
             } else if (init_expr->type == ASTNodeType::BLOCK_STMT) {
                 auto target_type = strip_typedefs(symbol->get_type().type);
                 if (target_type && target_type->kind == TypeKind::ARRAY) {
-                    auto array_type = std::static_pointer_cast<ArrayType>(target_type);
+                    auto array_type =
+                        std::static_pointer_cast<ArrayType>(target_type);
                     auto block = std::static_pointer_cast<BlockStmt>(init_expr);
-                    auto base = TACOperand::symbol(symbol, symbol->get_type().type);
+                    auto base =
+                        TACOperand::symbol(symbol, symbol->get_type().type);
 
-                    // Use the recursive helper for both 1D and multi-dimensional arrays
-                    generate_array_initialization(base, array_type, block->statements, 0);
+                    // Use the recursive helper for both 1D and
+                    // multi-dimensional arrays
+                    generate_array_initialization(base,
+                                                  array_type,
+                                                  block->statements,
+                                                  0);
                 }
             } else {
                 const auto value = generate_expression(init_expr);
@@ -2175,25 +2511,70 @@ void TACGenerator::generate_array_initialization(
         if (init->type == ASTNodeType::BLOCK_STMT &&
             element_type->kind == TypeKind::ARRAY) {
             auto nested_block = std::static_pointer_cast<BlockStmt>(init);
-            generate_array_initialization(base_addr, element_type,
-                                        nested_block->statements, current_offset);
+            generate_array_initialization(base_addr,
+                                          element_type,
+                                          nested_block->statements,
+                                          current_offset);
         } else {
             auto element_value = generate_expression(init);
 
             if (current_offset == 0) {
                 emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
-                                                      base_addr, element_value));
+                                                      base_addr,
+                                                      element_value));
             } else {
                 auto offset_op = TACOperand::constant_int(
-                    static_cast<int64_t>(current_offset), nullptr);
+                    static_cast<int64_t>(current_offset),
+                    nullptr);
 
                 auto addr_temp = new_temp(nullptr);
                 auto addr = TACOperand::temporary(addr_temp, nullptr);
-                emit(std::make_shared<TACInstruction>(TACOpcode::ADD, addr,
-                                                      base_addr, offset_op));
+                emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                                      addr,
+                                                      base_addr,
+                                                      offset_op));
 
-                emit(std::make_shared<TACInstruction>(TACOpcode::STORE, addr,
+                emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                      addr,
                                                       element_value));
+            }
+        }
+    }
+
+    // Zero-initialize remaining elements
+    if (initializers.size() < arr_type->size) {
+        for (size_t i = initializers.size(); i < arr_type->size; ++i) {
+            size_t current_offset = base_offset + (i * element_size);
+
+            if (element_type->kind == TypeKind::ARRAY) {
+                generate_array_initialization(base_addr,
+                                              element_type,
+                                              {},
+                                              current_offset);
+            } else {
+                // Zero-initialize basic types
+                auto zero = TACOperand::constant_int(0, element_type);
+
+                if (current_offset == 0) {
+                    emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                          base_addr,
+                                                          zero));
+                } else {
+                    auto offset_op = TACOperand::constant_int(
+                        static_cast<int64_t>(current_offset),
+                        nullptr);
+
+                    auto addr_temp = new_temp(nullptr);
+                    auto addr = TACOperand::temporary(addr_temp, nullptr);
+                    emit(std::make_shared<TACInstruction>(TACOpcode::ADD,
+                                                          addr,
+                                                          base_addr,
+                                                          offset_op));
+
+                    emit(std::make_shared<TACInstruction>(TACOpcode::STORE,
+                                                          addr,
+                                                          zero));
+                }
             }
         }
     }
