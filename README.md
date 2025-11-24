@@ -23,6 +23,9 @@ CIEL is currently in active development and serves as a learning platform for co
 - CMake 3.15 or higher
 - C++20 compatible compiler (GCC 10+, Clang 10+, MSVC 2019+)
 - Flex (for lexical analysis)
+- Bison (for parsing)
+- riscv64-gcc-linux-gnu (for RISC-V target compilation)
+- qemu-riscv64 (for RISC-V emulation)
 
 ### Quick Installation
 
@@ -35,46 +38,65 @@ make
 ```
 
 ## Language Features
+CIEL is designed for 64-bit RISC-V architecture.
 
 ### Type System
 
 CIEL provides a robust type system with both fundamental and user-defined types:
 
 #### Fundamental Types
-- **Integers**: `int` - 32-bit signed integers
-- **Floating Point**: `float` - 32-bit IEEE 754 floating point numbers
+
+- **Integers**: `int` - 64-bit signed integers
+- **Unsigned Integers**: `unsigned` - 64-bit unsigned integers
+- **Floating Point**: `float` - 64-bit IEEE 754 floating point numbers
 - **Characters**: `char` - 8-bit character values
 - **Booleans**: `bool` - Boolean values (`true` or `false`)
-- **Arrays**: Homogeneous collections with compile-time bounds checking
+- **Voids**: `void` - Represents absence of value
 
-```ciel
+```cpp
 int count = 42;
 float pi = 3.14159;
 float avogadro = 6.022e23;  // Scientific notation
 char letter = 'A';
 bool is_active = true;
 bool is_complete = false;
-int numbers[10] = {1, 2, 3, 4, 5};
-char message[20] = "Hello, CIEL!";
-float temperatures[3] = {98.6, 37.0, 36.5};
 ```
 
 #### Pointer Types
 Multi-level pointer support with explicit dereferencing:
 
-```ciel
+```cpp
 int value = 100;
 int* ptr = &value;
 int** double_ptr = &ptr;
 
 printf("Value: %d\n", *ptr);           // Output: Value: 100
 printf("Double deref: %d\n", **double_ptr); // Output: Double deref: 100
+
+// Null pointer requires explicit cast from 0
+int* null_ptr = (int*)0;
+```
+#### Array Types
+Fixed-size arrays with zero-based indexing. One-dimensional arrays decay to pointers when passed to functions, but multi-dimensional arrays do not:
+
+```cpp
+int numbers[10] = {1, 2, 3, 4, 5};
+char message[20] = "Hello, CIEL!";
+float temperatures[3] = {98.6, 37.0, 36.5};
+
+// Multi-dimensional arrays
+int matrix[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
+int cube[2][2][2];  // 3D array
+
+// sizeof works on all types
+int size = sizeof(int);           // Size of int type
+int arr_size = sizeof(numbers);   // Total size of array in bytes
 ```
 
 #### User-Defined Types
 Structured data types for complex data modeling:
 
-```ciel
+```cpp
 // Structure definition
 struct Point {
     int x;
@@ -97,6 +119,46 @@ union Data {
 // Type aliases for improved readability
 typedef struct Point Coordinate;
 typedef int Distance;
+
+// Using typedef'd names - no prefix needed
+Coordinate coord;           // OK: typedef name doesn't need prefix
+Distance d = 100;           // OK: primitive type alias
+
+// But using original names still requires prefix
+struct Point p;             // Must use 'struct' with original name
+
+// Class definition with single inheritance
+// Note: Default access level is private
+// Important: Must use 'class' keyword when declaring variables: class Shape s;
+class Shape {
+    public:
+        void draw();
+};
+
+class Circle : Shape {
+    private:
+        float radius;
+    public:
+        // Constructor - must be defined explicitly (no default constructor)
+        // Note: 'this' is always a pointer in CIEL
+        Circle(float r) {
+            this->radius = r;
+        }
+        void draw();
+};
+
+class Rectangle : Shape {
+    private:
+        float width;
+        float height;
+    public:
+        Rectangle(float w, float h) {
+            this->width = w;
+            this->height = h;
+        }
+        void draw();
+};
+
 ```
 
 ### Expressions and Operators
@@ -104,7 +166,7 @@ typedef int Distance;
 #### Arithmetic Operations
 Full support for mathematical expressions with standard precedence:
 
-```ciel
+```cpp
 int a = 10, b = 3;
 float x = 10.5, y = 3.5;
 int sum = a + b;        // Addition: 13
@@ -122,16 +184,33 @@ float fquot = x / y;    // Division: 3.0
 a += 5;  // a is now 15
 b *= 2;  // b is now 6
 x += 1.5; // x is now 12.0
+
+// Implicit upward casting for fundamental types
+float result = a + x;   // int implicitly cast to float
+int i = 5;
+float f = i;            // OK: upward cast from int to float
+// float f2 = 3.14;
+// int j = f2;          // ERROR: No downward cast allowed
 ```
 
 #### Logical Operations
 Boolean logic with short-circuit evaluation:
 
-```ciel
+```cpp
 int x = 5, y = 10;
 bool result1 = (x > 0) && (y < 20);  // true
 bool result2 = (x < 0) || (y > 5);   // true
 bool result3 = !(x == y);            // true
+
+// Comparison between int and float is allowed
+int a = 5;
+float b = 5.0;
+bool equal = (a == b);               // true (implicit upward cast)
+
+// Bitwise operators
+int mask = 0xFF;
+int bits = 0xA5 & mask;              // Bitwise AND
+int shifted = bits << 2;             // Left shift
 ```
 
 ### Control Flow
@@ -139,7 +218,7 @@ bool result3 = !(x == y);            // true
 #### Conditional Statements
 Flexible branching with if-else chains and switch statements:
 
-```ciel
+```cpp
 // if-else statement
 if (temperature > 30) {
     printf("It's hot!\n");
@@ -149,32 +228,60 @@ if (temperature > 30) {
     printf("Pleasant weather.\n");
 }
 
-// Switch statement with fall-through control
+// Switch statement - case bodies must be in curly braces
 switch (day_of_week) {
     case 1:
     case 2:
     case 3:
     case 4:
-    case 5:
+    case 5: {
         printf("Weekday\n");
         break;
+    }
     case 6:
-    case 7:
+    case 7: {
         printf("Weekend\n");
         break;
-    default:
+    }
+    default: {
         printf("Invalid day\n");
+    }
+}
+
+// Switch with enum values (using dot notation)
+enum Color { RED, GREEN, BLUE };
+enum Color c = Color.RED;
+switch (c) {
+    case Color.RED: {
+        printf("Red color\n");
+        break;
+    }
+    case Color.GREEN: {
+        printf("Green color\n");
+        break;
+    }
+    case Color.BLUE: {
+        printf("Blue color\n");
+        break;
+    }
 }
 ```
 
 #### Loop Constructs
 Multiple looping mechanisms for different use cases:
 
-```ciel
+```cpp
 // For loop with initialization, condition, and increment
 for (int i = 0; i < 10; i++) {
     printf("%d ", i);
 }
+
+// Multiple variable declarations in for loop
+for (int i = 0, j = 10; i < j; i++, j--) {
+    printf("i=%d, j=%d\n", i, j);
+}
+
+// Note: Range-based for loops are NOT supported
 
 // While loop for condition-based iteration
 int count = 0;
@@ -203,7 +310,7 @@ until (value == 0) {
 #### Jump Statements
 Precise control flow management:
 
-```ciel
+```cpp
 // break and continue in loops
 for (int i = 0; i < 20; i++) {
     if (i % 2 == 0) continue;  // Skip even numbers
@@ -227,7 +334,7 @@ cleanup:
 #### Function Definition and Calls
 Modular programming with parameter passing and return values:
 
-```ciel
+```cpp
 // Function declaration
 int calculate_factorial(int n);
 
@@ -248,7 +355,7 @@ int main() {
 ```
 
 #### Advanced Function Features
-```ciel
+```cpp
 // Function with multiple parameters
 int max_of_three(int a, int b, int c) {
     int max = (a > b) ? a : b;
@@ -262,7 +369,7 @@ void swap(int* a, int* b) {
     *b = temp;
 }
 
-// Function overloading (planned feature)
+// Function overloading
 int calculate_area(int radius);                      // Circle (using integer radius)
 int calculate_area(int length, int width);           // Rectangle
 int calculate_area(int base, int height, bool);      // Triangle
@@ -271,10 +378,13 @@ int calculate_area(int base, int height, bool);      // Triangle
 ### Memory Management
 
 #### Dynamic Allocation
-Manual memory management with explicit control:
+Manual memory management with malloc/free
 
-```ciel
-#include <stdlib.h>
+```cpp
+// Note: No standard library - you must declare library functions yourself
+void* malloc(unsigned size);
+void free(void* ptr);
+void* realloc(void* ptr, unsigned size);
 
 // Allocate memory for a single integer
 int* number = (int*)malloc(sizeof(int));
@@ -301,11 +411,11 @@ free(array);
 #### Static Storage Duration
 Variables with program-lifetime storage:
 
-```ciel
+```cpp
 // Global variables
 int global_counter = 0;
 
-fn increment_counter() -> void {
+void increment_counter() {
     static int call_count = 0;  // Retains value between calls
     call_count++;
     global_counter += call_count;
@@ -318,7 +428,12 @@ fn increment_counter() -> void {
 #### Standard I/O
 Formatted input and output operations:
 
-```ciel
+```cpp
+// CIEL has no standard library or preprocessor
+// You must declare library functions you want to use
+int printf(char* format, ...);
+int scanf(char* format, ...);
+
 int main() {
     char name[50];
     int age;
@@ -350,9 +465,16 @@ int main() {
 #### File Operations
 File handling for persistent data storage:
 
-```ciel
+```cpp
+// Declare FILE type and functions needed
+struct FILE;
+struct FILE* fopen(char* filename, char* mode);
+int fclose(struct FILE* stream);
+int fprintf(struct FILE* stream, char* format, ...);
+char* fgets(char* str, int n, struct FILE* stream);
+
 int main() {
-    FILE* file;
+    struct FILE* file;
     char buffer[100];
 
     // Write to file
@@ -379,7 +501,7 @@ int main() {
 #### Command-Line Arguments
 Program parameterization through command-line interface:
 
-```ciel
+```cpp
 int main(int argc, char* argv[]) {
     printf("Program name: %s\n", argv[0]);
     printf("Number of arguments: %d\n", argc - 1);
@@ -398,13 +520,16 @@ CIEL has several important constraints and behaviors that differ from C. Underst
 
 ### Type System Quirks
 
-- **No Implicit Type Conversions**: CIEL does not perform any implicit casting. All type conversions must be explicit (e.g., `(int)value`, `(float*)ptr`).
-- **Exact Type Matching**: Operations like comparisons require both operands to be of the exact same type.
+- **Limited Implicit Type Conversions**: CIEL allows implicit upward casting for fundamental types (e.g., `int` to `float`), but NO implicit downward casting (e.g., `float` to `int`). No implicit casting for class types.
+- **Comparisons Between Types**: Comparisons between `int` and `float` are allowed (with implicit upward cast).
+- **No Null Pointer Literal**: There is no `NULL` or `nullptr`. You must explicitly cast 0 to the required pointer type: `(int*)0`.
 - **Incomplete Types**: Structs, unions, and enums must be fully defined before use (except as pointers). Forward declarations cannot be left undefined.
 - **Enum Access Syntax**: Enum values use dot notation: `Color.RED` instead of just `RED`.
-- **Type Keyword Required**: Must use `struct Point p;` not just `Point p;` (unless using typedef).
+- **Type Keyword Required**: When using the original name, must always use the full type specifier: `struct Point p;`, `enum Color c;`, `union Data d;`, `class Shape s;`. However, typedef'd names can be used without prefixes: `typedef struct Point Point_t; Point_t p;` is valid.
 - **Integer-to-pointer casts restricted**: Only the integer constant 0 (null literal) may be cast to pointer types. Casting non-zero integers to pointers is not allowed and will be rejected.
 - **Strict-Naming**: If a struct has been defined with a name, that name cannot be reused for a typedef or another struct/union/enum.
+- **Multi-dimensional Arrays**: Do not decay to pointers when passed to functions (unlike 1D arrays).
+- **Global Variables**: Global variables must be initialized with constant expressions. You cannot initialise them using non constant expressions.
 
 ### Function Quirks
 
@@ -416,46 +541,82 @@ CIEL has several important constraints and behaviors that differ from C. Underst
 
 - **Until Loop**: CIEL provides an `until` loop (inverse of `while`) that continues until the condition becomes true.
 - **Boolean Conditions Only**: All loop and conditional statements (`if`, `while`, `for`, etc.) require boolean-typed conditions.
-- **Switch Restrictions**: Switch subjects cannot be `bool` or `float` (only integral/char or enum types ). Case labels must be compile-time constants.
+- **Switch Restrictions**: Switch subjects cannot be `bool` or `float` (only integral/char or enum types). Case labels must be compile-time constants.
 - **Switch-Case Restrictions**: Each case body must be enclosed within curly braces `{}` to define scope explicitly.
+- **Enum in Switch**: When using enum values in switch cases, use dot notation: `case Color.RED:`.
+- **No Range-Based For**: Range-based for loops are not supported.
+- **Multiple Variables in For**: For loops can declare multiple variables: `for (int i = 0, j = 10; ...)`.
 
 ### Storage and Scope Quirks
 
 - **Goto Scope**: `goto` and labels can only be used within function scope, not at global level.
 - **Reserved Identifier Names**: variable names starting with `__` (double underscore) are reserved for compiler-generated identifiers and may cause name conflicts or undefined behavior. Do NOT use these.
 
+### Operators and Language Features
+
+- **Bitwise Operators**: Supported (`&`, `|`, `^`, `<<`, `>>`, `~`).
+- **Ternary Operator**: Supported (`condition ? true_value : false_value`).
+- **sizeof Operator**: Supported for all types and variables.
+- **No Preprocessor**: CIEL has no preprocessor. No `#include`, `#define`, `#ifdef`, etc.
+
+### Standard Library
+
+- **No Standard Library**: CIEL does not provide a standard library.
+- **Manual Function Declarations**: You must declare the signatures of any library functions you want to use (e.g., `printf`, `malloc`, `fopen`).
+- **Platform Libraries**: You can link against platform libraries but must provide the declarations yourself.
+
 ### Object-Oriented Quirks
 
 - **No Default Constructors**: Classes do not get automatic default constructors. You must write all constructors explicitly.
-- **No Constructor/Destructor Chaining**: Parent class constructors and destructors are NOT automatically called in inheritance hierarchies.
+- **No Constructor/Destructor Chaining**: Parent class constructors and destructors are NOT automatically called in inheritance hierarchies. You cannot manually call parent constructors.
+- **No Initializer Lists**: Constructor initializer lists (`: member(value)`) are not supported. Use assignment in constructor body.
+- **No Virtual Functions**: No virtual methods or polymorphism support.
+- **this is Always a Pointer**: Unlike some languages, `this` is always a pointer, so use `this->member` not `this.member`.
+- **Default Access is Private**: Class members are private by default. Use `public:` or `private:` access specifiers explicitly.
 - **No Multiple Inheritance**: Only single inheritance with multilevel chains supported (A → B → C is ok, but not A, B → C).
-- **Static Members Not Supported**: No static class members or static methods.
+- **No Static Members**: No static class members or static methods.
+- **No new/delete Operators**: Use malloc/free for dynamic memory allocation even for classes.
+- **Destructor Calling**: Destructors are automatically called for local objects when before every return from the defined scope and at the natural ending of the scope.
 
 These constraints simplify the compiler implementation while maintaining explicit control over program behavior.
 
-# Lambda Functions
+### Lambda Functions
 
-The syntax of lambda functions in CIEL is as follows:
+CIEL supports lambda functions with explicit capture syntax:
 
-```ciel
-[capture_list] identifier (parameter_list)  -> return_type {
+```cpp
+[capture_list] identifier (parameter_list) -> return_type {
     // function body
 };
 ```
 
-The identifier is mandatory and serves as the name of the lambda function. The capture list can be empty or contain variable names to capture from the enclosing scope.
+**Lambda Restrictions:**
+- The identifier is **mandatory** and serves as the name of the lambda function
+- The capture list can be empty or contain variable names to capture from the enclosing scope
+- Captures must use explicit assignment syntax: `[x = x, a = y]` (capture-all `[=]` or `[&]` is NOT supported)
+- Each captured variable must be explicitly named
+- Capture by reference is NOT supported; all captures are by value
 
-The capture list must be written as follows:
+```cpp
+int main() {
+    int x = 10;
+    int y = 20;
 
-[x = x, a = y]
+    // Lambda with explicit captures
+    [add = add, x = x, y = y] add(int a, int b) -> int {
+        return a + b + x + y;
+    };
 
-with the explicitly specified variable names.
+    int result = add(5, 3);  // result = 38
+    return 0;
+}
+```
 
 ## Examples
 
 ### Demonstrating Key Quirks
 
-```ciel
+```cpp
 // Enum access using dot notation (unlike C)
 enum Color { RED, GREEN, BLUE };
 
@@ -491,15 +652,20 @@ class Example {
 };
 
 int main() {
-    enum Color c = Color.RED;  // Dot notation for enum
-    struct Point p;            // 'struct' keyword required
+    enum Color c = Color.RED;  // Must use 'enum' prefix
+    struct Point p;            // Must use 'struct' prefix
+    class Example e;           // Must use 'class' prefix
 
     int x = add(5);            // Function overloading works
     int y = add(5, 10);
 
     int val = 5;
-    // float f = val;          // ERROR: No implicit casting
-    float f = (float)val;      // Must cast explicitly
+    float f = val;             // OK: Implicit upward cast (int to float)
+    // int i = 3.14;           // ERROR: No implicit downward cast
+    int i = (int)3.14;         // Must cast explicitly for downward conversion
+
+    // No null pointer literal - must cast 0 explicitly
+    int* ptr = (int*)0;
 
     return 0;
 }
@@ -507,26 +673,31 @@ int main() {
 
 ### Complete Program Example
 
-```ciel
+```cpp
 // Structure for a simple linked list node
 struct Node {
     int data;
-    Node* next;
+    struct Node* next;  // Must use 'struct' prefix even for member types
 };
 
+// Declare library functions needed
+void* malloc(unsigned size);
+void free(void* ptr);
+int printf(char* format, ...);
+
 // Function to create a new node
-Node* create_node(int value) {
-    Node* new_node = (Node*)malloc(sizeof(Node));
+struct Node* create_node(int value) {
+    struct Node* new_node = (struct Node*)malloc(sizeof(struct Node));
     new_node->data = value;
-    new_node->next = NULL;
+    new_node->next = (struct Node*)0;  // No NULL literal - must cast 0
     return new_node;
 }
 
 // Function to print the linked list
-void print_list(Node* head) {
-    Node* current = head;
+void print_list(struct Node* head) {
+    struct Node* current = head;
     printf("List: ");
-    while (current != NULL) {
+    while (current != (struct Node*)0) {  // No NULL - explicit cast required
         printf("%d ", current->data);
         current = current->next;
     }
@@ -534,18 +705,18 @@ void print_list(Node* head) {
 }
 
 // Function to free the linked list
-void free_list(Node* head) {
-    Node* current = head;
-    while (current != NULL) {
-        Node* next = current->next;
-        delete current;
+void free_list(struct Node* head) {
+    struct Node* current = head;
+    while (current != (struct Node*)0) {
+        struct Node* next = current->next;
+        free(current);  // Use free, not delete
         current = next;
     }
 }
 
 int main() {
     // Create a simple linked list: 1 -> 2 -> 3
-    Node* head = create_node(1);
+    struct Node* head = create_node(1);
     head->next = create_node(2);
     head->next->next = create_node(3);
 
