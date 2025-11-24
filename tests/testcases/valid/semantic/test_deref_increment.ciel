@@ -1,0 +1,28 @@
+int main() {
+    int a = 5;
+    int* p = &a;
+
+    // Test post-increment on dereference
+    (*p)++;
+    if (a != 6) { return 1; }
+
+    // Test pre-increment on dereference
+    ++(*p);
+    if (a != 7) { return 2; }
+
+    // Test with pointer to pointer
+    int arr[2];
+    arr[0] = 10;
+    arr[1] = 20;
+
+    int* ptr = &arr[0];
+    int** pptr = &ptr;
+
+    // (*pptr) is 'ptr'. Incrementing it should move 'ptr' to &arr[1]
+    // Since ptr is int*, it should move by sizeof(int) = 4 bytes.
+    (*pptr)++;
+
+    if (*ptr != 20) { return 3; }
+
+    return 0;
+}

@@ -1,0 +1,41 @@
+struct Point {
+    int x;
+    int y;
+};
+
+int main() {
+    int arr[2] = {10, 20};
+    int* ptr = &arr[0];
+
+    if (*ptr != 10) return 1;
+
+    ptr++;
+    if (*ptr != 20) return 2;
+
+    ptr--;
+    if (*ptr != 10) return 3;
+
+    ++ptr;
+    if (*ptr != 20) return 4;
+
+    --ptr;
+    if (*ptr != 10) return 5;
+
+    // Test with struct (size should be 8)
+    struct Point points[2];
+    points[0].x = 1;
+    points[0].y = 2;
+    points[1].x = 3;
+    points[1].y = 4;
+    struct Point* p_ptr = &points[0];
+
+    if (p_ptr->x != 1) return 6;
+
+    p_ptr++;
+    if (p_ptr->x != 3) return 7;
+
+    p_ptr--;
+    if (p_ptr->x != 1) return 8;
+
+    return 0;
+}

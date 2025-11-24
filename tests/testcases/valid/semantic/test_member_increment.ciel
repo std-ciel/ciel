@@ -1,0 +1,19 @@
+struct Point {
+    int x;
+    int y;
+};
+
+int main() {
+    struct Point p;
+    p.x = 10;
+    p.y = 20;
+    
+    p.x++;
+    if (p.x != 11) return 1;
+    
+    struct Point* ptr = &p;
+    ptr->y++;
+    if (p.y != 21) return 2;
+    
+    return 0;
+}
