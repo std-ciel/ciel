@@ -2,7 +2,10 @@ set -e
 
 echo "Installing dependencies..."
 sudo apt update
-sudo apt install -y build-essential cmake flex libfl-dev
+sudo apt install -y build-essential cmake flex libfl-dev gcc-riscv64-linux-gnu qemu-user
+
+echo "Pulling dependencies..."
+git submodule update --init --recursive
 
 BUILD_DIR_NAME="build"
 
