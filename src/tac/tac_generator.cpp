@@ -1092,6 +1092,13 @@ TACOperand TACGenerator::generate_unary_op(std::shared_ptr<UnaryExpr> expr)
         }
     }
 
+    if (expr->op == Operator::POINTER_DEREF) {
+        TypePtr result_type = strip_typedefs(expr->expr_type);
+        if (result_type && result_type->kind == TypeKind::ARRAY) {
+            return generate_expression(expr->operand);
+        }
+    }
+
     // Other unary operations
     auto operand = generate_expression(expr->operand);
     auto result_temp = new_temp(expr->expr_type);
@@ -1659,9 +1666,10 @@ TACOperand TACGenerator::generate_member_access(const TACOperand &base_object,
     // Check if member is an aggregate type (struct/union/class)
     // If so, we need to return its address, not load it
     TypePtr canonical_member_type = strip_typedefs(member_type);
-    bool member_is_aggregate = canonical_member_type &&
-                               (canonical_member_type->kind == TypeKind::RECORD ||
-                                canonical_member_type->kind == TypeKind::CLASS);
+    bool member_is_aggregate =
+        canonical_member_type &&
+        (canonical_member_type->kind == TypeKind::RECORD ||
+         canonical_member_type->kind == TypeKind::CLASS);
 
     // For aggregate members accessed through pointers, return address not value
     if (base_is_pointer && member_is_aggregate) {
